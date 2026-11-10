@@ -1,0 +1,26 @@
+{
+ "about": "The pages of the reader test. Each case is a typed hymn whose notes match its score page for page. pdf is relative to the CHOIR folder, pages are page numbers in that PDF, and layout lists the staves of each system from the top, with the parts that each staff holds.",
+ "kinds": {
+  "printed": "Scan of a printed engraving",
+  "old copy": "Old copy: notes drawn by hand, words typed",
+  "by hand": "By hand: notes and words written by hand",
+  "poor": "Faded or broken copy",
+  "digital": "Digital PDF, as a clean baseline"
+ },
+ "cases": [
+  {
+   "id": "saturday-of-souls-troparion",
+   "kind": "old copy",
+   "pdf": "Saturday of Souls /Saturday of Souls Troparion.pdf",
+   "pages": [
+    1
+   ],
+   "layout": [
+    [
+     "soprano",
+     "alto"
+    ]
+   ]
+  }
+ ]
+}
