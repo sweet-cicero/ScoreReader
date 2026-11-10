@@ -1,74 +1,84 @@
 # scoreread: a local reader for choir scores
 
-Version 0.4, 9 November 2026. One command reads a page of a score and writes its notes. Everything runs on this
-computer: no network, no assistant and no cloud model. The reader takes the good part of an existing product
-(copisteria's symbol reader, Apache-2.0 licence) and replaces the parts that fail on the choir's scans with code of
-its own.
+Version 0.5, 10 November 2026. One command reads a page of a score and writes its notes. Everything runs on this
+computer: no network, no assistant, no cloud model, and from this version on no neural network. Every step is rules
+on the ink of the page, written in this repository, with OpenCV and NumPy.
 
 ```
-export SCOREREAD_KIT="$HOME/Projects/LitChoir/tmp/omr-test"     # the test kit, see "The test kit" below
-source "$SCOREREAD_KIT/env.sh"
-PY="$SCOREREAD_KIT/tools/copisteria/.venv/bin/python"
-$PY -m scoreread read "path/to/score.pdf" --page 1 --out out/my-hymn
-$PY -m scoreread read page.png --out out/my-hymn --ledger
-$PY -m scoreread layout page.png --out out/check          # only staves and systems, 2 seconds
+python -m scoreread read "path/to/score.pdf" --page 1 --out out/my-hymn
+python -m scoreread read page.png --out out/my-hymn
+python -m scoreread layers page.png --out out/check       # the page with each layer of ink in its own colour
+python -m scoreread layout page.png --out out/check       # only staves and systems, 2 seconds
 ```
 
-`read` writes `<name>.musicxml` (the notes), `<name>.notes.json` (each note head and its place), `<name>.layout.json`
-(the staves and systems), `<name>.clean.png` (the page that was read) and `<name>.staves.png` (the scan with the
-staves drawn on it, as a check). One page takes about 14 seconds on the PC's processor.
+`read` writes `<name>.musicxml` (the notes), `<name>.notes.json` (each note, its place and what it was read from),
+`<name>.layout.json` (the staves and systems), `<name>.clean.png` (the page that was read), `<name>.staves.png` (the
+scan with the staves drawn on it, as a check) and `<name>.layers.png` (the layers picture). One page takes about 14
+seconds on one processor core. Python needs `opencv-python` and `numpy`; a PDF also needs `pdftoppm` (poppler).
+
+`read --symbols copisteria` reads the symbols with copisteria's network as version 0.4 did. It is kept as a
+yardstick and needs the test kit (see "The test kit" below).
 
 ## What the reader does
 
 | Step | File | Model used? | What it does |
 |---|---|---|---|
 | 1. Staves | `scoreread/staves.py` | No | Finds each staff and follows its five lines along the page, also where the page bends, tilts or the lines are weak. Drops blank staves. |
-| 2. Systems | `scoreread/systems.py` | No | Puts the staves into systems from the page's ink: the opening line, bar lines through the gap, and bar lines at the same places. Ink in the margin does not count. |
+| 2. Systems | `scoreread/systems.py` | No | Puts the staves into systems from the page's ink: the opening line, bar lines through the gap, and bar lines at the same places. Ink in the margin does not count. Finds a staff whose lines the copy lost. |
 | 3. Clean page | `scoreread/page.py` | No | Makes each system level and puts the systems on a white page. The shadow of the binding and the page number stay behind. |
-| 4. Symbols | `scoreread/engine.py` | copisteria's local network | Reads the note heads, stems, rests, clefs and bar lines. It gets the staves and systems of steps 1 and 2 as facts. |
-| 5. Choir rules | `scoreread/choir.py`, `scoreread/ledger.py` | No | Tenor staff: a treble clef over the bass staff sounds an octave lower. Ledger rule (option `--ledger`): a line through a note head puts the note on the ledger line. |
+| 4. Layers | `scoreread/layers.py` | No | Splits the ink into staff lines, upright strokes (stems and bar lines), thick marks (note heads, beams, flags), the holes of hollow heads, and the rest. `layers` draws them in colours. |
+| 5. Symbols | `scoreread/symbols.py`, `starts.py`, `signs.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, and the sharps, flats and naturals before a note. |
+| 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
 
-Step 4 is the only step with a neural network. That network is part of copisteria and runs on this computer.
+Steps 4 to 6 are the own symbol step. They replace copisteria's network of version 0.4.
 
 ## Results on the reader test (31 typed hymns, 38 pages, 6901 notes)
 
 Notes right means pitch and length both right, counted by the kit's `score.py` against the typed hymns.
 
-| Kind of score | Hymns | copisteria alone | homr alone | scoreread 0.4 |
-|---|---:|---:|---:|---:|
-| Printed | 12 | 67 % | 82 % | 76 % |
-| Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % |
-| By hand | 5 | 65 % | 70 % | 79 % |
-| Poor (faded or broken) | 2 | 93 % | 49 % | 95 % |
-| Digital PDF | 3 | 81 % | 72 % | 81 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % |
+| Kind of score | Hymns | copisteria alone | homr alone | scoreread 0.4 (copisteria's network) | scoreread 0.5 (no model) |
+|---|---:|---:|---:|---:|---:|
+| Printed | 12 | 67 % | 82 % | 76 % | 89 % |
+| Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 80 % |
+| By hand | 5 | 65 % | 70 % | 79 % | 82 % |
+| Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 72 % |
+| Digital PDF | 3 | 81 % | 72 % | 81 % | 98 % |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 85.3 % (5889 notes) |
 
-- 9 of the 31 hymns are at 95 % or more, and 14 are at 90 % or more. With copisteria alone, 4 and 7 were.
-- The test hymn "O only Creator" goes from 34 % to 85 %, and to 90 % with `--ledger`.
-- Largest gains: wedding Alleluia 49 % to 98 %, "It is truly meet" (Zakkak) 65 % to 99 %, "Pious Joseph" 37 % to 94 %,
-  Troparion of the Synaxis of the Forerunner 55 % to 88 %.
-- 6 hymns are a little under copisteria alone (1 to 10 notes each).
+- Over all hymns the own symbol step reads more notes right than the network it replaces: 85.3 % against 81 %.
+- It is behind the network on two kinds: old copies (80 % against 88 %) and the two poor pages (72 % against 95 %).
+  These are the next work.
+- 7 of the 31 hymns are at 95 % or more, and 11 are at 90 % or more. 8 are under 80 %. The lowest are a hand copy
+  (Kontakion of the Nativity of the Forerunner, 65 %), two old copies (65 % and 66 %), a poor page (66 %) and two
+  Trisagion hymns with recitation notes (61 % and 70 %, see the limits).
+- The target is 95 % of all notes. It is not reached.
 
 ## Limits
 
-- The reader is not accurate enough yet to put a hymn into the app without a check. Most hymns still have 5 % to 25 %
+- The reader is not accurate enough yet to put a hymn into the app without a check. Most hymns still have 5 % to 35 %
   wrong notes.
-- The symbol step is not our own yet. On some printed pages homr reads the symbols better than copisteria (Bulgarian
-  "It is truly meet": 89 % against 55 %), and Audiveris reads digital PDFs at 99 %. A perfect choice between homr and
-  this reader for each hymn gives 86 %, so a choice of readers alone does not reach the goal.
-- The limits in steps 1 and 2 were set on the same 38 pages that test them. New pages can need new limits.
-- The reader writes no words yet.
+- The rules and their limits were set on the same 38 pages that test them, in 22 rounds of measuring. The figures
+  above are therefore the best case. New pages will read worse until they are measured too.
+- 164 typed notes (2.4 %) are recitation notes that the page does not print: the singers repeat a note for each
+  syllable. A reader of the page cannot find them, so a perfect reader gets about 97.6 % on this kit.
+- The score counts each part. A staff of two parts is split by the stem direction (stem up is the upper part). One
+  stem read wrong, or one head of a chord missed, gives the note to the wrong part.
+- Not read yet: rests, time signatures, ties and slurs, triplets, and the words. A rest or the digits of a time
+  signature can be read as a note. A tied note is read as two notes.
+- Most of the wrong notes are of these kinds: a note read one step off, mostly on old copies and hand copies (about
+  250 notes), the note of the staff's other part (about 130), a half note read as a quarter because the copy filled
+  its hole (about 110), and an eighth note read as a quarter because its flag or beam was not seen (about 80).
+- A few typed notes are doubtful against the page (about ten were found). They count as wrong here, because the kit
+  is not changed.
 - The output is MusicXML for one page. The reader does not join pages or write the app's hymn format yet.
 
 ## Next steps
 
-The end goal is an engine of our own that reads these scores consistently. Steps 1 to 3 and 5 are our own already.
-Step 4, the symbols, still comes from copisteria.
+The end goal is an engine of our own that reads these scores consistently. Every step is our own now, and the
+target of 95 % is still 10 points away.
 
-1. Build our own symbol step, a part at a time: note heads and their pitch from the ink and the known staff lines,
-   then stems, flags, beams and dots for the lengths, then rests, clefs and key signatures. Each part must beat the
-   part that it replaces on the test kit.
-2. Add music checks that need no model: the voices of a bar have the same length, and the staves of a system line up.
+1. Old copies and poor pages: read the lengths and the heads that the network still reads better.
+2. Rests, time signatures and ties. With them, a check of each bar's length against the time signature.
 3. Read each page in two ways and look again at the places that disagree.
 4. Read the words.
 5. Join the pages of a hymn and write the app's hymn format.
@@ -76,22 +86,30 @@ Step 4, the symbols, still comes from copisteria.
 ## Tests
 
 ```
+export SCOREREAD_KIT="$HOME/Projects/LitChoir/tmp/omr-test"     # the test kit, see below
+PY="$SCOREREAD_KIT/tools/copisteria/.venv/bin/python"           # or any Python with opencv-python and numpy
+$PY bench/drawn_check.py                                      # the whole reader on a page the script draws; needs no kit
 $PY bench/staves_check.py "$SCOREREAD_KIT/pages" out/staves   # 38 of 38 pages right
-$PY bench/systems_check.py "$SCOREREAD_KIT"                   # 36 of 38; the 2 others have a staff that the copy lost
-bash bench/kit.sh v04                                         # reads all 38 pages, about 200 seconds
-python3 "$SCOREREAD_KIT/score.py" --results out/kit --tools v04
+$PY bench/systems_check.py "$SCOREREAD_KIT"                   # 37 of 38; on the other page the copy lost a staff
+bash bench/kit.sh own                                         # reads all 38 pages with the own symbol step
+bash bench/kit.sh v04 --symbols copisteria                    # the same with copisteria's network
+python3 "$SCOREREAD_KIT/score.py" --results out/kit --tools own v04
 ```
+
+`bench/kit.sh` takes its Python from `SCOREREAD_PYTHON`, or the kit's copisteria environment without it.
 
 ## The test kit
 
-The reader needs the test kit, which is not in this repository:
+The tests need the test kit, which is not in this repository. The reader itself does not need it, except for
+`--symbols copisteria`.
 
-- `tools/copisteria`: copisteria with its own Python and its model files (about 4 GB with the other readers).
 - `pages/`: 38 page images of 31 hymns. They are scans of the choir's scores, so they stay out of git.
 - `truth/`: the same hymns typed by hand, as the answer key.
 - `score.py`, `cases.json`, `env.sh`: the scoring script, the list of hymns and the settings of the tools.
+- `tools/copisteria`: copisteria with its own Python and its model files (about 4 GB with the other readers), for
+  `--symbols copisteria`.
 
-`SCOREREAD_KIT` names the kit's folder. Without it, the reader looks in `~/Projects/LitChoir/tmp/omr-test`.
+`SCOREREAD_KIT` names the kit's folder. Without it, the tests look in `~/Projects/LitChoir/tmp/omr-test`.
 `SCOREREAD_COPISTERIA` names another copy of copisteria.
 
 ## History
@@ -99,3 +117,6 @@ The reader needs the test kit, which is not in this repository:
 `experiments/2026-11-09-hard-scans/` holds the first tests on one difficult hymn, with a report. They found the three
 causes that this reader removes: wrong systems from ink in the margin, staves found twice on bent pages, and the
 ledger lines of one copyist.
+
+Version 0.5 replaced copisteria's network with the own symbol step (layers, symbols, music). Each rule was switched
+on alone and scored on all 38 pages, and a rule that did not gain notes was dropped.
