@@ -53,6 +53,8 @@ BEAM_REACH = 2.6      # the beams of a stem lie within this many gaps of its fre
 DOT_AT = (0.1, 2.2, 0.7)  # a dot stands this far right of its head (from, to), and at most this far over or under it
 SIGN_AT = (3.2, 0.3)  # a sharp, flat or natural stands at most this far left of its head, and this far off its height
 KEY_STEP = 1.6        # the signs of a key signature follow the clef, each at most this many gaps after the last
+TIE_END = 1.3         # a tie begins and ends at most this many gaps from the middle of its heads, sideways
+TIE_OFF = 1.2         # and passes at most this many gaps over or under them
 WORDS_UNDER = 9.0     # a row of words belongs to a staff at most this many gaps under its last line
 WORD_NEAR = 1.6       # a syllable stands under its note: its middle or its start at most this many gaps from the head
 
@@ -137,6 +139,11 @@ def _strokes(page) -> tuple[list[dict], list[dict], list[dict]]:
                                           (box['x0'], box['bottom'])], 'thick': 0})
     for curve in page.curves:
         points = [(float(x), float(y)) for x, y in curve.get('pts', [])]
+        if any(step[0] in 'cvy' for step in curve.get('path') or []) and len(points) >= 2:
+            # A drawn curve is a bow (a tie, a slur) or a brace, never a line or a beam. Its points are the ends of
+            # its pieces: a bow of two curves has its two ends only.
+            shapes.append({'points': points, 'thick': 0, 'bow': True, 'fill': bool(curve.get('fill'))})
+            continue
         if len(points) >= 2 and points[0] == points[-1]:
             points = points[:-1]
         if len(points) == 2:
@@ -428,6 +435,7 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
                            and sign['x'] < other['cx'] < head['x0'] and other['place'] == head['place']]
                 if not between:
                     head['sign'] = {'sharp': 1, 'flat': -1, 'natural': 0}[sign['kind']]
+    _ties(staves, heads, shapes)
     _words(staves, heads, words)
     # Choir rule, as in the reader of scans: in a system of three or more staves, a treble staff over the bass
     # staff is the tenors'.
@@ -460,6 +468,74 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
     return {'musicxml': musicxml(parts, title), 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'keys': keys,
             'heads': heads, 'bars': bars, 'vector': True}
+
+
+def _ties(staves: list[dict], heads: list[dict], shapes: list[dict]) -> None:
+    """Marks the tied heads: 'tie_start' and 'tie_stop'. A tie is a bow from a head to the next head at the same
+    height on its staff; a bow between two heights is a slur. A tie over the end of a line is two bows: one from
+    the last note to the end of the staff, one from the start of the next line to its first note."""
+    open_ties = {}       # (the staff's place in its system, the head's height) -> a tie runs over the end of the line
+    for staff in staves:
+        gap = staff['gap']
+        own = sorted((head for head in heads if head['staff'] == staff['index']), key=lambda head: head['cx'])
+        if not own:
+            continue
+        carried = {place for (number, place) in open_ties if number == staff['number']}
+        open_ties = {key: value for key, value in open_ties.items() if key[0] != staff['number']}
+        for shape in shapes:
+            if not shape.get('bow'):
+                continue
+            xs = [point[0] for point in shape['points']]
+            ys = [point[1] for point in shape['points']]
+            x0, x1, top, bottom = min(xs), max(xs), min(ys), max(ys)
+            if not (staff['top'] - 6 * gap <= (top + bottom) / 2 <= staff['bottom'] + 6 * gap) or x1 - x0 < 0.8 * gap:
+                continue
+            left = [head for head in own if abs(head['cx'] - x0) <= TIE_END * gap and top - TIE_OFF * gap <= head['cy'] <= bottom + TIE_OFF * gap]
+            right = [head for head in own if abs(head['cx'] - x1) <= TIE_END * gap and top - TIE_OFF * gap <= head['cy'] <= bottom + TIE_OFF * gap]
+            done = False
+            for first in left:
+                for second in right:
+                    between = [head for head in own if first['cx'] + 0.5 * gap < head['cx'] < second['cx'] - 0.5 * gap
+                               and head['place'] == first['place']]
+                    if second is not first and second['place'] == first['place'] and second['cx'] > first['cx'] and not between:
+                        first['tie_start'] = second['tie_stop'] = True
+                        done = True
+            if done:
+                continue
+            last, first = own[-1], own[0]
+            if left and not right and x1 > last['x1'] + 0.5 * gap:
+                for head in left:
+                    if head['cx'] >= last['cx'] - 0.75 * gap:
+                        open_ties[(staff['number'], head['place'])] = head
+            if right and not left and x0 < first['x0'] - 0.5 * gap:
+                for head in right:
+                    if head['cx'] <= first['cx'] + 0.75 * gap and head['place'] in carried:
+                        head['tie_stop'] = True
+                        carried.discard(head['place'])
+        # A tie that left the line before and did not arrive here was a slur or the end of a page: nothing is tied.
+    # The heads that a tie left over the end of a line are tied when the next line took the tie up.
+    _close_open_ties(staves, heads, shapes)
+
+
+def _close_open_ties(staves: list[dict], heads: list[dict], shapes: list[dict]) -> None:
+    """Sets 'tie_start' on the last head of a line where the next line of the same part begins with a tied head."""
+    for staff in staves:
+        later = [other for other in staves if other['index'] > staff['index'] and other['number'] == staff['number']]
+        if not later:
+            continue
+        own = sorted((head for head in heads if head['staff'] == staff['index']), key=lambda head: head['cx'])
+        after = sorted((head for head in heads if head['staff'] == later[0]['index']), key=lambda head: head['cx'])
+        if not own or not after:
+            continue
+        gap = staff['gap']
+        for head in own:
+            if head['cx'] < own[-1]['cx'] - 0.75 * gap:
+                continue
+            for other in after:
+                if other['cx'] <= after[0]['cx'] + 0.75 * gap and other.get('tie_stop') and other['place'] == head['place'] \
+                        and not any(earlier.get('tie_start') and earlier['place'] == other['place'] and earlier['cx'] < other['cx']
+                                    for earlier in after):
+                    head['tie_start'] = True
 
 
 def _drones(plan: list[list[list[dict]]]) -> list[list[list[dict]]]:
