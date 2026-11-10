@@ -32,6 +32,13 @@ STEM_USUAL = (2.2, 1.8)   # a stroke under this height (staff spaces) is no stem
                           # the page's long strokes (None: off)
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
+WHOLE_INSIDE = (0.3, 0.3, 0.8, 2.4, 1.5)
+#                    The inside of a printed whole note is an upright oval, nearly as high as a cell of the staff in its
+#                    middle columns. But paper fills less than this share of its four corners; the sides of the note
+#                    at its left and at its right are both from this to this many staff spaces thick, and as upright
+#                    ink they are at most this many staff spaces long (two whole notes, one over the other): a stem
+#                    or a bar line at the side of a cell is longer. The inside is at most this many times as high as
+#                    wide. (None: off)
 HOLE_GAP = 0.2       # a break of up to this many staff spaces in the rim of a hollow head is closed for the open holes
 ROUND = 0.85         # the inside of a head fills at least this share of its hull: it has no dent
 HOLE_LINE = 0.5      # two pieces of an inside that a staff line cut stand over each other for this share of the
@@ -79,6 +86,46 @@ def blots(ink: np.ndarray, space: float) -> np.ndarray:
     return cv2.dilate(solid, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (rim, rim)))
 
 
+def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: float) -> bool:
+    """True when closed paper that is as high as a cell of the staff is the inside of a printed whole note (see
+    WHOLE_INSIDE). `part` is the paper in its box, at (x, y) of the page."""
+    if not WHOLE_INSIDE:
+        return False
+    corner, thin, thick, long, tall = WHOLE_INSIDE
+    height, width = part.shape
+    if height > tall * width:
+        return False
+    edge = max(2, int(round(0.15 * min(width, height))))
+    corners = (part[:edge, :edge].mean() + part[:edge, -edge:].mean()
+               + part[-edge:, :edge].mean() + part[-edge:, -edge:].mean()) / 4
+    if corners >= corner:
+        return False
+    middle = y + height // 2
+    row = ink[middle]
+    columns = np.nonzero(part[height // 2])[0]
+    if len(columns) == 0:
+        return False
+    left, right = x + int(columns[0]) - 1, x + int(columns[-1]) + 1
+    first = left
+    while first >= 0 and row[first]:
+        first -= 1
+    last = right
+    while last < len(row) and row[last]:
+        last += 1
+    for side, column in ((left - first, (left + first + 1) // 2), (last - right, (right + last - 1) // 2)):
+        if not thin * space <= side <= thick * space:
+            return False
+        upright = ink[:, column]
+        top = bottom = middle
+        while top >= 0 and upright[top]:
+            top -= 1
+        while bottom < len(upright) and upright[bottom]:
+            bottom += 1
+        if bottom - top - 1 > long * space:
+            return False
+    return True
+
+
 def head_holes(ink: np.ndarray, space: float, line: float = 0.0) -> np.ndarray:
     """1 where paper is closed in by ink and can be the inside of a hollow note head.
 
@@ -102,7 +149,7 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0) -> np.ndarray:
         if height >= 0.6 * space and area >= 0.7 * width * height:
             # A cell between two staff lines and two upright strokes: it is as high as the gap between the lines in
             # most of its columns. The inside of a head is round, so few of its columns have the full height.
-            if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5:
+            if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5 and not _whole_inside(ink, part, x, y, space):
                 continue
         dented.append(index)
         if area > HOLE[0] * space * space or width > HOLE[2] * space:

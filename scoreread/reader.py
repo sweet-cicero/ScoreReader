@@ -15,8 +15,8 @@ from .layers import read_layers
 from .music import agree_lengths, build_staff, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_starts
-from .symbols import bar_lines, count_tails, dots, hole_heads, lost_stems, read_symbols, thin_heads, \
-    without_flag_loops, without_joints
+from .symbols import bar_lines, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
+    thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .words import cut_stems, word_bands
 
@@ -62,6 +62,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     # A stem ends where the words begin.
     cut_stems(layers, heads, words)
     count_tails(layers, heads)
+    loops_have_flags(layers, heads)
     heads = without_flag_loops(heads, space)
     dots(layers, heads)
     # A sharp, a flat or a natural before a head changes that note. Two readers look for it: the strokes of the sign
