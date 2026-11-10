@@ -28,6 +28,8 @@ SLIM_STEM = 0.62     # a stem is at most this wide, in staff spaces
 REACH = 3.6          # a head stands at most this many staff spaces over or under its staff (three ledger lines)
 CORE = 0.6           # the core of a head: an oval of this share of its width and height
 HOLLOW = 0.08        # a head is hollow when this share of it was a hole
+HOLLOW_PAGE = (0.3, 0.03)   # on a page whose hollow heads have small holes: from this share of their usual hole, and
+                            # never under the second number (None: off)
 RIM = 0.8            # a note without a stem has its own ink at this share of the rim of its hole
 FLAG_END = 0.7       # the flag of such a note begins at most this many staff spaces from the end of the stem
 FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
@@ -699,6 +701,20 @@ def _places(staff: dict, mark: dict) -> dict:
             'bottom': pitch_place(staff, mark['y1']), 'thick': staff['thick'] / staff['space']}
 
 
+def _fat(layers: dict, mark: dict) -> dict:
+    """How fat the stroke of a mark is, for the record: 'fat' (the widest disc that fits in its thick ink, as a
+    diameter in staff spaces), 'area' (its thick ink in staff spaces squared) and 'long' (the length of its box's
+    diagonal in staff spaces)."""
+    space = layers['space']
+    y0, y1, x0, x1 = max(0, mark['y0'] - 1), mark['y1'] + 2, max(0, mark['x0'] - 1), mark['x1'] + 2
+    part = np.ascontiguousarray(layers['thick'][y0:y1, x0:x1])
+    if not part.any():
+        return {'fat': 0.0, 'area': 0.0, 'long': 0.0}
+    far = cv2.distanceTransform(np.pad(part, 1), cv2.DIST_L2, 3)
+    return {'fat': float(2 * far.max() / space), 'area': float(part.sum() / space ** 2),
+            'long': float(np.hypot(mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1) / space)}
+
+
 def _flag_loop(layers: dict, marks: list[dict], mark: dict) -> bool:
     """True when a hollow mark is the loop of a printed flag, not a head. The flag of a printed eighth note comes back
     toward its head, and the flag, the stem and the staff lines close in small rooms at the right side of the stem.
@@ -854,6 +870,14 @@ def read_symbols(layers: dict) -> dict:
             parts = _two_heads(layers, mark) if mark['kind'] == 'head' and len(mark['stems']) == 2 else None
             split += parts or [mark]
         marks = split
+    # The page teaches how large the holes of its hollow heads are. A heavy print leaves a slit of a hole, and there
+    # a smaller hole is a hole too.
+    limit = HOLLOW
+    if HOLLOW_PAGE:
+        sure = [mark['hole'] for mark in marks if mark['kind'] == 'head' and mark['stems'] and mark['hole'] >= HOLLOW]
+        if len(sure) >= 5:
+            limit = min(HOLLOW, max(HOLLOW_PAGE[1], HOLLOW_PAGE[0] * float(np.median(sure))))
+    layers['hollow'] = limit
     heads, signs = [], []
     for number, mark in enumerate(marks):
         if mark['kind'] is None or mark['kind'] == 'beam':
@@ -861,7 +885,7 @@ def read_symbols(layers: dict) -> dict:
         staff = _staff_of(layers, mark['cx'], mark['cy'])
         if staff is None:
             continue
-        hollow = mark['hole'] >= HOLLOW
+        hollow = mark['hole'] >= limit
         cy = mark['hole_cy'] if HOLE_PLACE and hollow and mark['hole_cy'] is not None else mark['cy']
         if hollow and mark.get('solid_cy') is not None and mark['stems']:
             hollow, cy = False, mark['solid_cy']
@@ -883,7 +907,8 @@ def read_symbols(layers: dict) -> dict:
                 continue
         head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': mark['cx'], 'cy': cy,
                 'staff': staff, 'place': place, 'hollow': hollow, 'hole': mark['hole'], 'stems': mark['stems'],
-                'mark': number, 'core': core_light(layers, mark), 'alt': _places(layers['staves'][staff], mark)}
+                'mark': number, 'core': core_light(layers, mark),
+                'alt': dict(_places(layers['staves'][staff], mark), **_fat(layers, mark))}
         if abs(place) > 4 + 2 * REACH:
             continue
         if abs(place) > 4.6:

@@ -32,6 +32,9 @@ BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
 HOLE_GAP = 0.2       # a break of up to this many staff spaces in the rim of a hollow head is closed for the open holes
 ROUND = 0.85         # the inside of a head fills at least this share of its hull: it has no dent
+HOLE_LINE = 0.5      # two pieces of an inside that a staff line cut stand over each other for this share of the
+                     # smaller one's width (0: off)
+LINE_ROUND = 0.6     # and with the line between them they fill this share of their hull
 CROSS = 0.2          # a mark goes through a staff line when its ink over and under the line is this near, sideways
 WEAK = (0.05, 0.2)   # the share of long strokes with gaps: a whole copy has at most the first, a weak copy the second
 WHOLE_GAP = 0.3      # on a whole copy, the gaps that are bridged are this share of the gaps bridged on a weak copy
@@ -73,15 +76,20 @@ def blots(ink: np.ndarray, space: float) -> np.ndarray:
     return cv2.dilate(solid, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (rim, rim)))
 
 
-def head_holes(ink: np.ndarray, space: float) -> np.ndarray:
+def head_holes(ink: np.ndarray, space: float, line: float = 0.0) -> np.ndarray:
     """1 where paper is closed in by ink and can be the inside of a hollow note head.
 
     The inside of a head is round: it has no dent. Paper that is closed in between two marks has one. A sharp or a
     natural before a head closes in the paper between them, and so do two heads side by side: that paper is wide at
     the staff lines and narrow at its middle, where the head bulges into it. A cell between two staff lines and two
-    upright strokes has no dent, but it has straight sides, and it is left out too."""
+    upright strokes has no dent, but it has straight sides, and it is left out too.
+
+    A thick staff line through a head that a hand drew cuts its inside into two pieces, and each piece has a dent
+    where the line is. With `line` (the thickness of the staff lines in px), two such pieces, one over the other
+    with a band of ink as thick as a line between them, are one inside when the two and the band are round together."""
     count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
     keep = np.zeros(count, bool)
+    dented = []
     for index in range(1, count):
         x, y, width, height, area = stats[index]
         if area < 6 or area > HOLE[0] * space * space or height > HOLE[1] * space or width > HOLE[2] * space:
@@ -92,15 +100,41 @@ def head_holes(ink: np.ndarray, space: float) -> np.ndarray:
             # most of its columns. The inside of a head is round, so few of its columns have the full height.
             if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5:
                 continue
-        if area >= 0.06 * space * space:
-            contours, _ = cv2.findContours(part, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-            hull = cv2.convexHull(np.vstack(contours))
-            # The hull runs through the middles of the rim's pixels: half a pixel is added all around it.
-            full = cv2.contourArea(hull) + cv2.arcLength(hull, True) / 2 + 1
-            if area < ROUND * full:
-                continue
+        dented.append(index)
+        if area >= 0.06 * space * space and not _round(part, area):
+            continue
         keep[index] = True
+    if line and HOLE_LINE:
+        for upper in dented:
+            ux, uy, uw, uh, ua = stats[upper]
+            for lower in dented:
+                lx, ly, lw, lh, la = stats[lower]
+                gap = ly - (uy + uh)
+                if lower == upper or (keep[upper] and keep[lower]) or not 1 <= gap <= line + 3:
+                    continue
+                x0, x1 = max(ux, lx), min(ux + uw, lx + lw)
+                if x1 - x0 < HOLE_LINE * min(uw, lw) or ly + lh - uy > HOLE[1] * space:
+                    continue
+                if ink[uy + uh:ly, x0:x1].mean() < 0.9:
+                    continue
+                left, right = min(ux, lx), max(ux + uw, lx + lw)
+                both = np.isin(labels[uy:ly + lh, left:right], (upper, lower)).astype(np.uint8)
+                both[uh:uh + gap, x0 - left:x1 - left] = 1
+                # The band takes the two pieces' own columns only: the staff line goes on at both sides.
+                columns = both[:uh].any(axis=0) & both[uh + gap:].any(axis=0)
+                both[uh:uh + gap] &= columns.astype(np.uint8)
+                if _round(both, int(both.sum()), LINE_ROUND):
+                    keep[upper] = keep[lower] = True
     return keep[labels].astype(np.uint8)
+
+
+def _round(part: np.ndarray, area: int, least: float | None = None) -> bool:
+    """True when a piece of paper fills its hull (ROUND of it, or `least`): it has no dent."""
+    contours, _ = cv2.findContours(part, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    hull = cv2.convexHull(np.vstack(contours))
+    # The hull runs through the middles of the rim's pixels: half a pixel is added all around it.
+    full = cv2.contourArea(hull) + cv2.arcLength(hull, True) / 2 + 1
+    return area >= (ROUND if least is None else least) * full
 
 
 def staff_lines(solid: np.ndarray, staves: list[dict]) -> np.ndarray:
@@ -151,7 +185,7 @@ def read_layers(grey: np.ndarray, places: list[dict]) -> dict:
         raise ValueError('a page without staves has no layers')
     space = float(np.median([staff['space'] for staff in staves]))
     ink = ink & (1 - blots(ink, space))
-    holes = head_holes(ink, space)
+    holes = head_holes(ink, space, max(staff['thick'] for staff in staves))
     # The rim of a hollow head can have a small break, in print and in a copy: the paper inside is closed in again
     # when the break is closed. These open holes are kept apart: they are asked only where a head is missing.
     size = int(max(3, round(HOLE_GAP * space))) | 1
