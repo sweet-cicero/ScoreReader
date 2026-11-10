@@ -15,6 +15,9 @@ changes that note.
 """
 from __future__ import annotations
 
+import cv2
+import numpy as np
+
 from .starts import PAIR, SIGN_STROKE, _ink, sign_candidates, start_strokes
 
 BEFORE = (-0.45, 1.7)    # a head begins this far right of the right edge of its sign, in staff spaces
@@ -24,6 +27,13 @@ LEVEL = 0.6              # the strokes of a sharp begin and end at most this man
 EVEN = 0.72              # and the shorter one has at least this share of the longer one's height
 NARROW = 0.62            # a head on a sign is a part of the sign when it is narrower than this share of the page's heads
 GLUED = 0.6              # a head that a sign touches reaches this share of a head's width past the sign
+TANGLE = (1.2, 1.4, 2.4, 0.4)   # a sharp that a quick hand scribbled: at least this wide, from this to this high (staff
+                                # spaces), with at least this much ink (staff spaces squared) (None: such sharps are not read)
+TANGLE_CROSS = (0.4, 0.15)      # its two bars cross this share of its columns, and its two strokes this share of its rows
+TANGLE_NEAR = (2.0, 0.7)        # it begins at most this many staff spaces before its head, and its middle lies at most
+                                # this many staff spaces over or under the middle of the head
+TANGLE_SPECK = 0.04             # a piece of ink under this area (staff spaces squared) is a speck, no stroke of it
+TANGLE_HOLE = 0.08              # the paper that it closes in is at most this share of its box: an oval is a head
 
 
 def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
@@ -116,4 +126,75 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     best = (rank, head)
         if best:
             out.append(dict(sign, head=best[1], drop=drop))
+    if TANGLE:
+        signed = {id(sign['head']) for sign in out} | {id(head) for sign in out for head in sign['drop']}
+        for head in full:
+            if id(head) not in signed and head['x0'] - TANGLE_NEAR[0] * space > first:
+                sign = tangle_sign(layers, staff, head, own)
+                if sign:
+                    out.append(dict(sign, head=head, drop=lying(sign, small)))
     return out
+
+
+def _runs(part: np.ndarray) -> np.ndarray:
+    """How many runs of ink each row of a mask has."""
+    return (part[:, 1:] > part[:, :-1]).sum(axis=1) + part[:, 0]
+
+
+def tangle_sign(layers: dict, staff: dict, head: dict, heads: list[dict]) -> dict | None:
+    """The sharp that a quick hand scribbled before a head: a small tangle of thin ink, its strokes leaning and
+    running into each other, so that no stroke of it is upright. It is told by what a sharp is: two bars that
+    cross two strokes. A line down through it meets ink twice (the two bars), and a line across it meets ink twice
+    too (the two strokes). A letter, a dot, a slur and the end of a ledger line do not show both. The tangle is all
+    the ink that lies whole in the room before the head; ink that goes on out of that room belongs to something else,
+    and a speck is no stroke."""
+    space = staff['space']
+    ink = layers['bare'] & (1 - layers['stems'])
+    height, width = ink.shape
+    x0, x1 = int(head['x0'] - (TANGLE_NEAR[0] + 0.4) * space), int(head['x0'] + 0.05 * space)
+    y0, y1 = int(head['cy'] - 2.0 * space), int(head['cy'] + 2.0 * space)
+    if x0 < 1 or y0 < 1 or y1 >= height - 1 or x1 >= width - 1:
+        return None
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(np.ascontiguousarray(ink[y0:y1 + 1, x0:x1 + 1]), connectivity=8)
+    inner = (int(round(0.4 * space)), int(round(0.5 * space)))
+    keep = []
+    for index in range(1, count):
+        x, y, wide, high, area = stats[index]
+        whole = x > 0 and y > 0 and x + wide < labels.shape[1] and y + high < labels.shape[0]
+        near = x + wide > inner[0] and x < labels.shape[1] - int(round(0.15 * space)) \
+            and y + high > inner[1] and y < labels.shape[0] - inner[1]
+        if whole and near and area >= TANGLE_SPECK * space * space:
+            keep.append(index)
+    if not keep:
+        return None
+    left, right = min(stats[index][0] for index in keep), max(stats[index][0] + stats[index][2] for index in keep)
+    top, bottom = min(stats[index][1] for index in keep), max(stats[index][1] + stats[index][3] for index in keep)
+    part = np.isin(labels[top:bottom, left:right], keep).astype(np.uint8)
+    wide, high, area = (right - left) / space, (bottom - top) / space, float(part.sum()) / space ** 2
+    if not (wide >= TANGLE[0] and TANGLE[1] <= high <= TANGLE[2] and area >= TANGLE[3]):
+        return None
+    middle = y0 + (top + bottom) / 2
+    if abs(head['cy'] - middle) > TANGLE_NEAR[1] * space:
+        return None
+    if float((_runs(part.T) >= 2).mean()) < TANGLE_CROSS[0] or float((_runs(part) >= 2).mean()) < TANGLE_CROSS[1]:
+        return None
+    # The strokes of a sharp close in a small room of paper at most. An oval closes in a large one: a hollow head.
+    paper = (1 - np.pad(part, 1)).astype(np.uint8)
+    rooms, _, room_stats, _ = cv2.connectedComponentsWithStats(paper, connectivity=4)
+    closed = [room_stats[room][4] for room in range(1, rooms)
+              if room_stats[room][0] > 0 and room_stats[room][1] > 0 and room_stats[room][0] + room_stats[room][2] < paper.shape[1]
+              and room_stats[room][1] + room_stats[room][3] < paper.shape[0]]
+    if max(closed, default=0) > TANGLE_HOLE * part.size:
+        return None
+    sign = {'kind': 'sharp', 'x0': float(x0 + left), 'x1': float(x0 + right - 1), 'top': float(y0 + top),
+            'bottom': float(y0 + bottom - 1), 'place': 4 - 2 * (middle - staff['rows'][0]) / space, 'tangle': True}
+    # A head that lies on the tangle: the tangle is a part of that note, or the note a part of something else.
+    box = (sign['x1'] - sign['x0'] + 1) * (sign['bottom'] - sign['top'] + 1)
+    wide_head = layers['head'][0]
+    for other in heads:
+        if other.get('thin') or other['x1'] - other['x0'] + 1 >= NARROW * wide_head:
+            over = min(sign['x1'], other['x1']) - max(sign['x0'], other['x0'])
+            tall = min(sign['bottom'], other['y1']) - max(sign['top'], other['y0'])
+            if over > 0 and tall > 0 and over * tall >= 0.3 * min(box, (other['x1'] - other['x0'] + 1) * (other['y1'] - other['y0'] + 1)):
+                return None
+    return sign

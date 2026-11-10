@@ -1339,6 +1339,7 @@ THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from 
                                 # ink at most this far (staff spaces) from the straight line, on this share of the way
                                 # with the staff lines it crosses, and on this share without them (None: off)
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
+THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_PAST = (0.4, 1.0, 0.45)   # a slur goes on past the last stem: ink from this far to this far past it, at most
                                     # this far from the line (staff spaces; None: off)
 
@@ -1546,23 +1547,30 @@ def _thin_beam(layers: dict, one: dict, two: dict) -> bool:
     if x2 - x1 < 0.4 * space:
         return False
     seen = hidden = 0
-    shown = []
+    shown, under = [], []
     for x in range(x1, x2 + 1):
         y = int(round(one['end'] + (two['end'] - one['end']) * (x - one['x']) / (two['x'] - one['x'])))
         top, bottom = max(0, y - reach), min(height, y + reach + 1)
         if not 0 <= x < width or bottom <= top:
             shown.append(False)
+            under.append(False)
             continue
         shown.append(bool(ink[top:bottom, x].any()))
+        under.append(not shown[-1] and bool(lines[top:bottom, x].any()))
         if shown[-1]:
             seen += 1
-        elif lines[top:bottom, x].any():
+        elif under[-1]:
             hidden += 1
     count = x2 - x1 + 1
     # The line hangs on both stems: a short slur between two stems does not reach them.
     near = max(2, int(round(THIN_BEAM_ENDS * space)))
-    if THIN_BEAM_ENDS and (2 * sum(shown[:near]) < near or 2 * sum(shown[-near:]) < near):
-        return False
+    if THIN_BEAM_ENDS:
+        first, last = 2 * sum(shown[:near]) >= near, 2 * sum(shown[-near:]) >= near
+        if THIN_BEAM_UNDER:
+            # A beam that runs into a staff line at one stem is hidden there: it is seen at the other stem.
+            first, last = first or (last and 2 * sum(under[:near]) >= near), last or (first and 2 * sum(under[-near:]) >= near)
+        if not (first and last):
+            return False
     return seen + hidden >= THIN_BEAM[1] * count and seen >= THIN_BEAM[2] * count
 
 
