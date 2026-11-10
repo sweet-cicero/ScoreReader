@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from .layers import DASH_GAP, upright
+from .meter import start_sign
 from .symbols import pitch_place
 
 SHARP_PLACES = {'G': [4, 1, 5, 2, -1, 3, 0], 'F': [2, -1, 3, 0, -3, 1, -2]}     # the pitch places of the sharps, in order
@@ -31,6 +32,20 @@ FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef'
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
 OPENING = 3.0       # a clef begins at most this many staff spaces after the line that opens its system (0: off)
 LOST_CLEF = 3.4     # the room of a clef that the copy lost, in staff spaces from the staff's left end
+KEY_LOST = (0.35, 2)    # where most staves show no key, a key that this many staves show this well (miss) is the page's key (None: off)
+KEY_STRONG = (0.5, 2)   # a key of two or more signs that this many staves show this well wins over fewer signs of its sort (None: off)
+KEY_WEAK = True         # one unclear mark alone (see read_start) is a witness for a lost key only beside a clear one
+KEY_OTHER = 0.35        # a staff that shows a key of the other sort this well stops KEY_STRONG (None: off)
+KEY_MORE = True         # for KEY_STRONG, a staff that shows more signs is a witness for a key of fewer signs too
+KEY_SYSTEM = 0.5        # a system of two or more staves that all show one key this well has that key, also where
+#                         the page has another (a page with two pieces) (None: off)
+GAPS = (1.0, 0.25, 0.5) # two signs at the places of the second and third sign of a key signature (at most this far
+#                         from them, in pitch places) stand for the whole signature when ink of this many square
+#                         staff spaces stands where each sign before them must be, and no two signs stand in order
+#                         as they are with a miss of at most the third number (None: off)
+TIME = (0.25, 2.5)      # the numbers of a time signature are no key signs, and the notes begin after them: the numbers
+#                         begin at most this far before the clef's end and this far after the key signature, in
+#                         staff spaces (None: off)
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
 #                         staff's left end, in staff spaces: a bass clef ends over the bottom line (None: off)
@@ -163,13 +178,54 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict
     return sorted(signs, key=lambda sign: sign['x0'])
 
 
-def chain(signs: list[dict], kind: str, clef: str, start: float, least: float, space: float) -> tuple[list[dict], float]:
+def chain(signs: list[dict], kind: str, clef: str, start: float, least: float, space: float, present=None) -> tuple[list[dict], float]:
     """The longest chain of signs of one kind that stand in the order of a key signature under a clef, and how far
     they stand from their places (the mean, in pitch places). `start` is the left edge of the clef and `least` the
-    column where the clef ends: no sign begins before it."""
+    column where the clef ends: no sign begins before it.
+
+    A thick copy runs the first signs of a key signature together, and they are no longer read as signs. With GAPS
+    and `present` (a function: is there ink of a sign at this column and pitch place?), two signs that follow each
+    other at the places of the second and third sign (or later ones) stand for the whole signature, when ink
+    stands where the signs before them must be. Those signs are in the chain with 'gap': True."""
     places = (SHARP_PLACES if kind == 'sharp' else FLAT_PLACES)[clef]
     best, best_miss = [], 0.0
     own = [sign for sign in signs if sign['kind'] == kind]
+    if GAPS and present:
+        for one in own:
+            for two in own:
+                step = two['x0'] - one['x0']
+                if not STEP[0] * space <= step <= STEP[1] * space:
+                    continue
+                # The two signs stand for the places that fit them best, under either clef: the first two signs of a
+                # key signature stand near the places of the third and fourth, and they are no sign of lost ones.
+                fits = {name: [abs(one['place'] - order[number]) + abs(two['place'] - order[number + 1])
+                               for number in range(len(order) - 1)]
+                        for name, order in (SHARP_PLACES if kind == 'sharp' else FLAT_PLACES).items()}
+                for index in range(1, len(places) - 1):
+                    if abs(one['place'] - places[index]) > GAPS[0] or abs(two['place'] - places[index + 1]) > GAPS[0]:
+                        continue
+                    if fits[clef][index] >= min(min(row[:index]) for row in fits.values()):
+                        continue
+                    first = one['x0'] - index * step
+                    if first < least - 0.3 * space or not FIRST[0] * space <= first - start <= FIRST[1] * space:
+                        continue
+                    before = [{'kind': kind, 'x0': float(one['x0'] - (index - number) * step), 'place': float(places[number]), 'gap': True}
+                              for number in range(index)]
+                    if not all(present(sign['x0'], step, sign['place']) for sign in before):
+                        continue
+                    for sign in before:
+                        sign['x1'] = sign['x0'] + 0.8 * step
+                    found, miss = [*before, one, two], abs(one['place'] - places[index]) + abs(two['place'] - places[index + 1])
+                    for sign in own:
+                        if len(found) == len(places):
+                            break
+                        if STEP[0] * space <= sign['x0'] - found[-1]['x0'] <= STEP[1] * space \
+                                and abs(sign['place'] - places[len(found)]) <= FIT:
+                            miss += abs(sign['place'] - places[len(found)])
+                            found.append(sign)
+                    miss /= len(found) - index
+                    if len(found) > len(best) or (len(found) == len(best) and miss < best_miss):
+                        best, best_miss = found, miss
     for first in own:
         if not FIRST[0] * space <= first['x0'] - start <= FIRST[1] * space or first['x0'] < least \
                 or abs(first['place'] - places[0]) > FIT:
@@ -287,13 +343,29 @@ def read_start(layers: dict, index: int) -> dict:
     # A sign stands after the clef. A clef wider than a clef can be has a sign that touches it: then the sign may
     # begin where a narrow clef ends.
     least = shape['x1'] - 0.25 * space if shape['wide'] <= 3.4 else shape['x0'] + 2.0 * space
+    time = None
+    if TIME:
+        # The strokes of the numbers of a time signature are no sharps and no flats.
+        time = start_sign(layers, staff, shape['x1'] - TIME[0] * space, start + 13 * space)
+        if time:
+            signs = [sign for sign in signs
+                     if not time['x0'] - 0.2 * space <= (sign['x0'] + sign['x1']) / 2 <= time['x1'] + 0.2 * space]
     chains = {}
-    for clef in ('G', 'F'):
-        for kind in ('sharp', 'flat'):
-            found, miss = chain(signs, kind, clef, start, least, space)
+
+    def present(x: float, step: float, place: float) -> bool:
+        """True when ink of the size of a sign stands at the column x and the pitch place."""
+        row = staff['rows'][2] - place * space / 2
+        return _ink(layers, x, x + 0.8 * step, row - 1.5 * space, row + 0.8 * space) >= GAPS[1] * space * space
+
+    for kind in ('sharp', 'flat'):
+        plain = {clef: chain(signs, kind, clef, start, least, space) for clef in ('G', 'F')}
+        # Signs that ran together are looked for only where no two signs of this kind stand well in order as they are.
+        if GAPS and not any(len(found) >= 2 and miss <= GAPS[2] for found, miss in plain.values()):
+            plain = {clef: chain(signs, kind, clef, start, least, space, present) for clef in ('G', 'F')}
+        for clef, (found, miss) in plain.items():
             if found:
                 chains[(clef, kind)] = (found, miss)
-    out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs)
+    out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs, time=time, weak=False)
     if not chains:
         return out
     # The best chain: the most signs; then the clef of the shape; then the nearest to its places.
@@ -301,26 +373,90 @@ def read_start(layers: dict, index: int) -> dict:
         (clef, kind), (found, miss) = item
         return (len(found), miss <= 0.7 or clef == shape['clef'], clef == shape['clef'], -miss)
     (clef, kind), (found, miss) = max(chains.items(), key=rank)
-    out.update(key=len(found) if kind == 'sharp' else -len(found), key_clef=clef, miss=miss, end=max(shape['x1'], found[-1]['x1']))
+    # One mark alone that is no clear sign (two strokes that ran together), or that stands inside the clef or at a
+    # staff whose clef was not found, is a weak witness: a part of the clef looks like that too.
+    weak = len(found) == 1 and (bool(found[0].get('joined')) or shape['clef'] is None
+                                or found[0]['x0'] < shape['x1'] - 0.25 * space)
+    out.update(key=len(found) if kind == 'sharp' else -len(found), key_clef=clef, miss=miss, end=max(shape['x1'], found[-1]['x1']),
+               weak=weak)
     return out
 
 
-def read_starts(layers: dict) -> dict:
-    """The clefs and the key of a page: {'key', 'clefs' (one for each staff: 'G' or 'F'), 'ends' (for each staff, the
-    x where its clef and key signature end), 'starts' (what read_start() gave for each staff)}.
+def vote_key(rows: list[dict], before: int | None = None) -> int:
+    """The key of a page from what its staves show: each row {'clef', 'key', 'miss'} as read_start() gives them.
 
-    The key signature holds for the whole page, so the staves vote for it. The same staff of every system has the
+    The key signature holds for the whole page, so the staves vote. A copy loses signs more easily than it gains
+    them: a key that some staves show well wins over the staves that show none (KEY_LOST), and a key of more signs
+    wins over a key of fewer signs of its sort (KEY_STRONG). A page that shows no key at all has the key of the
+    page before it (`before`): many hand copies write the key signature on the first line only."""
+    votes = {}
+    for row in rows:
+        # A staff whose clef the copy lost, and that shows no sign, says nothing about the key.
+        if row['clef'] or row['key']:
+            votes[row['key']] = votes.get(row['key'], 0) + 1
+    key = max(votes, key=lambda value: (votes[value], value != 0)) if votes else 0
+    if key == 0 and KEY_LOST:
+        shown = {}
+        clear = {row['key'] for row in rows if row['key'] and row['miss'] <= KEY_LOST[0] and not row.get('weak')}
+        for row in rows:
+            # An unclear mark is a witness only beside a clear one for the same key.
+            if row['key'] and row['miss'] <= KEY_LOST[0] and not (KEY_WEAK and row.get('weak') and row['key'] not in clear):
+                shown[row['key']] = shown.get(row['key'], 0) + 1
+        good = [(count, abs(value), value) for value, count in shown.items() if count >= KEY_LOST[1]]
+        if good:
+            key = max(good)[2]
+    if KEY_STRONG:
+        for sort in (-1, 1):
+            shown = {}
+            for row in rows:
+                if row['key'] * sort >= 2 and row['miss'] <= KEY_STRONG[0]:
+                    shown[row['key']] = shown.get(row['key'], 0) + 1
+            if KEY_MORE:
+                # A staff that shows more signs is a witness for fewer too: the copy lost the rest elsewhere.
+                shown = {value: sum(count for other, count in shown.items() if abs(other) >= abs(value)) for value in shown}
+            good = [value for value, count in shown.items() if count >= min(KEY_STRONG[1], max(1, len(rows) // 2))]
+            # A page of two pieces: where a staff shows a key of the other sort well, the more signs are no lost signs.
+            other = KEY_OTHER and any(row['key'] * sort < 0 and row['miss'] <= KEY_OTHER and not row.get('weak') for row in rows)
+            if good and not other and key * sort >= 0 and abs(max(good, key=abs)) > abs(key):
+                key = max(good, key=abs)
+    if key == 0 and before:
+        key = before
+    return key
+
+
+def system_keys(rows: list[dict], systems: list[int], key: int) -> list[int]:
+    """The key of each staff: the page's key, or with KEY_SYSTEM the key that all the staves of its system show well.
+    A system that shows fewer signs of the page's sort has lost signs, and it keeps the page's key."""
+    keys = [key] * len(rows)
+    if not KEY_SYSTEM:
+        return keys
+    for system in sorted(set(systems)):
+        own = [index for index, value in enumerate(systems) if value == system]
+        shown = {rows[index]['key'] for index in own}
+        if len(own) < 2 or len(shown) != 1 or shown == {key} or shown == {0}:
+            continue
+        other = shown.copy().pop()
+        if other * key > 0 and abs(other) < abs(key):
+            continue
+        if all(rows[index]['miss'] <= KEY_SYSTEM and not rows[index].get('weak') for index in own):
+            for index in own:
+                keys[index] = other
+    return keys
+
+
+def read_starts(layers: dict, key_before: int | None = None) -> dict:
+    """The clefs and the key of a page: {'key', 'clefs' (one for each staff: 'G' or 'F'), 'ends' (for each staff, the
+    x where its clef and key signature end), 'starts' (what read_start() gave for each staff), 'keys' (the key of
+    each staff: the page's key, or the key of its own system, see KEY_SYSTEM)}.
+
+    The key signature holds for the whole page, so the staves vote for it: see vote_key(); `key_before` is the key
+    of the page before, for a page that shows no key signature. The same staff of every system has the
     same clef, so those staves vote too: each with the shape of its clef, and with the heights of its key signature
     when it shows the page's key. A staff without a witness is a bass staff when it is the lowest of a system of two
     or more, and a treble staff when it is not."""
     staves = layers['staves']
     starts = [read_start(layers, index) for index in range(len(staves))]
-    votes = {}
-    for start in starts:
-        # A staff whose clef the copy lost, and that shows no sign, says nothing about the key.
-        if start['clef'] or start['key']:
-            votes[start['key']] = votes.get(start['key'], 0) + 1
-    key = max(votes, key=lambda value: (votes[value], value != 0)) if votes else 0
+    key = vote_key(starts, key_before)
     width = max(staff['number'] for staff in staves) + 1
     # Choir music is the weak witness: the lowest staff of a system of two or more is a bass staff, the others are
     # treble staves.
@@ -369,4 +505,12 @@ def read_starts(layers: dict) -> dict:
             end = max(start['x1'], left + min(room, 2 * LOST_CLEF) * staff['space'])
             end += (abs(key) * 1.1 + 1.0) * staff['space'] if key else 0.0
         ends.append(end)
-    return {'key': key, 'clefs': clefs, 'ends': ends, 'starts': starts}
+    keys = system_keys(starts, [staff['system'] for staff in staves], key)
+    if TIME:
+        # The time signature stands between the key signature and the first note.
+        for index, (start, staff) in enumerate(zip(starts, staves)):
+            sign = start_sign(layers, staff, start['x1'] - TIME[0] * staff['space'], ends[index] + TIME[1] * staff['space'])
+            if sign:
+                start['time'] = sign
+                ends[index] = max(ends[index], sign['x1'])
+    return {'key': key, 'clefs': clefs, 'ends': ends, 'starts': starts, 'keys': keys}

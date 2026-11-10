@@ -79,6 +79,8 @@ def main(argv=None) -> int:
     parser.add_argument('--ledger', action='store_true')
     parser.add_argument('--name', default=None)
     parser.add_argument('--drawing', choices=['auto', 'off'], default='auto')
+    parser.add_argument('--key-before', type=int, default=None,
+                        help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
     args = parser.parse_args(argv)
     start = time.time()
     if args.command == 'read' and args.symbols == 'own' and args.drawing == 'auto' and Path(args.source).suffix.lower() == '.pdf':
@@ -127,7 +129,7 @@ def main(argv=None) -> int:
         if args.command == 'layers':
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(read_layers(page, places)))
         else:
-            result = read_page(page, places, title=name)
+            result = read_page(page, places, title=name, key_before=args.key_before)
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
             (out / f'{name}.musicxml').write_text(result['musicxml'])
             (out / f'{name}.notes.json').write_text(json.dumps(

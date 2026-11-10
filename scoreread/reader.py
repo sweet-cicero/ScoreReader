@@ -12,6 +12,7 @@ from __future__ import annotations
 import numpy as np
 
 from .layers import read_layers
+from .meter import mid_signs
 from .music import agree_lengths, build_staff, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_starts
@@ -21,13 +22,17 @@ from .ties import read_ties
 from .words import cut_stems, word_bands
 
 SIGNS = 'strokes'
+TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scoreread.meter)
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
 
 
-def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
+def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
-    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties') for pictures and checks.
+    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times') for pictures and checks.
+    `key_before` is the key of the page before in the same hymn: a page that shows no key signature has that key.
+
+    'key' is the key of the page, and 'staff_keys' the key of each staff (a page with two pieces has two keys).
 
     Each note: 'staff', 'bar', 'onset' and 'length' (quarter notes, the onset from the bar's start), 'voice', 'step',
     'alter', 'octave', 'midi', 'x', 'place' (0 is the middle line, +1 a step up), 'agreed' (the music check changed
@@ -38,7 +43,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
         return {'musicxml': musicxml([[]], title), 'notes': [], 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
-                'keys': [], 'ties': [], 'words': []}
+                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'times': []}
     layers = read_layers(grey, places)
     # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
     words = layers['words'] = word_bands(layers)
@@ -46,8 +51,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     heads = symbols['heads']
     space = layers['space']
     staves = layers['staves']
-    begin = read_starts(layers)
-    key, clefs, ends = begin['key'], list(begin['clefs']), begin['ends']
+    begin = read_starts(layers, key_before)
+    key, clefs, ends, keys = begin['key'], list(begin['clefs']), begin['ends'], begin['keys']
     # Notes begin after the clef and the key signature.
     heads = [head for head in heads if head['cx'] > ends[head['staff']] + 0.3 * space]
     bars = bar_lines(layers, heads)
@@ -63,6 +68,11 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     from_holes = hole_heads(layers, heads, ends)
     gone = {id(other) for head in from_holes for other in head.get('replaces', [])}
     heads = [head for head in heads if id(head) not in gone] + from_holes
+    # The numbers of a new time signature are no notes.
+    times = mid_signs(layers, ends, bars) if TIMES else {}
+    if TIMES:
+        heads = [head for head in heads if not any(sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space
+                                                   for sign in times[head['staff']])]
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
@@ -77,6 +87,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     if 'strokes' in SIGNS:
         for index in range(len(staves)):
             for sign in note_signs(layers, index, heads, ends[index]):
+                if any(time['x0'] - 0.2 * space <= (sign['x0'] + sign['x1']) / 2 <= time['x1'] + 0.2 * space
+                       for time in times.get(index, [])):
+                    continue
                 sign['head']['sign'] = {'sharp': 1, 'flat': -1, 'natural': 0}[sign['kind']]
                 found.append(sign)
         gone = {id(head) for sign in found for head in sign['drop']} - {id(sign['head']) for sign in found}
@@ -107,8 +120,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
             own = {index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
             agreed += agree_lengths(own, bars, space)
     for index, staff in enumerate(staves):
-        for number, bar in enumerate(build_staff(staff, [], bars[index], clefs[index], key, space, plans[index])):
-            parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': key})
+        for number, bar in enumerate(build_staff(staff, [], bars[index], clefs[index], keys[index], space, plans[index])):
+            parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
             for note in bar:
                 head = note.pop('head')
                 stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (note['voice'] == 1)), None)
@@ -123,4 +136,6 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     return {'musicxml': musicxml(parts, title), 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
-            'keys': [start['key'] for start in begin['starts']], 'ties': ties, 'words': words}
+            'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words,
+            'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
+                      for index, start in enumerate(begin['starts'])]}
