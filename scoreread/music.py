@@ -261,9 +261,10 @@ def _note_xml(note: dict, chord: bool) -> str:
     return ''.join(parts)
 
 
-def musicxml(parts: list[list[dict]], title: str = '') -> str:
+def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | None = None) -> str:
     """MusicXML of a page. `parts` holds one list for each staff of a system from the top (the same staff of every
-    system is one part); each entry is a bar: {'notes': [...], 'clef': 'G' | 'G8vb' | 'F', 'key': int}."""
+    system is one part); each entry is a bar: {'notes': [...], 'clef': 'G' | 'G8vb' | 'F', 'key': int}. `names`
+    gives a part another name than 'Staff n': the ison that was read from its marks is the part 'Ison'."""
     out = ['<?xml version="1.0" encoding="UTF-8"?>',
            '<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" '
            '"http://www.musicxml.org/dtds/partwise.dtd">',
@@ -273,7 +274,8 @@ def musicxml(parts: list[list[dict]], title: str = '') -> str:
     out.append('<identification><encoding><software>scoreread</software></encoding></identification>')
     out.append('<part-list>')
     for number in range(len(parts)):
-        out.append(f'<score-part id="P{number + 1}"><part-name>Staff {number + 1}</part-name></score-part>')
+        name = (names or {}).get(number, f'Staff {number + 1}')
+        out.append(f'<score-part id="P{number + 1}"><part-name>{escape(name)}</part-name></score-part>')
     out.append('</part-list>')
     for number, bars in enumerate(parts):
         out.append(f'<part id="P{number + 1}">')

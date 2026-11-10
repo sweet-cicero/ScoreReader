@@ -259,12 +259,33 @@ def _at(points: list[tuple], x: float) -> tuple[float, float] | None:
     return (min(rows), max(rows)) if rows else None
 
 
+def _whole_spacing() -> None:
+    """Makes pdfminer count the character spacing after the last character of a string too, as the PDF standard
+    says (every glyph is followed by the spacing Tc). Without it, a word that follows a string with a wide
+    spacing stands too far left: Encore sets each syllable under its note that way."""
+    from pdfminer.pdfdevice import PDFTextDevice
+
+    plain = PDFTextDevice.render_string_horizontal
+    if getattr(plain, 'whole_spacing', False):
+        return
+
+    def render(self, seq, matrix, pos, font, fontsize, scaling, charspace, wordspace, *more):
+        x, y = plain(self, seq, matrix, pos, font, fontsize, scaling, charspace, wordspace, *more)
+        if charspace and seq and isinstance(seq[-1], bytes) and seq[-1]:
+            x += charspace
+        return x, y
+
+    render.whole_spacing = True
+    PDFTextDevice.render_string_horizontal = render
+
+
 def read_pdf_page(path, number: int, title: str = '') -> dict | None:
     """Reads page `number` (from 1) of a PDF that notation software wrote. None when the page is not such a page:
     it has no signs of a music font, or no staff. The result is as reader.read_page() gives it; each note has its
     'lyric' where a syllable stands under it."""
     import pdfplumber
 
+    _whole_spacing()
     with pdfplumber.open(str(path)) as pdf:
         if not 1 <= number <= len(pdf.pages):
             return None
@@ -471,25 +492,31 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
                 if staff['top'] - staff['gap'] <= sign['y'] <= staff['bottom'] + staff['gap'] and staff['x0'] <= sign['x'] <= staff['x1']:
                     rests.setdefault(staff['index'], []).append(sign['x'] + sign['wide'] / 2)
     notes = []
+    holding = {}        # the ison mark that holds, from one line of a chant page to the next
     for staff in staves:
         index, gap = staff['index'], staff['gap']
         own = [head for head in heads if head['staff'] == index]
         clef = clefs[index] if clefs[index] in ('G', 'G8vb', 'F') else 'G'
         plan = staff_columns(staff, own, bars[index], gap)
-        drones = _drones(plan, rests.get(index, []), gap) if width == 1 else []
-        for part, measures in ((staff['number'], plan), (width, drones)):
-            for number, bar in enumerate(build_staff(staff, [], bars[index], clef, keys[index], gap, measures)):
+        marks = _drones(plan, rests.get(index, []), gap) if width == 1 else []
+        melody = build_staff(staff, [], bars[index], clef, keys[index], gap, plan)
+        ison = _held(melody, marks, lambda event: build_staff(staff, [], [], clef, keys[index], gap, [[[dict(event, voice=1)]]])[0][0],
+                     gap, holding) if width == 1 else []
+        for part, built in ((staff['number'], melody), (width, ison)):
+            for number, bar in enumerate(built):
                 parts[part].append({'notes': bar, 'clef': clef, 'key': keys[index]})
                 for note in bar:
                     head = note.pop('head')
-                    if head.get('lyric') and note['voice'] == min(other['voice'] for other in bar if other['x'] == note['x']):
+                    if head.get('lyric') and part != width and note['voice'] == min(other['voice'] for other in bar if other['x'] == note['x']):
                         note['lyric'] = head['lyric']
                     notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
                                       ison=part == width))
-    if not parts[width]:
+    names = {width: 'Ison'}
+    if not any(bar['notes'] for bar in parts[width]):
         parts.pop()
+        names = {}
     key = Counter(keys).most_common(1)[0][0] if keys else 0
-    return {'musicxml': musicxml(parts, title), 'notes': notes, 'staves': len(staves),
+    return {'musicxml': musicxml(parts, title, names), 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'keys': keys,
             'heads': heads, 'bars': bars, 'vector': True}
 
@@ -564,16 +591,16 @@ def _close_open_ties(staves: list[dict], heads: list[dict], shapes: list[dict]) 
                     head['tie_start'] = True
 
 
-def _drones(plan: list[list[list[dict]]], rests: list[float], gap: float) -> list[list[list[dict]]]:
-    """Takes the ison out of the notes of a chant staff, and gives it as bars of its own.
+def _drones(plan: list[list[list[dict]]], rests: list[float], gap: float) -> list[list[dict]]:
+    """Takes the ison marks out of the notes of a chant staff: for each bar of `plan`, the marks that stand in it.
 
     A chant staff holds one voice, so a column holds one note. The ison is drawn where it begins or moves, as an
     open head without a stem and without a syllable: under the melody's note, just before it, or under or after a
-    rest of the melody. It holds until the next one, so its length is not drawn; it is written as a whole note."""
+    rest of the melody."""
     columns = [column for bar in plan for column in bar]
     single = sum(1 for column in columns if len(column) == 1)
     if not columns or single < 0.7 * len(columns):
-        return []
+        return [[] for _ in plan]
     out = []
     for bar in plan:
         found = []
@@ -588,10 +615,41 @@ def _drones(plan: list[list[list[dict]]], rests: list[float], gap: float) -> lis
                 or (after is not None and after - low['x'] <= DRONE_AHEAD * gap))
             if len(column) > 1 or alone:
                 column.remove(low)
-                found.append([dict(low, voice=1, length=Fraction(4))])
-        if found:
-            out.append(found)
+                found.append(low)
+        out.append(found)
         bar[:] = [column for column in bar if column]
+        # The melody is one voice, whichever way its stems go.
+        for column in bar:
+            if len(column) == 1:
+                column[0]['voice'] = 1
+    return out
+
+
+def _held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, state: dict) -> list[list[dict]]:
+    """The ison in time with the melody: for each bar of the melody, the notes that the ison holds in it.
+
+    An ison mark holds from the melody's note that it stands at until the next mark, over the bar lines and the
+    ends of the lines: it is written as one note in each bar, tied to the next. Before the first mark of a page the
+    ison is silent. `state` carries the mark that holds from one line to the next."""
+    out = []
+    for notes, found in zip(melody, marks):
+        length = max((note['onset'] + note['length'] for note in notes), default=Fraction(0))
+        cuts = []
+        for event in sorted(found, key=lambda event: event['x']):
+            later = [note['onset'] for note in notes if note['x'] >= event['x'] - 0.6 * gap]
+            cuts.append((min(later) if later else length, event))
+        bar, at = [], Fraction(0)
+        for onset, event in cuts + [(length, None)]:
+            if onset > at and state.get('note') is not None:
+                piece = dict(state['note'], onset=at, length=onset - at, tie_stop=state.get('last') is not None, tie_start=False)
+                if state.get('last') is not None:
+                    state['last']['tie_start'] = True
+                bar.append(piece)
+                state['last'] = piece
+            at = max(at, onset)
+            if event is not None:
+                state['note'], state['last'] = pitch(event), None
+        out.append(bar)
     return out
 
 
@@ -626,10 +684,13 @@ def _words(staves: list[dict], heads: list[dict], words: list[dict]) -> None:
             placed = []
             for word in row:
                 middle = (word['x0'] + word['x1']) / 2
-                best = min(own, key=lambda head: min(abs(head['cx'] - middle), abs(head['cx'] - word['x0'] - 0.5 * gap)))
-                apart = min(abs(best['cx'] - middle), abs(best['cx'] - word['x0'] - 0.5 * gap))
-                if apart <= WORD_NEAR * gap:
-                    placed.append((best, word['text']))
+                # The nearest head, a head with a stem before an open head without one: that can be an ison mark,
+                # which stands beside the melody's note and has no syllable of its own.
+                near = [(not head['stems'] and head['hollow'], min(abs(head['cx'] - middle), abs(head['cx'] - word['x0'] - 0.5 * gap)), number)
+                        for number, head in enumerate(own)]
+                near = [item for item in near if item[1] <= WORD_NEAR * gap]
+                if near:
+                    placed.append((own[min(near)[2]], word['text']))
             # A row of words stands under the notes: most of its words find a note. A title or a note for the
             # singers does not.
             if len(placed) < max(1, 0.6 * len(row)):
