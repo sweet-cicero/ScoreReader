@@ -1094,6 +1094,7 @@ OPEN_HEADS = 0.85    # an open hole (the rim of the head has a small break) with
 #                    a slanted head, its stem and two staff lines is larger (0: off)
 OPEN_ROUND = 0.82    # such an open hole may be as high as the gap between two staff lines when it fills at most this share of its box
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+HOLE_THROUGH = True  # a hollow head on a staff line: the two halves of its inside, over and under the line, are one hole
 HOLE_RIM = 0.2       # the rim of such a head is this thick, in staff spaces
 HOLE_CELL = 0.85     # a hole in a space of the staff that is this share of the gap between two staff lines high is a cell
 HOLE_CLOSED = 0.6    # past its rim, paper shows at the left and at the right within this many staff spaces
@@ -1126,13 +1127,26 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
     rim = max(2, int(round(HOLE_RIM * space)))
     far = int(round(HOLE_CLOSED * space))
     out = []
-    for is_open, paper in ((False, holes), (True, layers.get('open_holes') if OPEN_HEADS else None)):
-        if paper is None:
-            continue
+    passes = [(False, holes, None)]
+    if HOLE_THROUGH:
+        # A hollow head on a staff line or on a ledger line: the line cuts its inside in two. The ink of the line
+        # between two pieces of closed-in paper, one right over the other, is inside the head too.
+        near = int(round(max(staff['thick'] for staff in layers['staves']) + 1))
+        over, under = np.zeros_like(holes), np.zeros_like(holes)
+        for step in range(1, near + 1):
+            over[step:] |= holes[:-step]
+            under[:-step] |= holes[step:]
+        through = ink & over & under
+        passes.append((False, holes | through, through))
+    if OPEN_HEADS and layers.get('open_holes') is not None:
+        passes.append((True, layers['open_holes'], None))
+    for is_open, paper, through in passes:
         count, labels, stats, centres = cv2.connectedComponentsWithStats((paper > 0).astype(np.uint8), connectivity=4)
         for index in range(1, count):
             x, y, wide, high, area = (int(value) for value in stats[index])
             cx, cy = float(centres[index][0]), float(centres[index][1])
+            if through is not None and not through[y:y + high, x:x + wide][labels[y:y + high, x:x + wide] == index].any():
+                continue      # a hole that no line cuts was looked at before
             most = HOLE_HEADS[1] * usual
             if is_open:
                 # A head whose rim broke is often one that a hand drew large: its hole may be larger than the usual
@@ -1168,6 +1182,9 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
             # The rim: at the left and at the right of the hole there is ink, and past it paper again.
             row = int(round(cy))
             band = ink[max(0, row - 1):row + 2].max(axis=0)
+            if through is not None:
+                # The middle of this hole lies in a line: its rim is the ink that is no staff line.
+                band = layers['bare'][max(0, row - 1):row + 2].max(axis=0)
             closed = True
             for step, start in ((-1, x - 1), (1, x + wide)):
                 column, seen = start, 0
@@ -1220,19 +1237,26 @@ OPEN_HOLE = 0.12           # the open hole of such a head has at least this area
 TWO_STEMS = True           # a thick head with two stems may give one of them to a thin head of the other voice
 TWO_ALONG = 1.0            # that thin head hangs anywhere on the stem, up to this many staff spaces before its far end (0: off)
 TWO_APART = True           # and it may touch the thick head: the thick head's own ink is no part of it
-THIN_LEDGER = 0.25         # a ledger line is at most this thick, in staff spaces: a thin head on it is higher (0: off)
+THIN_LEDGER = 0.3          # a ledger line is at most this thick, in staff spaces: a thin head on it is higher (0: off)
 LINE_REST = 0.6            # a piece no higher than a staff line is a rest of the line when less than this share is its own ink (0: off)
 ONE_ALONG = 1.0            # on the one stem of a thick head too, when it lies this many staff spaces from that head (0: off)
 ALONG_HIGH = 0.4           # such a thin head is at least this high, in staff spaces: the rest of a staff line is flat
 OPEN_RIM = 0.5             # an open hole has the head's own ink at this share of its rim (0: off)
 LOOP_STEM = True           # an open oval may have its stem as one of its sides
+THROUGH_SLANT = (0.5, 1.0) # a thin head that crosses a staff line at a low slant: its part over the line stands up to this
+#                            many staff spaces right of its part under the line, and each part is at most this wide and
+#                            high (None: off)
+THIN_INSIDE = 0.5          # when the stem runs inside the piece of ink of a thin head, the head's middle lies up to this
+#                            share of the piece's height before the stem's end (0: off)
+THIN_BACK = 0.25           # the middle of a thin head lies at most this many staff spaces before the end of its stem
 LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
 LOST_STEM = (0.3, 0.45)    # a stem that the copy cut from its thick head stands at most this far past the head's edge
                            # (staff spaces, sideways) and ends at most this far from the head (None: off)
+LOST_ALONE = (0.4, 0.6)    # the same for a mark with no stem at all: it lost its only stem, and the cut may be wider
 THROUGH_SIDE = 0.05        # a thin head that crosses a staff line is one piece: its ink over and under the line is joined
                            # through the line, up to this many staff spaces sideways
-LEAN_END = 0.0             # a stem that leans toward its thin head: the head's distance is counted from the stem's end, when
+LEAN_END = 0.4             # a stem that leans toward its thin head: the head's distance is counted from the stem's end, when
 #                            that end lies at most this many staff spaces from the stem's middle column (0: off)
 THIN_PAIR = 1.3            # two thin heads, one over the other: the stem of the one runs on into the other, so its own
                            # head lies up to this many staff spaces before the stroke's end (0: off)
@@ -1275,8 +1299,10 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 ways.append(('up', x - head['x1'], head['y0'] - bottom, top))
             if not any(stem['direction'] == 'down' for stem in head['stems']) and top >= head['cy']:
                 ways.append(('down', head['x0'] - x, top - head['y1'], bottom))
+            # A mark with no stem at all has lost its only stem: the cut may be wider there.
+            reach = LOST_ALONE if LOST_ALONE and not head['stems'] else LOST_STEM
             for direction, aside, apart, end in ways:
-                if -0.25 * space <= aside <= LOST_STEM[0] * space and apart <= LOST_STEM[1] * space:
+                if -0.25 * space <= aside <= reach[0] * space and apart <= reach[1] * space:
                     far = abs(aside) + max(0.0, apart)
                     if best is None or far < best[0]:
                         best = (far, head, direction, end)
@@ -1335,6 +1361,22 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         # the stroke's ink close at its left and at its right in the same row is ink of the stroke.
         aside = np.ones((1, 2 * int(round(THROUGH_SIDE * space)) + 1), np.uint8)
         ink |= layers['lines'] & cv2.morphologyEx(ink, cv2.MORPH_CLOSE, aside)
+    if THROUGH_SLANT:
+        # A stroke that crosses a staff line at a low slant: its part over the line stands at the right of its part
+        # under the line, and the line hides what joins the two. Both parts are small pieces of ink.
+        count, labels, stats, centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
+        most = THROUGH_SLANT[1] * space
+        small = np.isin(labels, [index for index in range(1, count) if stats[index][2] <= most and stats[index][3] <= most])
+        small = (small & (marks > 0)).astype(np.uint8)
+        # In the rows of the line, the upper part has its ink over the line and none under it; the lower part
+        # has it the other way round. (A head that lies on the line has ink at both sides.)
+        over, under = np.zeros_like(small), np.zeros_like(small)
+        over[near:] = small[:-near]
+        under[:-near] = small[near:]
+        reach = int(round(THROUGH_SLANT[0] * space))
+        after = cv2.dilate(small & under & (1 - over), np.ones((1, reach + 1), np.uint8), anchor=(reach, 0))
+        before = cv2.dilate(small & over & (1 - under), np.ones((1, reach + 1), np.uint8), anchor=(0, 0))
+        ink |= layers['lines'] & after & before
     count, labels, stats, centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
     pieces = []
     for index in range(1, count):
@@ -1549,7 +1591,11 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     if whole:
                         continue
                     # The stem of an open oval runs along its side, so the oval's middle lies before the stem's end.
-                    back = 0.25 * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1) if piece['hole'] >= THIN_HOLLOW else 0.0)
+                    back = THIN_BACK * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1) if piece['hole'] >= THIN_HOLLOW else 0.0)
+                    if THIN_INSIDE and reach <= 0 and piece['hole'] < THIN_HOLLOW:
+                        # The stem runs along the side of the head, inside its piece of ink: the middle of the
+                        # head lies before the stem's end, as with a thick head.
+                        back = max(back, THIN_INSIDE * (piece['y1'] - piece['y0'] + 1))
                     if not -back <= past <= THIN_NEAR * space:
                         continue
                 far = along if along is not None else abs(past) + max(0.0, reach)
@@ -1636,7 +1682,7 @@ DOT_BETWEEN = None   # and not from this to this many staff spaces under it: a d
 DOT_HIGH = 0.9       # a dot is at most this high, in staff spaces
 DOT_SLIM = 0.38      # and at least this wide for its height: a hand draws a dot as a short stroke
 SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
-TAIL_START = 0.4     # the hook of a flag begins this near to the end of its stem, in staff spaces
+TAIL_START = 0.55    # the hook of a flag begins this near to the end of its stem, in staff spaces
 THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from the end of a stem to the end of the next:
                                 # ink at most this far (staff spaces) from the straight line, on this share of the way
                                 # with the staff lines it crosses, and on this share without them (None: off)
@@ -2048,7 +2094,7 @@ def _ledger_end(layers: dict, head: dict) -> tuple[int, bool]:
     top, bottom = max(0, int(head['cy']) - half), min(bare.shape[0], int(head['cy']) + half + 1)
     last = min(bare.shape[1], head['x1'] + 1 + int(LEDGER_DOT[0] * space))
     heights = bare[top:bottom, head['x1'] + 1:last].sum(axis=0)
-    thin = THIN_LEDGER * space + 2
+    thin = 0.25 * space + 2      # a ledger line is at most this thick
     step = 0
     while step < len(heights) and 0 < heights[step] <= thin:
         step += 1
