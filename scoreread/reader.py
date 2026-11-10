@@ -18,6 +18,7 @@ from .starts import read_starts
 from .symbols import bar_lines, count_tails, dots, hole_heads, lost_stems, read_symbols, thin_heads, \
     without_flag_loops, without_joints
 from .ties import read_ties
+from .words import cut_stems, word_bands
 
 SIGNS = 'strokes'
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
@@ -53,6 +54,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     heads += hole_heads(layers, heads, ends)
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
+    # A stem ends where the words begin.
+    words = word_bands(layers)
+    cut_stems(layers, heads, words)
     count_tails(layers, heads)
     heads = without_flag_loops(heads, space)
     dots(layers, heads)
@@ -108,4 +112,4 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     return {'musicxml': musicxml(parts, title), 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
-            'keys': [start['key'] for start in begin['starts']], 'ties': ties}
+            'keys': [start['key'] for start in begin['starts']], 'ties': ties, 'words': words}

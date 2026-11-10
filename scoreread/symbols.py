@@ -1439,20 +1439,35 @@ THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last p
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
 THIN_BEAM_END = 0.0             # the beam may meet a stem this many staff spaces past the end that was found for it (0: off)
+LAST_HEAD = 'words'             # the flags of a stem hang past the last head on it: 'words' (for a stem that ends at the
+#                                 words), 'all' (for every stem), or None (past the stem's own head only)
 THIN_BEAM_PAST = (0.4, 1.0, 0.45)   # a slur goes on past the last stem: ink from this far to this far past it, at most
                                     # this far from the line (staff spaces; None: off)
 
 
-def tail_marks(layers: dict, head: dict, stem: dict) -> list[dict]:
+def _last_head(heads: list[dict], head: dict, stem: dict, space: float) -> float:
+    """The middle row of the last head on the way of a stem from its head to its end: the other heads of a chord
+    hang on the same stem, and a head of the other voice may stand on it."""
+    up = stem['direction'] == 'up'
+    near, past = 0.2 * space, 0.5 * space
+    rows = [other['cy'] for other in heads
+            if other['x0'] - near <= stem['x'] <= other['x1'] + near
+            and (stem['end'] - past <= other['cy'] <= head['cy'] if up else head['cy'] <= other['cy'] <= stem['end'] + past)]
+    rows.append(head['cy'])
+    return min(rows) if up else max(rows)
+
+
+def tail_marks(layers: dict, head: dict, stem: dict, last: float | None = None) -> list[dict]:
     """The pieces of ink that hang on the far end of a stem, without the stem itself. Each: {'right' (True at the
     right side of the stem), 'row' (where it leaves the stem), 'far' (how far it reaches from the stem), 'thick' (how
     thick it is where it has left the stem), 'from_end' (how far from the stem's end it begins), 'back' (how far it
-    comes back toward the head while it goes away from the stem; all in staff spaces)}."""
+    comes back toward the head while it goes away from the stem; all in staff spaces)}. `last` is the middle row of
+    the last head on the stem, when that is not `head` itself: the pieces hang past it."""
     ink, space = layers['bare'], layers['space']
     height, width = ink.shape
     up = stem['direction'] == 'up'
     x, end = int(stem['x']), int(stem['end'])
-    inward = int(min(TAIL_ZONE * space, max(0.0, abs(head['cy'] - end) - 1.0 * space)))
+    inward = int(min(TAIL_ZONE * space, max(0.0, abs((head['cy'] if last is None else last) - end) - 1.0 * space)))
     outward = int(0.3 * space)
     top, bottom = (end - outward, end + inward) if up else (end - inward, end + outward)
     top, bottom = max(0, top), min(height, bottom + 1)
@@ -1467,6 +1482,10 @@ def tail_marks(layers: dict, head: dict, stem: dict) -> list[dict]:
     high = int(np.ceil(head['staff_ref']['thick'])) + 3
     near = cv2.dilate(window, np.ones((1, 5), np.uint8))
     window |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((high, 1), np.uint8)) & lines
+    if stem.get('words'):
+        # The stem ends at the words (scoreread.words): the ink of the letters is no flag.
+        low, high = int(stem['words'][0]) - top, int(stem['words'][1]) + 1 - top
+        window[max(0, low):max(0, high)] = 0
     centre = x - first
     band = max(2, int(round(0.13 * space)))
     stem_rows = window[:, max(0, centre - band):centre + band + 1].any(axis=1)
@@ -1526,9 +1545,15 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
     from the head, and a slur, a tie or a letter of the words that crosses the stem hangs on both sides."""
     space = layers['space']
     groups: dict[tuple[int, str], list[dict]] = {}
+    staffs: dict[int, list[dict]] = {}
+    for head in heads:
+        staffs.setdefault(head['staff'], []).append(head)
     for head in heads:
         for stem in head['stems']:
-            stem['marks'] = tail_marks(layers, head, stem)
+            last = None
+            if LAST_HEAD == 'all' or (LAST_HEAD == 'words' and stem.get('words')):
+                last = _last_head(staffs[head['staff']], head, stem, space)
+            stem['marks'] = tail_marks(layers, head, stem, last)
             groups.setdefault((head['staff'], stem['direction']), []).append(stem)
 
     def witness(group: list[dict], stem: dict, right: bool) -> bool:
