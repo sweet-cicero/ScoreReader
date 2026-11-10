@@ -7,11 +7,17 @@ Two staves that follow each other belong to one system when one of these is true
 3. Their bar lines stand at the same places along the page. A copyist who rules each staff by hand often draws no
    opening line, but the bars of the voices of one system still begin together.
 
+Three checks on the whole page follow. A line at the left end that goes on over the first staff or under the last
+staff is no opening line (SHADOW). Where the opening lines of a page all join the same number of staves, they say
+what a system is, and a staff that no line joins stands alone (BLOCKS). On a page without opening lines, the notes
+of the staves of one system stand in the same columns, and the notes of two systems do not (CONTRAST).
+
 Ink in the margin does not count: the shadow of a binding or the edge of a book stands more than one staff space
 outside the staves.
 """
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 from .staves import _blank, ink_mask, line_ink, line_y
@@ -23,6 +29,17 @@ INSIDE = 1.0     # and how far inside (a clef begins after that, and a clef's in
 ALIGNED = 0.6    # share of the bar lines of two staves that must stand at the same places (measured: 0.50 to 1.00
                  # for one system, 0.00 to 0.40 for two systems)
 APART = 0.34     # at or under this share, the bar lines say that the staves are two systems
+SHADOW = (1.5, 5.5)     # a line at the left end that goes on from this many to this many staff spaces over the
+#                         page's first staff, or under its last staff, is the shadow of a binding or the edge of the
+#                         paper, and no line that opens a system (None: off)
+BLOCKS = True           # where every opening line of the page joins the same number of staves, a system is what an
+#                         opening line joins, and a staff that no line joins is a system by itself (False: off)
+CONTRAST = (0.3, 0.5)   # on a page without opening lines, the systems have the number of staves at which the staves
+#                         of a system stand in the same columns (in_step) this much more than two systems do, and at
+#                         least this much (None: off)
+STEP_START = 8.0        # the marks of two staves are compared from this many staff spaces after their left end
+STEP_LEAST = 12.0       # along at least this many staff spaces
+STEP_REACH = 2.5        # and up to this many staff spaces over and under each staff (at most to the middle of the gap)
 LOST_LINES = (0.3, 2)   # a staff that the copy lost still shows this share of at least this many of its five lines
 LOST_SHIFT = 1.0        # and it stands at most this many staff spaces from where the page's whole systems have it
 
@@ -78,6 +95,46 @@ def bar_lines(ink: np.ndarray, staff: dict) -> list[float]:
     return merged
 
 
+def _marks(ink: np.ndarray, staff: dict, reach: float, first: int, last: int) -> np.ndarray:
+    """The ink of a staff in each column from first to last, without its lines: the notes, stems and bar lines from
+    `reach` px over the top line to `reach` px under the bottom line."""
+    space = staff['space']
+    xs = np.arange(first, last)
+    inside = np.clip(xs, staff['left'], staff['right'])
+    lines = np.array([[line_y(points, x) for x in inside[::8]] for points in staff['lines']])
+    lines = np.array([np.interp(inside, inside[::8], row) for row in lines])
+    top = np.round(lines[0] - reach).astype(int)
+    rows = int(round(lines[4].mean() - lines[0].mean() + 2 * reach))
+    index = top[None, :] + np.arange(rows)[:, None]
+    band = ink[np.clip(index, 0, ink.shape[0] - 1), xs[None, :]].astype(bool)
+    band &= (index >= 0) & (index < ink.shape[0])
+    thick = max(2.0, 0.12 * space)
+    for row in lines:
+        band &= np.abs(index - row[None, :]) > thick
+    return band.sum(axis=0).astype(np.float32)
+
+
+def in_step(ink: np.ndarray, upper: dict, lower: dict) -> float | None:
+    """How far the marks of two staves stand in the same columns: the correlation of their ink along the page, from
+    -1 to 1, or None when they share too little of the page. The voices of one system sing together, so their notes
+    stand one under the other; two systems do not line up. The clef and the key signature are left out: every staff
+    has them at the same place."""
+    space = (upper['space'] + lower['space']) / 2
+    first = int(max(upper['left'], lower['left']) + STEP_START * space)
+    last = int(min(upper['right'], lower['right']) - space)
+    if last - first < STEP_LEAST * space:
+        return None
+    middle = (first + last) / 2
+    gap = line_y(lower['lines'][0], middle) - line_y(upper['lines'][4], middle)
+    reach = max(space, min(STEP_REACH * space, gap / 2 - 0.25 * space))
+    size = max(3, int(round(space))) | 1
+    a = cv2.blur(_marks(ink, upper, reach, first, last)[None, :], (size, 1))[0]
+    b = cv2.blur(_marks(ink, lower, reach, first, last)[None, :], (size, 1))[0]
+    if a.std() < 1e-6 or b.std() < 1e-6:
+        return None
+    return float(np.corrcoef(a, b)[0, 1])
+
+
 def joined(ink: np.ndarray, upper: dict, lower: dict) -> dict:
     """What joins two staves that follow each other: 'opening' (best cover of a line at the left end), 'bars' (lines
     through the gap along the staves), 'aligned' (share of their own bar lines at the same places, None when either
@@ -86,7 +143,7 @@ def joined(ink: np.ndarray, upper: dict, lower: dict) -> dict:
     left = max(upper['left'], lower['left'])
     right = min(upper['right'], lower['right'])
     if right - left < 4 * space:
-        return {'opening': 0.0, 'bars': 0, 'aligned': None, 'weight': 0, 'same': False}
+        return {'opening': 0.0, 'bars': 0, 'aligned': None, 'step': None, 'weight': 0, 'same': False}
 
     def gap(x: float) -> tuple[int, int]:
         xa = min(max(x, upper['left']), upper['right'])
@@ -110,35 +167,78 @@ def joined(ink: np.ndarray, upper: dict, lower: dict) -> dict:
     if len(own_upper) >= 2 and len(own_lower) >= 2:
         matched = sum(1 for x in own_upper if any(abs(x - other) <= 0.8 * space for other in own_lower))
         aligned = matched / max(len(own_upper), len(own_lower))
-    if opening >= COVER or bars >= 2:
-        weight = 2          # ink joins the staves: sure
-    elif aligned is not None and aligned >= ALIGNED:
-        weight = 1          # their bars begin together: likely one system
-    elif aligned is not None and aligned <= APART:
-        weight = -1         # their bars do not begin together: likely two systems
-    else:
-        weight = 0
-    return {'opening': round(opening, 2), 'bars': bars, 'aligned': None if aligned is None else round(aligned, 2),
-            'weight': weight, 'same': weight > 0}
+    link = {'opening': round(opening, 2), 'bars': bars, 'aligned': None if aligned is None else round(aligned, 2),
+            'step': in_step(ink, upper, lower) if BLOCKS or CONTRAST else None}
+    link['weight'] = weigh(link)
+    link['same'] = link['weight'] > 0
+    return link
 
 
-def find_systems(grey: np.ndarray, staves: list[dict]) -> list[list[int]]:
-    """The systems from the top of the page: each a list of staff indexes.
+def weigh(link: dict) -> int:
+    """How sure it is that two staves are one system (over 0) or two (under 0), from what joined() measured."""
+    if link['opening'] >= COVER or link['bars'] >= 2:
+        return 2            # ink joins the staves: sure
+    if link['aligned'] is not None and link['aligned'] >= ALIGNED:
+        return 1            # their bars begin together: likely one system
+    if link['aligned'] is not None and link['aligned'] <= APART:
+        return -1           # their bars do not begin together: likely two systems
+    return 0
+
+
+def shadows(ink: np.ndarray, staves: list[dict], links: list[dict]) -> None:
+    """Takes the lines that are no opening lines out of the links. The line that opens a system ends at the top line
+    of its first staff and at the bottom line of its last staff. A line that goes on over the first staff of the page,
+    or under its last staff, is the shadow of a binding or the edge of the paper: it joins nothing."""
+    def goes_on(staff: dict, down: bool) -> bool:
+        space = staff['space']
+        first = max(1, int(staff['left'] - OUTSIDE * space))
+        last = int(staff['left'] + INSIDE * space)
+        row = line_y(staff['lines'][4 if down else 0], staff['left'])
+        y0, y1 = (row + SHADOW[0] * space, row + SHADOW[1] * space) if down else (row - SHADOW[1] * space, row - SHADOW[0] * space)
+        y0, y1 = max(0, int(y0)), min(ink.shape[0], int(y1))
+        return y1 - y0 >= 2 * space and _path_cover(ink[y0:y1, first:last]) >= COVER
+
+    for order, staff, down in ((range(len(links)), staves[0], False), (range(len(links) - 1, -1, -1), staves[-1], True)):
+        if not goes_on(staff, down):
+            continue
+        for index in order:
+            if links[index]['opening'] < COVER:
+                break
+            links[index].update(opening=0.0, shadow=True)
+            links[index]['weight'] = weigh(links[index])
+            links[index]['same'] = links[index]['weight'] > 0
+
+
+def _contrast(steps: list, size: int) -> tuple[float, float] | None:
+    """For systems of `size` staves from the first staff on: (how much more the staves of a system stand in the same
+    columns than two systems do, how much the staves of a system do), from the links' in_step values; None when a
+    value is missing or no link lies inside a system."""
+    inside = [step for index, step in enumerate(steps) if (index + 1) % size]
+    between = [step for index, step in enumerate(steps) if (index + 1) % size == 0]
+    if not inside or any(step is None for step in steps):
+        return None
+    mean = sum(inside) / len(inside)
+    return (mean - sum(between) / len(between) if between else mean), mean
+
+
+def group_staves(links: list[dict], count: int) -> list[list[int]]:
+    """The systems of a page of `count` staves from the links between its staves: each a list of staff indexes.
 
     Most pages have the same number of staves in each system. So the links between the staves are weighed together:
     the number of staves in a system is the one that agrees best with all the links, and it may not put apart two
     staves that ink joins. Then one weak place (a faded staff, a bar line that the copy lost) does not break a system.
-    A page that no single number fits (a solo line over a choir, for example) is decided link by link."""
-    ink = ink_mask(grey).astype(bool)
-    count = len(staves)
-    if count < 2:
-        return [[index] for index in range(count)]
-    links = [joined(ink, staves[index], staves[index + 1]) for index in range(count - 1)]
+
+    With BLOCKS, the opening lines are believed where they all join the same number of staves and the weighing gives
+    other systems: a staff over the first system that is no music, or a verse for one voice over a refrain for the
+    choir. With CONTRAST, a page without opening lines takes the number of staves whose notes stand in the same
+    columns."""
     weights = [link['weight'] for link in links]
     # Where some systems of the page have an opening line, a gap without any line there is likely between systems.
     if any(link['opening'] >= COVER for link in links):
         weights = [-1 if weight == 0 and link['opening'] < 0.45 and link['bars'] == 0 else weight
                    for weight, link in zip(weights, links)]
+    steps = [link.get('step') for link in links]
+    sure = [weight == 2 for weight in weights]
     best = None
     for size in range(1, min(count, 6) + 1):
         together = [(index + 1) % size != 0 for index in range(count - 1)]
@@ -151,16 +251,67 @@ def find_systems(grey: np.ndarray, staves: list[dict]) -> list[list[int]]:
         score -= 0.75 if count % size else 0.0
         if best is None or score > best[0]:
             best = (score, size)
+    if CONTRAST and not any(sure):
+        found = None
+        for size in range(2, min(count // 2, 6) + 1):
+            if count % size == 0:
+                contrast = _contrast(steps, size)
+                if contrast and contrast[0] >= CONTRAST[0] and contrast[1] >= CONTRAST[1] and (found is None or contrast[0] > found[0]):
+                    found = (contrast[0], size)
+        if found:
+            best = (0.0, found[1])
     if best is not None:
         size = best[1]
-        return [list(range(start, min(count, start + size))) for start in range(0, count, size)]
-    systems: list[list[int]] = []
-    for index in range(count):
-        if index and weights[index - 1] > 0:
-            systems[-1].append(index)
-        else:
-            systems.append([index])
+        systems = [list(range(start, min(count, start + size))) for start in range(0, count, size)]
+    else:
+        systems = []
+        for index in range(count):
+            if index and weights[index - 1] > 0:
+                systems[-1].append(index)
+            else:
+                systems.append([index])
+    if BLOCKS and any(sure):
+        blocks: list[list[int]] = [[0]]
+        for index in range(1, count):
+            if sure[index - 1]:
+                blocks[-1].append(index)
+            else:
+                blocks.append([index])
+        sizes = {len(block) for block in blocks if len(block) >= 2}
+        if len(sizes) == 1 and any(len(block) >= 2 and block not in systems for block in blocks):
+            size = sizes.pop()
+            systems, alone = [], []
+
+            def close() -> None:
+                # Staves that no line joins: systems of the page's size where their notes stand in the same columns.
+                run = [steps[index] for index in alone[:-1]]
+                contrast = _contrast(run, size) if alone and len(alone) % size == 0 else None
+                if contrast and contrast[0] >= (CONTRAST or (0.3, 0.5))[0] and (len(alone) > size or contrast[1] >= 0.6):
+                    systems.extend(alone[start:start + size] for start in range(0, len(alone), size))
+                else:
+                    systems.extend([index] for index in alone)
+                alone.clear()
+
+            for block in blocks:
+                if len(block) >= 2:
+                    close()
+                    systems.append(block)
+                else:
+                    alone.append(block[0])
+            close()
     return systems
+
+
+def find_systems(grey: np.ndarray, staves: list[dict]) -> list[list[int]]:
+    """The systems from the top of the page: each a list of staff indexes (see group_staves())."""
+    ink = ink_mask(grey).astype(bool)
+    count = len(staves)
+    if count < 2:
+        return [[index] for index in range(count)]
+    links = [joined(ink, staves[index], staves[index + 1]) for index in range(count - 1)]
+    if SHADOW:
+        shadows(ink, staves, links)
+    return group_staves(links, count)
 
 
 def _mean_row(points: list, left: float, right: float) -> float:
