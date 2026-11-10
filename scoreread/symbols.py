@@ -60,6 +60,10 @@ SHARP_SLIM = 0.3     # the strokes of a sharp are slim for this many staff space
 STUB = 0.3           # a thick stem that is this long (staff spaces) at the top or the bottom of a mark is cut off (0: off)
 STUB_HIGH = 1.25     # when the mark is this many times as high as the heads of the page
 WINGS = 0.25         # a ledger line shows this far at both sides of a head's body, in staff spaces (0: off)
+WHOLE_BESIDE = (0.35, 0.2, 0.2, 0.2)   # a whole note that touches the head of the other voice has no stem: the stem
+#                    of a filled head, at most this many staff spaces from the stem the hollow oval was given, is not its
+#                    own when the two boxes are at most this far apart, their left edges are this near, and the oval is
+#                    wider than the filled head by this much (None: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -849,6 +853,35 @@ def _two_heads(layers: dict, mark: dict) -> list[dict] | None:
     return out
 
 
+def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
+    """A stem carries heads of one kind: all filled or all hollow. A print sets a whole note of one voice in the
+    column of a stemmed note of the other voice, with their left edges in line; the two heads touch, and followed
+    from the whole note the ink leads through the filled head to its stem. The whole note is wider than a head with
+    a stem, so it shows past the filled head at the right. Such a hollow oval gives the stem back. Returns how many."""
+    space = layers['space']
+    near, apart, edge, wider = (value * space for value in WHOLE_BESIDE)
+    heads = [mark for mark in marks if mark['kind'] == 'head' and mark['stems']]
+    count = 0
+    for mark in heads:
+        wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+        if mark['hole'] < limit or mark.get('solid_cy') is not None or wide < WHOLE[0] * high:
+            continue
+        for stem in list(mark['stems']):
+            up = stem['direction'] == 'up'
+            for other in heads:
+                if other is mark or other['hole'] >= limit or (other['cy'] > mark['cy']) == up:
+                    continue      # the filled head stands between the oval and the far end of the stem
+                gap = (mark['y0'] - other['y1']) if up else (other['y0'] - mark['y1'])
+                if gap <= apart and abs(mark['x0'] - other['x0']) <= edge \
+                        and wide - (other['x1'] - other['x0'] + 1) >= wider \
+                        and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
+                                for own in other['stems']):
+                    mark['stems'].remove(stem)
+                    count += 1
+                    break
+    return count
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -948,6 +981,8 @@ def read_symbols(layers: dict) -> dict:
         if len(sure) >= 5:
             limit = min(HOLLOW, max(HOLLOW_PAGE[1], HOLLOW_PAGE[0] * float(np.median(sure))))
     layers['hollow'] = limit
+    if WHOLE_BESIDE:
+        _whole_beside(layers, marks, limit)
     heads, signs = [], []
     for number, mark in enumerate(marks):
         if mark['kind'] is None or mark['kind'] == 'beam':
