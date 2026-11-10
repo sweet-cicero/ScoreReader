@@ -53,20 +53,23 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
 
 - The reader is not accurate enough yet to put a hymn into the app without a check. Most hymns still have 5 % to 25 %
   wrong notes.
-- homr reads some printed pages better (Bulgarian "It is truly meet": 89 % against 55 %). Audiveris reads digital PDFs
-  at 99 %. The reader does not use them yet. A perfect choice between homr and this reader for each hymn gives 86 %.
+- The symbol step is not our own yet. On some printed pages homr reads the symbols better than copisteria (Bulgarian
+  "It is truly meet": 89 % against 55 %), and Audiveris reads digital PDFs at 99 %. A perfect choice between homr and
+  this reader for each hymn gives 86 %, so a choice of readers alone does not reach the goal.
 - The limits in steps 1 and 2 were set on the same 38 pages that test them. New pages can need new limits.
 - The reader writes no words yet.
 - The output is MusicXML for one page. The reader does not join pages or write the app's hymn format yet.
 
 ## Next steps
 
-1. Use homr for the staves that it reads better, and Audiveris for digital PDFs. The reader must make the choice from
-   the page itself.
-2. Correct the frequent mistakes of step 4 with rules: two note heads that touch, a quarter note read as a half note,
-   a reciting tone, a key signature.
-3. Read each page at several sizes and compare the results place by place. The places that disagree are the doubtful
-   places.
+The end goal is an engine of our own that reads these scores consistently. Steps 1 to 3 and 5 are our own already.
+Step 4, the symbols, still comes from copisteria.
+
+1. Build our own symbol step, a part at a time: note heads and their pitch from the ink and the known staff lines,
+   then stems, flags, beams and dots for the lengths, then rests, clefs and key signatures. Each part must beat the
+   part that it replaces on the test kit.
+2. Add music checks that need no model: the voices of a bar have the same length, and the staves of a system line up.
+3. Read each page in two ways and look again at the places that disagree.
 4. Read the words.
 5. Join the pages of a hymn and write the app's hymn format.
 

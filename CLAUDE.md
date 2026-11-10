@@ -2,12 +2,29 @@
 
 ## Goal
 
-Build a product that reads scanned choir scores accurately on the owner's own computer. No assistant and no cloud
-model may be in the loop: a page goes in, the notes come out. Take what is good from existing readers and replace
-what fails. The result must go into the LitChoir app as a typed hymn.
+The end goal is a local engine of our own that reads scanned choir scores consistently, with creative new and old
+methods. A page goes in and the notes come out, on the owner's own computer, with no assistant and no cloud model in
+the loop. The result must go into the LitChoir app as a typed hymn.
 
-"Accurate" is not reached yet. Version 0.4 gets 81 % of the notes right on the test kit. Report each result with its
-limits.
+The goal is not a better wrapper for the existing readers. An existing reader can be a part for a time, and it is
+a yardstick for each own step. Each step that the engine does itself replaces a step of an existing reader.
+
+"Consistent" is not reached yet. Version 0.4 gets 81 % of the notes right on the test kit, and its symbol step still
+comes from copisteria. Report each result with its limits.
+
+## Direction
+
+The engine's own steps so far: staves, systems, the clean page, the tenor clef rule and the ledger rule. The next
+own step is the symbol step. Ideas to test, each against the kit:
+
+- Note heads from the ink itself: take the staff lines away, find the blobs, and tell filled from hollow by the
+  hole. A hand-drawn head is a slanted stroke: its shape and its place on the known staff lines give the pitch.
+- The page teaches its own symbols: group the shapes that repeat on a page (one copyist draws one kind of clef, rest
+  and head), and name each group once by rules.
+- Lengths from stems, flags, beams and dots. Two voices from the stem direction.
+- Music checks that need no model: the voices of a bar have the same length, the staves of a system line up in
+  columns, the key signature holds for the whole hymn.
+- A second look where two methods or two sizes disagree.
 
 ## State
 
