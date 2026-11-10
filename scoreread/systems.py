@@ -86,7 +86,7 @@ def joined(ink: np.ndarray, upper: dict, lower: dict) -> dict:
     left = max(upper['left'], lower['left'])
     right = min(upper['right'], lower['right'])
     if right - left < 4 * space:
-        return {'opening': 0.0, 'bars': 0, 'aligned': None, 'same': False}
+        return {'opening': 0.0, 'bars': 0, 'aligned': None, 'weight': 0, 'same': False}
 
     def gap(x: float) -> tuple[int, int]:
         xa = min(max(x, upper['left']), upper['right'])

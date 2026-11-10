@@ -34,6 +34,11 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     its length), 'votes' (how the voices voted on its steps), 'tie_start' and 'tie_stop' (a tie begins or ends at
     the note; the tied notes stay two notes, as in MusicXML) and 'mark': what the note was read from (the size and
     place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams)."""
+    if not places:
+        # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
+        return {'musicxml': musicxml([[]], title), 'notes': [], 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
+                'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
+                'keys': [], 'ties': [], 'words': []}
     layers = read_layers(grey, places)
     # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
     words = layers['words'] = word_bands(layers)

@@ -15,16 +15,22 @@ read    finds the staves and the systems, builds the clean page, reads it, and w
 layers  does the first steps and writes the picture of the layers (no reading), to check a hard page at a glance.
 layout  does only the first steps (no reading), to check a page fast.
 
+A PDF that notation software wrote (Finale, MuseScore, Encore) is read from its own drawing, with its words: every
+sign is a character of a music font at its exact place (scoreread.vector; needs pdfplumber). --drawing off reads such
+a page as an image instead.
+
 --symbols names the symbol step. `own` (the default) reads the symbols with rules on the ink: no model, and only
 OpenCV and NumPy are needed. `copisteria` reads them with copisteria's network, as a yardstick; it needs copisteria
 (see the README), and --ledger turns the ledger rule on for it (see ledger.py).
 
-A PDF page is made into an image at 300 dpi with pdftoppm.
+A PDF page is made into an image at 300 dpi with pdftoppm. A page that is a photo kept with no size of its own (a
+phone picture at 72 dpi makes a page of 42 by 56 inches) is made as long as an A4 page at 300 dpi.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -33,9 +39,23 @@ from pathlib import Path
 
 import cv2
 
-from .page import clean_page
+from .page import clean_page, flat_paper
 from .staves import draw, find_staves
 from .systems import find_systems, lost_staves
+
+
+PAGE_MAX = 17.0     # inches: a longer PDF page is a picture that was kept with no size of its own
+PAGE_LONG = 3508    # pixels: such a page is made this long, as an A4 page at 300 dpi
+
+
+def render(path, page: int, stem) -> None:
+    """Makes <stem>.png of a PDF page: at 300 dpi, or as long as an A4 page when the page has no true size."""
+    told = subprocess.run(['pdfinfo', '-f', str(page), '-l', str(page), str(path)], capture_output=True, text=True).stdout
+    size = re.search(r'Page\s+%d size:\s+([\d.]+) x ([\d.]+) pts' % page, told)
+    huge = size is not None and max(float(size.group(1)), float(size.group(2))) / 72 > PAGE_MAX
+    scale = ['-scale-to', str(PAGE_LONG)] if huge else ['-r', '300']
+    subprocess.run(['pdftoppm', *scale, '-gray', '-f', str(page), '-l', str(page), '-singlefile', '-png', str(path),
+                    str(stem)], check=True)
 
 
 def load(path: Path, page: int) -> tuple:
@@ -43,8 +63,7 @@ def load(path: Path, page: int) -> tuple:
     if path.suffix.lower() == '.pdf':
         with tempfile.TemporaryDirectory() as folder:
             stem = Path(folder) / 'page'
-            subprocess.run(['pdftoppm', '-r', '300', '-gray', '-f', str(page), '-l', str(page), '-singlefile', '-png',
-                            str(path), str(stem)], check=True)
+            render(path, page, stem)
             grey = cv2.imread(str(stem) + '.png', cv2.IMREAD_GRAYSCALE)
         return grey, f'{path.stem}-p{page}'
     return cv2.imread(str(path), cv2.IMREAD_GRAYSCALE), path.stem
@@ -59,12 +78,33 @@ def main(argv=None) -> int:
     parser.add_argument('--symbols', choices=['own', 'copisteria'], default='own')
     parser.add_argument('--ledger', action='store_true')
     parser.add_argument('--name', default=None)
+    parser.add_argument('--drawing', choices=['auto', 'off'], default='auto')
     args = parser.parse_args(argv)
     start = time.time()
+    if args.command == 'read' and args.symbols == 'own' and args.drawing == 'auto' and Path(args.source).suffix.lower() == '.pdf':
+        # A PDF that notation software wrote holds its signs and its words as they are: no image is read.
+        try:
+            from .vector import read_pdf_page  # noqa: PLC0415
+            result = read_pdf_page(Path(args.source), args.page, title=args.name or '')
+        except ImportError:
+            result = None       # pdfplumber is not installed: the page is read as an image
+        if result is not None:
+            name = args.name or f'{Path(args.source).stem}-p{args.page}'
+            out = Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / f'{name}.musicxml').write_text(result['musicxml'])
+            (out / f'{name}.notes.json').write_text(json.dumps(
+                {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'], 'key': result['key'],
+                 'clefs': result['clefs'], 'drawing': True}))
+            print(json.dumps({'name': name, 'staves': result['staves'], 'systems': result['systems'], 'symbols': 'drawing',
+                              'notes': len(result['notes']), 'syllables': sum(1 for note in result['notes'] if note.get('lyric')),
+                              'key': result['key'], 'clefs': result['clefs'], 'seconds': round(time.time() - start, 1)}))
+            return 0
     grey, name = load(Path(args.source), args.page)
     if grey is None:
         print(f'scoreread: cannot open {args.source}. Give a PNG image or a PDF file.', file=sys.stderr)
         return 2
+    grey = flat_paper(grey)
     name = args.name or name
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

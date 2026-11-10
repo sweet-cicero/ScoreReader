@@ -61,6 +61,28 @@ def _level(grey: np.ndarray, staves: list[dict], top_keep: float, bottom_keep: f
     return strip, [float(target - first_row) for target in targets], left
 
 
+PAPER_GREY = 240        # a page whose paper is darker than this somewhere is a photo: its paper is made white first
+PAPER_PIECE = 200       # px at 300 dpi: no mark of ink is this large (the paper's brightness is taken over such pieces)
+PAPER_LEAST = 70        # a place darker than this is not paper (the table around the page, a black border)
+
+
+def flat_paper(grey: np.ndarray) -> np.ndarray:
+    """The page with its paper made white. A scanner gives white paper; a photo of a page gives grey paper, darker
+    at one side, and every limit between ink and paper then fails. The brightness of the paper is the brightest
+    grey around each place, taken over pieces larger than any mark of ink; each place is then set against its paper.
+    A page with white paper is given back as it is."""
+    step = 8
+    small = cv2.resize(grey, None, fx=1 / step, fy=1 / step, interpolation=cv2.INTER_AREA)
+    size = max(3, PAPER_PIECE // step) | 1
+    paper = cv2.morphologyEx(small, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
+    paper = cv2.GaussianBlur(paper, (0, 0), size / 4)
+    if np.percentile(paper, 5) >= PAPER_GREY:
+        return grey
+    paper = cv2.resize(paper, (grey.shape[1], grey.shape[0]), interpolation=cv2.INTER_LINEAR).astype(np.float32)
+    flat = grey.astype(np.float32) * (255.0 / np.maximum(paper, PAPER_LEAST))
+    return np.clip(flat, 0, 255).astype(np.uint8)
+
+
 def _reach(ink: np.ndarray, staff: dict, down: bool, limits: tuple[float, float]) -> float:
     """How many px of the page belong to a staff beyond its outer line, over it or under it: up to the first band of
     paper that is EMPTY staff spaces high. Words, notes on ledger lines and a staff whose lines the copy lost stay
@@ -112,7 +134,8 @@ def _cuts(grey: np.ndarray, staves: list[dict], systems: list[list[int]]) -> lis
             profile[:len(column)] += column
         smooth = np.convolve(profile, np.ones(7) / 7, mode='same')
         start, end = int(0.5 * gap), max(int(0.5 * gap) + 1, int(0.9 * gap))
-        cut = start + int(np.argmin(smooth[start:end]))
+        # Two systems that stand side by side have no rows between them.
+        cut = start + int(np.argmin(smooth[start:end])) if 0 <= start < min(end, len(smooth)) else max(0, int(gap / 2))
         keep_under.append((float(cut), gap))
     cuts = []
     for number, system in enumerate(systems):
@@ -135,12 +158,13 @@ def clean_page(grey: np.ndarray, staves: list[dict], systems: list[list[int]]) -
     strips = []
     for system, (over, under) in zip(systems, cuts):
         strips.append(_level(grey, [staves[index] for index in system], over, under))
-    width = max(strip.shape[1] for strip, _, _ in strips) + 2 * MARGIN_X
+    first_left = min(left for _, _, left in strips)
+    # A system that starts further right than the first one needs its own room on the right.
+    width = max(left - first_left + strip.shape[1] for strip, _, left in strips) + 2 * MARGIN_X
     height = sum(strip.shape[0] for strip, _, _ in strips) + BETWEEN * (len(strips) - 1) + 2 * MARGIN_Y
     page = np.full((height, width), 255, np.uint8)
     places = []
     y = MARGIN_Y
-    first_left = min(left for _, _, left in strips)
     for system, (strip, rows, left) in zip(systems, strips):
         x = MARGIN_X + (left - first_left)
         page[y:y + strip.shape[0], x:x + strip.shape[1]] = strip
