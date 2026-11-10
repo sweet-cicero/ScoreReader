@@ -539,7 +539,7 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
         parts.pop()
         names = {}
     key = Counter(keys).most_common(1)[0][0] if keys else 0
-    return {'musicxml': musicxml(parts, title, names), 'notes': notes, 'staves': len(staves),
+    return {'musicxml': musicxml(parts, title, names), 'parts': parts, 'names': names, 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'keys': keys,
             'heads': heads, 'bars': bars, 'vector': True}
 

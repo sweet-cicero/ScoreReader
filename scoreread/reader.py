@@ -41,7 +41,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams)."""
     if not places:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
-        return {'musicxml': musicxml([[]], title), 'notes': [], 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
+        return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
                 'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'times': []}
     layers = read_layers(grey, places)
@@ -133,7 +133,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))
-    return {'musicxml': musicxml(parts, title), 'notes': notes, 'staves': len(staves),
+    return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words,
