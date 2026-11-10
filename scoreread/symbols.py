@@ -1005,6 +1005,11 @@ HOLE_HEADS = (0.6, 2.2, 1.2, 0.55, 0.9, 6.5)   # a hole that no head owns is a h
 #                    this many times the usual hole of the page's hollow heads, it is this many times as wide as
 #                    high, it fills from this to this share of its box (an oval fills 0.79, a cell of the staff all
 #                    of it), and it lies up to this place (None: off)
+OPEN_HEADS = 0.85    # an open hole (the rim of the head has a small break) with a stem is a hollow head too, when pieces of
+#                    its rim were read as heads; its area is at most this many staff spaces squared, as a room between
+#                    a slanted head, its stem and two staff lines is larger (0: off)
+OPEN_ROUND = 0.82    # such an open hole may be as high as the gap between two staff lines when it fills at most this share of its box
+OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
 HOLE_RIM = 0.2       # the rim of such a head is this thick, in staff spaces
 HOLE_CELL = 0.85     # a hole in a space of the staff that is this share of the gap between two staff lines high is a cell
 HOLE_CLOSED = 0.6    # past its rim, paper shows at the left and at the right within this many staff spaces
@@ -1017,7 +1022,12 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
     on its side as an oval, with its own rim at both sides, in no head that was read, is a hollow head.
 
     The flag of a printed note, a natural, a flat and the digit 4 close in paper too, but that paper stands upright
-    or has corners. A cell between two staff lines and two strokes fills its whole box."""
+    or has corners. A cell between two staff lines and two strokes fills its whole box.
+
+    A copy breaks the thin rim of a hollow head, and its inside is then open to the paper (layers['open_holes']):
+    the head falls into pieces of rim, which are read as small filled heads at the wrong places. Such an open hole
+    of the usual size with a stem is a hollow head too (OPEN_HEADS), and the pieces of its rim are no heads: each
+    head of the result that replaces others names them in 'replaces'."""
     if not HOLE_HEADS:
         return []
     space = layers['space']
@@ -1029,60 +1039,85 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
     if len(own) < 3:
         return []
     usual = float(np.median(own))
-    count, labels, stats, centres = cv2.connectedComponentsWithStats((holes > 0).astype(np.uint8), connectivity=4)
     rim = max(2, int(round(HOLE_RIM * space)))
     far = int(round(HOLE_CLOSED * space))
     out = []
-    for index in range(1, count):
-        x, y, wide, high, area = (int(value) for value in stats[index])
-        cx, cy = float(centres[index][0]), float(centres[index][1])
-        if not HOLE_HEADS[0] * usual <= area <= HOLE_HEADS[1] * usual or wide < HOLE_HEADS[2] * high:
+    for is_open, paper in ((False, holes), (True, layers.get('open_holes') if OPEN_HEADS else None)):
+        if paper is None:
             continue
-        if not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
-            continue
-        if any(head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2 for head in heads):
-            continue
-        staff = _staff_of(layers, cx, cy)
-        if staff is None or cx < ends[staff] + 0.3 * space:
-            continue
-        place = pitch_place(layers['staves'][staff], cy)
-        if abs(place) > HOLE_HEADS[5]:
-            continue
-        # A cell of the staff is as high as the gap between two staff lines. The hole of a head has its own rim there.
-        gap = space - layers['staves'][staff]['thick']
-        if high >= HOLE_CELL * gap and abs(place - (2 * round((place - 1) / 2) + 1)) <= 0.3:
-            continue
-        # The paper between a flag and its stem lies at the far end of a stem. No head stands there.
-        if any(abs(stem['x'] - cx) <= (wide / 2 + 0.5 * space) and abs(stem['end'] - cy) <= LOOP_NEAR * space
-               and abs(head['cy'] - cy) >= 1.5 * space for head in heads for stem in head['stems']):
-            continue
-        # The rim: at the left and at the right of the hole there is ink, and past it paper again.
-        row = int(round(cy))
-        band = ink[max(0, row - 1):row + 2].max(axis=0)
-        closed = True
-        for step, start in ((-1, x - 1), (1, x + wide)):
-            column, seen = start, 0
-            while 0 <= column < len(band) and band[column] and seen <= far:
-                column += step
-                seen += 1
-            if seen == 0 or seen > far:
-                closed = False
-        if not closed:
-            continue
-        mark = {'x0': max(0, x - rim), 'x1': min(ink.shape[1] - 1, x + wide - 1 + rim), 'y0': max(0, y - rim),
-                'y1': min(ink.shape[0] - 1, y + high - 1 + rim), 'cx': cx, 'cy': cy}
-        stems = [way for way in (_way(layers, mark, True, True), _way(layers, mark, False, False)) if is_stem(way, space)]
-        head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
-                'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
-                'stems': stems, 'mark': None, 'from_hole': True, 'core': None, 'alt': None}
-        if abs(place) > 4.6:
-            # Beside the staff a head lies on its ledger lines. The letter p of the words has a bowl and a stem too.
-            head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
-            found = ledger_place(layers, layers['staves'][staff], head)
-            if found is None or not head['ledgers']:
+        count, labels, stats, centres = cv2.connectedComponentsWithStats((paper > 0).astype(np.uint8), connectivity=4)
+        for index in range(1, count):
+            x, y, wide, high, area = (int(value) for value in stats[index])
+            cx, cy = float(centres[index][0]), float(centres[index][1])
+            most = HOLE_HEADS[1] * usual
+            if is_open:
+                # A head whose rim broke is often one that a hand drew large: its hole may be larger than the usual
+                # hole of the page.
+                most = OPEN_HEADS * space * space
+            if not HOLE_HEADS[0] * usual <= area <= most or wide < HOLE_HEADS[2] * high:
                 continue
-            head['place'] = found
-        out.append(head)
+            if not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
+                continue
+            inside = [head for head in heads + out
+                      if head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2]
+            if inside if not is_open else any(head['hollow'] for head in inside):
+                continue
+            staff = _staff_of(layers, cx, cy)
+            if staff is None or cx < ends[staff] + 0.3 * space:
+                continue
+            place = pitch_place(layers['staves'][staff], cy)
+            if abs(place) > HOLE_HEADS[5]:
+                continue
+            # A cell of the staff is as high as the gap between two staff lines. The hole of a head has its own rim there.
+            # (A broken head that fills the gap has its hole open and round: the test of its box is enough for it.)
+            gap = space - layers['staves'][staff]['thick']
+            if high >= HOLE_CELL * gap and abs(place - (2 * round((place - 1) / 2) + 1)) <= 0.3 \
+                    and not (is_open and area / (wide * high) <= OPEN_ROUND):
+                continue
+            # The paper between a flag and its stem lies at the far end of a stem. No head stands there.
+            if any(abs(stem['x'] - cx) <= (wide / 2 + 0.5 * space) and abs(stem['end'] - cy) <= LOOP_NEAR * space
+                   and abs(head['cy'] - cy) >= 1.5 * space for head in heads for stem in head['stems']):
+                continue
+            # The rim: at the left and at the right of the hole there is ink, and past it paper again.
+            row = int(round(cy))
+            band = ink[max(0, row - 1):row + 2].max(axis=0)
+            closed = True
+            for step, start in ((-1, x - 1), (1, x + wide)):
+                column, seen = start, 0
+                while 0 <= column < len(band) and band[column] and seen <= far:
+                    column += step
+                    seen += 1
+                if seen == 0 or seen > far:
+                    closed = False
+            if not closed:
+                continue
+            mark = {'x0': max(0, x - rim), 'x1': min(ink.shape[1] - 1, x + wide - 1 + rim), 'y0': max(0, y - rim),
+                    'y1': min(ink.shape[0] - 1, y + high - 1 + rim), 'cx': cx, 'cy': cy}
+            stems = [way for way in (_way(layers, mark, True, True), _way(layers, mark, False, False)) if is_stem(way, space)]
+            head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
+                    'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
+                    'stems': stems, 'mark': None, 'from_hole': True, 'core': None, 'alt': None}
+            if is_open:
+                # The pieces of the broken rim: the heads that were read in the box of this one. An open hole with
+                # no such piece is the hook of a rest, or the paper between two signs.
+                head['replaces'] = [other for other in heads
+                                    if mark['x0'] <= other['cx'] <= mark['x1'] and mark['y0'] <= other['cy'] <= mark['y1']]
+                head['open'] = True
+                if not stems or not head['replaces']:
+                    continue
+                # A piece of rim is lower than a head. A whole head beside the paper is a note of its own: the paper
+                # is closed in between two heads a second apart.
+                if any(other['y1'] - other['y0'] + 1 >= OPEN_PIECE * layers['head'][1] and not other.get('thin')
+                       for other in head['replaces']):
+                    continue
+            if abs(place) > 4.6:
+                # Beside the staff a head lies on its ledger lines. The letter p of the words has a bowl and a stem too.
+                head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
+                found = ledger_place(layers, layers['staves'][staff], head)
+                if found is None or not head['ledgers']:
+                    continue
+                head['place'] = found
+            out.append(head)
     return out
 
 
