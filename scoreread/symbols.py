@@ -47,6 +47,11 @@ HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; els
 LEDGER_INK = True    # a ledger line is ink: the filled inside of a hollow head does not count for it
 HAND_FLAT = 1.25     # the bowl of a flat that a hand drew is at most this wide, in staff spaces (0: off)
 SHARP_SLIM = 0.3     # the strokes of a sharp are slim for this many staff spaces where they leave its mark
+STUB = 0.3           # a thick stem that is this long (staff spaces) at the top or the bottom of a mark is cut off (0: off)
+STUB_HIGH = 1.25     # when the mark is this many times as high as the heads of the page
+WINGS = 0.25         # a ledger line shows this far at both sides of a head's body, in staff spaces (0: off)
+TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
+                     # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
 
 def pitch_place(staff: dict, y: float) -> float:
@@ -91,6 +96,40 @@ def _cut_rows(mask: np.ndarray, holes: np.ndarray, space: float) -> list[tuple[i
         lower = _cut_rows(mask[cut:], holes[cut:], space)
         return upper + [(first + cut, last + cut) for first, last in lower]
     return [(0, height - 1)]
+
+
+def _without_stub(mask: np.ndarray, space: float, usual: float = 0.0) -> np.ndarray:
+    """A thick pen draws a short stem as thick as a head, so the stem is a part of the head's mark: the mark is too
+    high, and no stem leaves it. The rows at the top or the bottom of a mark that are as narrow as a stem are taken
+    off the mark. The ink stays on the page: it is found again as the stem that leaves the head."""
+    widths = mask.sum(axis=1)
+    height = len(widths)
+    if not STUB or height < STUB_HIGH * usual or widths.max() < 0.9 * space:
+        return mask
+    limit = min(SLIM_STEM * space, 0.5 * widths.max())
+    under = 0
+    while under < height and widths[height - 1 - under] <= limit:
+        under += 1
+    over = 0
+    while over < height and widths[over] <= limit:
+        over += 1
+    least = STUB * space
+
+    def upright(rows: np.ndarray) -> bool:
+        # A stem stands in the same columns in all of its rows. The end of a slanted stroke is narrow too, but it
+        # moves sideways from row to row.
+        columns = np.nonzero(rows.any(axis=0))[0]
+        return len(rows) >= least and columns[-1] - columns[0] + 1 <= SLIM_STEM * space \
+            and np.median(rows.sum(axis=1)) >= 0.6 * (columns[-1] - columns[0] + 1)
+
+    under = under if under and upright(mask[height - under:]) else 0
+    over = over if over and upright(mask[:over]) else 0
+    if not (under or over) or height - under - over < HEAD_HIGH[0] * space:
+        return mask
+    mask = mask.copy()
+    mask[:over] = False
+    mask[height - under:] = False
+    return mask
 
 
 def _mark(mask: np.ndarray, holes: np.ndarray, x: int, y: int, blob: int) -> dict | None:
@@ -191,6 +230,10 @@ def thick_marks(layers: dict) -> list[dict]:
     layers['head'] = (wide, high)
     marks = []
     for mark, mask, holes, x, y in pieces:
+        if STUB:
+            part = _without_stub(mask, space, high)
+            if part is not mask:
+                mask, mark = part, _mark(part, holes, x, y, mark['blob']) or mark
         own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
         rows, columns = np.nonzero(mask)
         mask = mask[rows.min():rows.max() + 1, columns.min():columns.max() + 1]
@@ -403,6 +446,44 @@ def _kind(mark: dict, space: float) -> str | None:
     return None
 
 
+def _wings(layers: dict, mark: dict) -> float | None:
+    """The row of a ledger line that goes through a head, read from its two ends. A large head hides its ledger
+    line, and a thick ledger line is a part of the head's mark. But at both sides of the head's body the ink is
+    suddenly thin, level and of one thickness: the two ends of the line. None when the head has no such ends."""
+    free, space = layers['free'], layers['space']
+    reach = int(round(0.9 * space))
+    top, bottom = max(0, int(mark['y0'] - 0.3 * space)), min(free.shape[0], int(mark['y1'] + 0.3 * space) + 1)
+    first, last = max(0, mark['x0'] - reach), min(free.shape[1], mark['x1'] + reach + 1)
+    window = free[top:bottom, first:last]
+    heights = window.sum(axis=0)
+    own = heights[mark['x0'] - first:mark['x1'] - first + 1]
+    if own.size == 0 or own.max() == 0:
+        return None
+    thin = min(0.45 * own.max(), 0.6 * space)
+    body = np.nonzero(own >= 0.6 * own.max())[0]
+    ends = []
+    for step, column in ((-1, mark['x0'] - first + int(body[0]) - 1), (1, mark['x0'] - first + int(body[-1]) + 1)):
+        while 0 <= column < len(heights) and heights[column] > thin:
+            column += step        # the round end of the head
+        wing = []
+        while 0 <= column < len(heights) and 0 < heights[column] <= thin:
+            rows = np.nonzero(window[:, column])[0]
+            if rows[-1] - rows[0] + 1 != len(rows):
+                break             # two lines, one over the other: not the end of one line
+            wing.append((heights[column], top + float(rows.mean())))
+            column += step
+        if not wing:
+            return None
+        usual = float(np.median([high for high, _ in wing]))
+        even = [row for high, row in wing if abs(high - usual) <= max(2.0, 0.08 * space)]
+        if len(even) < WINGS * space or max(even) - min(even) > 0.2 * space:
+            return None
+        ends.append(float(np.median(even)))
+    if abs(ends[0] - ends[1]) > 0.25 * space:
+        return None
+    return (ends[0] + ends[1]) / 2
+
+
 def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
     """The rows of the ledger lines between a staff and a head beside it, the line through the head too. A ledger
     line is a level run of ink that reaches past the head on both sides and is thinner than a head."""
@@ -448,6 +529,10 @@ def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
                     continue
             kept.append(row)
         rows = kept
+    if WINGS:
+        row = _wings(layers, head)
+        if row is not None and top <= row <= bottom and all(abs(row - other) >= 0.3 * space for other in rows):
+            rows = sorted(rows + [row])
     return rows
 
 
@@ -495,6 +580,10 @@ def _on_ledger(layers: dict, mark: dict) -> bool:
         return False
     free, space = layers['free'], staff['space']
     reach = int(round(0.35 * space))
+    if WINGS:
+        row = _wings(layers, mark)
+        if row is not None and mark['y0'] - 0.2 * space <= row <= mark['y1'] + 0.2 * space:
+            return True
     for row in ledger_lines(layers, staff, mark):
         if not mark['y0'] - 0.2 * space <= row <= mark['y1'] + 0.2 * space:
             continue
@@ -651,6 +740,47 @@ def _flag_loop(layers: dict, marks: list[dict], mark: dict) -> bool:
     return False
 
 
+def _two_heads(layers: dict, mark: dict) -> list[dict] | None:
+    """The two heads of a mark that has a stem up at its right and a stem down at its left, when the mark is too
+    large for one head. Two voices a second apart: a hand draws the lower head at the left with its stem down and
+    the upper head at the right with its stem up, and the two strokes run into each other. Two voices a third
+    apart: the two strokes touch, one over the other. The mark is cut at its narrowest place, across or down, and
+    each head keeps its own stem. A head of the usual size with two stems is one note that both voices sing."""
+    space = layers['space']
+    wide, high = layers['head']
+    ups = [stem for stem in mark['stems'] if stem['direction'] == 'up']
+    downs = [stem for stem in mark['stems'] if stem['direction'] == 'down']
+    if len(ups) != 1 or len(downs) != 1 or mark['hole'] >= HOLLOW:
+        return None
+    own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    window = max(3, int(round(0.2 * space)) | 1)
+    if own_wide >= TWO_HEADS[0] * wide:
+        if not (downs[0]['x'] <= mark['x0'] + 0.35 * own_wide and ups[0]['x'] >= mark['x1'] - 0.35 * own_wide):
+            return None
+        smooth = np.convolve(mask.sum(axis=0).astype(float), np.ones(window) / window, mode='same')
+        first, last = int(0.3 * own_wide), int(0.7 * own_wide)
+        cut = first + int(np.argmin(smooth[first:last + 1]))
+        parts = [(_mark(mask[:, :cut], holes[:, :cut], mark['x0'], mark['y0'], mark['blob']), downs),
+                 (_mark(mask[:, cut:], holes[:, cut:], mark['x0'] + cut, mark['y0'], mark['blob']), ups)]
+    elif own_high >= TWO_HEADS[1] * high:
+        smooth = np.convolve(mask.sum(axis=1).astype(float), np.ones(window) / window, mode='same')
+        first, last = int(0.3 * own_high), int(0.7 * own_high)
+        cut = first + int(np.argmin(smooth[first:last + 1]))
+        parts = [(_mark(mask[:cut], holes[:cut], mark['x0'], mark['y0'], mark['blob']), ups),
+                 (_mark(mask[cut:], holes[cut:], mark['x0'], mark['y0'] + cut, mark['blob']), downs)]
+    else:
+        return None
+    out = []
+    for part, stems in parts:
+        if part is None or part['area'] < SMALL * space * space or part['x1'] - part['x0'] + 1 < HEAD_WIDE[0] * space \
+                or part['y1'] - part['y0'] + 1 < HEAD_HIGH[0] * space:
+            return None
+        out.append(dict(part, stems=stems, kind='head', ways=mark['ways']))
+    return out
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -718,6 +848,12 @@ def read_symbols(layers: dict) -> dict:
                                                    for stem in other['stems']) for other in marks):
                 mark['stems'].append(way)
     _share_stems(marks, space)
+    if TWO_HEADS:
+        split = []
+        for mark in marks:
+            parts = _two_heads(layers, mark) if mark['kind'] == 'head' and len(mark['stems']) == 2 else None
+            split += parts or [mark]
+        marks = split
     heads, signs = [], []
     for number, mark in enumerate(marks):
         if mark['kind'] is None or mark['kind'] == 'beam':
@@ -770,6 +906,11 @@ THIN_HOLLOW = 0.15         # such a head is hollow when its ink goes around this
 LOOP_LINE = True           # an open oval may have a staff line as its upper or lower side
 OPEN_HOLE = 0.12           # the open hole of such a head has at least this area, in staff spaces squared (0: off)
 TWO_STEMS = True           # a thick head with two stems may give one of them to a thin head of the other voice
+TWO_ALONG = 1.0            # that thin head hangs anywhere on the stem, up to this many staff spaces before its far end (0: off)
+TWO_APART = True           # and it may touch the thick head: the thick head's own ink is no part of it
+LINE_REST = 0.6            # a piece no higher than a staff line is a rest of the line when less than this share is its own ink (0: off)
+ALONG_HIGH = 0.4           # such a thin head is at least this high, in staff spaces: the rest of a staff line is flat
+OPEN_RIM = 0.5             # an open hole has the head's own ink at this share of its rim (0: off)
 LOOP_STEM = True           # an open oval may have its stem as one of its sides
 LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
@@ -800,6 +941,19 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
     near = int(round(thick + 1))
     # A stroke that crosses a staff line was cut there when the line was taken away: the line under it is its ink.
     marks = layers['marks']
+    two = [head for head in heads if TWO_STEMS and len({stem['direction'] for stem in head['stems']}) == 2]
+    if two and TWO_APART:
+        # A thin head that touches a thick head is one piece of ink with it. The thick ink of a head with two stems
+        # is taken away, so that the thin head beside it is a piece of its own.
+        marks = marks.copy()
+        grown = cv2.dilate(layers['thick'], np.ones((3, 3), np.uint8))
+        taken = np.zeros_like(marks)
+        for head in two:
+            box = (slice(max(0, head['y0'] - 1), head['y1'] + 2), slice(max(0, head['x0'] - 1), head['x1'] + 2))
+            taken[box] = grown[box]
+        marks &= 1 - taken
+        size = 2 * int(round(0.3 * space)) + 1
+        beside = cv2.dilate(taken, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
     ink = marks | (layers['lines'] & cv2.dilate(marks, np.ones((2 * near + 1, 1), np.uint8)))
     count, labels, stats, centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
     pieces = []
@@ -812,7 +966,10 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         part = labels[y:y + high, x:x + wide] == index
         # A piece that lies along a staff line is a rest of the line, not a head.
         own = part & (marks[y:y + high, x:x + wide] > 0)
-        if own.sum() < 0.35 * area:
+        if own.sum() < 0.35 * area or (LINE_REST and high <= thick + 2 and own.sum() < LINE_REST * area):
+            continue
+        # What is left of a thick head at its edge when its thick ink was taken away is no head of its own.
+        if two and TWO_APART and (part & (beside[y:y + high, x:x + wide] > 0)).sum() >= 0.7 * area:
             continue
         loop = _loop(part, space)
         if LOOP_STEM and loop < THIN_HOLLOW:
@@ -833,19 +990,27 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                        'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area, loop)})
     # A thick head with a stem up and a stem down can be two notes: a thin head of the other voice lies right over
     # it or under it, and its stem passed through the thick head. So the stems of such a head are asked too.
-    two = [head for head in heads if TWO_STEMS and len({stem['direction'] for stem in head['stems']}) == 2]
     if two and OPEN_HOLE:
         # The other head can also be a hollow head whose rim has a break: its inside is an open hole.
-        count, _, stats, centres = cv2.connectedComponentsWithStats(layers['open_holes'], connectivity=8)
+        count, labelled, stats, centres = cv2.connectedComponentsWithStats(layers['open_holes'], connectivity=8)
         for index in range(1, count):
             x, y, wide, high, area = stats[index]
             if area >= OPEN_HOLE * space * space and wide >= 0.4 * space:
+                if OPEN_RIM:
+                    # The paper between two staff lines beside a stem is closed in too. A head's inside has the
+                    # head's own ink around it, not staff lines.
+                    y0, x0 = max(0, y - 3), max(0, x - 3)
+                    inside = (labelled[y0:y + high + 3, x0:x + wide + 3] == index).astype(np.uint8)
+                    ring = cv2.dilate(inside, np.ones((7, 7), np.uint8)) & (1 - inside)
+                    if (ring & layers['bare'][y0:y + high + 3, x0:x + wide + 3]).sum() < OPEN_RIM * ring.sum():
+                        continue
                 pieces.append({'x0': int(x), 'y0': int(y), 'x1': int(x + wide - 1), 'y1': int(y + high - 1), 'area': int(area),
                                'cx': float(centres[index][0]), 'cy': float(centres[index][1]), 'hole': 1.0, 'open': True})
     used = [(stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end'])) for head in heads for stem in head['stems']
             if not any(head is other for other in two)]
     strokes = [stroke for stroke in layers['strokes'] if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 >= THIN_STEM * space]
-    found = []
+    asks = []
+    matched = set()
     for stroke in strokes:
         x, top, bottom = stroke['x'], stroke['y0'], stroke['y1']
         staff = _staff_of(layers, x, (top + bottom) / 2)
@@ -868,6 +1033,28 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         owners = [(head, stem) for head in two for stem in head['stems']
                   if abs(x - stem['x']) <= 0.35 * space and min(head['cy'], stem['end']) - 0.5 * space <= bottom
                   and top <= max(head['cy'], stem['end']) + 0.5 * space]
+        matched |= {id(stem) for _, stem in owners}
+        asks.append((x, top, bottom, staff, owners, False))
+    if TWO_ALONG:
+        # The stems of a head with two stems that are no stroke of their own: the stem up, the head and the stem
+        # down were one long stroke, or the ink that leaves the head is the thin head itself.
+        for head in two:
+            for stem in head['stems']:
+                if id(stem) not in matched:
+                    asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
+                                 [(head, stem)], True))
+    found = []
+    flags = {}
+
+    def flagged(owner: dict, stem: dict) -> bool:
+        # A printed flag comes back along its stem and closes in paper there: that is no head of another voice.
+        if id(stem) not in flags:
+            hung = tail_marks(layers, dict(owner, staff_ref=staves[owner['staff']]), stem)
+            flags[id(stem)] = any(piece['right'] and piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6
+                                  and piece['from_end'] <= FLAG_END for piece in hung)
+        return flags[id(stem)]
+
+    for x, top, bottom, staff, owners, whole in asks:
         best = None
         for piece in pieces:
             if piece.get('open') and not owners:
@@ -881,26 +1068,57 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     past = top - piece['cy']
                     side = piece['cx'] - x
                     reach = piece['x0'] - x
-                # The stem of an open oval runs along its side, so the oval's middle lies before the stem's end.
-                back = 0.25 * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1) if piece['hole'] >= THIN_HOLLOW else 0.0)
-                if not (-back <= past <= THIN_NEAR * space and -0.15 * space <= side <= 1.6 * space
-                        and reach <= 0.7 * space):
+                if not (-0.15 * space <= side <= 1.6 * space and reach <= 0.7 * space):
                     continue
-                far = abs(past) + max(0.0, reach)
+                along = None
+                if TWO_ALONG and len(owners) == 1 and owners[0][1]['direction'] == direction and len(owners[0][0]['stems']) == 2:
+                    # The thin head of the other voice hangs on this stem anywhere between the thick head and the
+                    # stem's far end, at its own side of the stem. A flag hangs at the far end.
+                    owner, stem = owners[0]
+                    between = (owner['cy'] - piece['cy']) if direction == 'up' else (piece['cy'] - owner['cy'])
+                    to_end = (piece['y0'] - stem['end']) if direction == 'up' else (stem['end'] - piece['y1'])
+                    if between >= 0.3 * space and to_end >= TWO_ALONG * space and side >= 0.15 * space \
+                            and piece['y1'] - piece['y0'] + 1 >= ALONG_HIGH * space and not flagged(owner, stem) \
+                            and not any(abs(head['cx'] - piece['cx']) <= 0.7 * space and abs(head['cy'] - piece['cy']) <= 0.45 * space
+                                        for head in heads + found):
+                        along = between
+                if along is None:
+                    if whole:
+                        continue
+                    # The stem of an open oval runs along its side, so the oval's middle lies before the stem's end.
+                    back = 0.25 * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1) if piece['hole'] >= THIN_HOLLOW else 0.0)
+                    if not -back <= past <= THIN_NEAR * space:
+                        continue
+                far = along if along is not None else abs(past) + max(0.0, reach)
                 if best is None or far < best[0]:
                     best = (far, piece, direction)
         if best is None:
             continue
         _, piece, direction = best
+        if piece.get('open') and OPEN_RIM:
+            # The open hole is the inside of a thin oval: the oval's own ink is the head, the hole shows its middle.
+            rim = [other for other in pieces if not other.get('open') and other['x0'] <= piece['cx'] <= other['x1']
+                   and other['y0'] <= piece['cy'] <= other['y1']]
+            if rim:
+                piece = dict(min(rim, key=lambda other: other['area']), hole=1.0, cy=piece['cy'])
         if any(abs(head['cx'] - piece['cx']) <= 0.7 * space and abs(head['cy'] - piece['cy']) <= 0.45 * space for head in heads + found):
             continue
+        end = top if direction == 'up' else bottom
         if owners:
             owner, stem = owners[0]
             between = (owner['cy'] - piece['cy']) if direction == 'up' else (piece['cy'] - owner['cy'])
             if len(owners) > 1 or stem['direction'] != direction or between < 0.3 * space or len(owner['stems']) < 2:
                 continue
             owner['stems'].remove(stem)
-        end = top if direction == 'up' else bottom
+            end = stem['end'] if whole else end
+        elif TWO_ALONG:
+            # A thick head under or over this thin head took the thin head's own ink for a stem: it is none.
+            for owner in two:
+                for stem in list(owner['stems']):
+                    if stem['direction'] == direction and len(owner['stems']) == 2 \
+                            and piece['x0'] - 0.2 * space <= stem['x'] <= piece['x1'] + 0.2 * space \
+                            and piece['y0'] - 0.3 * space <= stem['end'] <= piece['y1'] + 0.3 * space:
+                        owner['stems'].remove(stem)
         place = pitch_place(staves[staff], piece['cy'])
         head = {'x0': piece['x0'], 'y0': piece['y0'], 'x1': piece['x1'], 'y1': piece['y1'], 'cx': piece['cx'], 'cy': piece['cy'],
                 'staff': staff, 'place': place, 'hollow': piece['hole'] >= THIN_HOLLOW, 'hole': piece['hole'], 'thin': True,
