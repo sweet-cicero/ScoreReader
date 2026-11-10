@@ -50,7 +50,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     for index in bars:
         stems = [stem['x'] for head in heads if head['staff'] == index for stem in head['stems']]
         bars[index] = [x for x in bars[index] if all(abs(x - stem) > 0.4 * space for stem in stems)]
-    lost_stems(layers, heads, bars, ends)
+    lost_stems(layers, heads, bars, ends,
+               [head for head in symbols['orphans'] if head['cx'] > ends[head['staff']] + 0.3 * space])
     heads = without_joints(heads, space)
     heads += thin_heads(layers, heads, bars, ends)
     # A hollow head read from its hole; where the copy broke its rim, it replaces the pieces of the rim.

@@ -68,7 +68,15 @@ WHOLE_BESIDE = (0.35, 0.2, 0.2, 0.2)   # a whole note that touches the head of t
 #                    wider than the filled head by this much (None: off)
 RIM_STEM = 0.3       # upright ink that ends in the box of another head of its piece of ink, or this many staff spaces
 #                    past it, is the rim of that head and no stem (0: off)
-WHOLE_HALF = 0.0     # the same over or under a half note, when the oval is wider than it by this many staff spaces (0: off)
+LEDGER_DOT = (2.0, 0.9, 0.6, 0.8)   # the dot of a head on a ledger line stands at the end of the line or past it: the
+#                    line is followed for this many staff spaces to the right of the head, the dot is at most this far
+#                    past its end, the line is at least this long past the head (a shorter one that thickens is the end
+#                    of a pen's stroke), and a dot that touches the line has no ink this far over or under the line (a
+#                    stroke that goes on is a stem or a beam) (None: off)
+LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from the staff
+ORPHANS = (0.7, 1.5) # a thick mark with no stem, from this to this many times as wide and as high as the heads of the
+#                    page, is a head when an upright stroke that no head has ends at its edge (None: off)
+WHOLE_HALF = 0.3     # the same over or under a half note, when the oval is wider than it by this many staff spaces (0: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -558,9 +566,9 @@ def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
     if first < 0 or last >= free.shape[1]:
         return []
     if above:
-        top, bottom = int(head['y0'] - 0.3 * space), int(staff['rows'][0] - 0.35 * space)
+        top, bottom = int(head['y0'] - 0.3 * space), int(staff['rows'][0] - LEDGER_FROM * space)
     else:
-        top, bottom = int(staff['rows'][4] + 0.35 * space), int(head['y1'] + 0.3 * space)
+        top, bottom = int(staff['rows'][4] + LEDGER_FROM * space), int(head['y1'] + 0.3 * space)
     top, bottom = max(0, top), min(free.shape[0] - 1, bottom)
     if LEDGER_WORDS:
         # The level strokes of the letters are no ledger lines.
@@ -1012,7 +1020,7 @@ def read_symbols(layers: dict) -> dict:
     layers['hollow'] = limit
     if WHOLE_BESIDE:
         _whole_beside(layers, marks, limit)
-    heads, signs = [], []
+    heads, signs, orphans = [], [], []
     for number, mark in enumerate(marks):
         if mark['kind'] is None or mark['kind'] == 'beam':
             continue
@@ -1022,6 +1030,7 @@ def read_symbols(layers: dict) -> dict:
         hollow = mark['hole'] >= limit
         cy = mark['hole_cy'] if HOLE_PLACE and hollow and mark['hole_cy'] is not None else mark['cy']
         or_hollow = None
+        orphan = False
         if hollow and mark.get('solid_cy') is not None and mark['stems']:
             or_hollow = cy
             hollow, cy = False, mark['solid_cy']
@@ -1040,7 +1049,12 @@ def read_symbols(layers: dict) -> dict:
             oval = wide >= WHOLE[0] * high and wide >= WHOLE[1] * layers['head'][0] \
                 and WHOLE[2] * layers['head'][1] <= high <= WHOLE[3] * layers['head'][1]
             if not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM):
-                continue
+                # A mark as large as a head with no stem: the copy may have cut its stem off (see lost_stems()).
+                if not (ORPHANS and 'tail_of' not in mark
+                        and ORPHANS[0] * layers['head'][0] <= wide <= ORPHANS[1] * layers['head'][0]
+                        and ORPHANS[0] * layers['head'][1] <= high <= ORPHANS[1] * layers['head'][1]):
+                    continue
+                orphan = True
         head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': mark['cx'], 'cy': cy,
                 'staff': staff, 'place': place, 'hollow': hollow, 'hole': mark['hole'], 'stems': mark['stems'],
                 'mark': number, 'core': core_light(layers, mark),
@@ -1064,8 +1078,8 @@ def read_symbols(layers: dict) -> dict:
                         and FAR_STEM[2] * layers['head'][1] <= high <= FAR_STEM[3] * layers['head'][1]):
                     continue
             head['place'] = found
-        heads.append(head)
-    return {'heads': heads, 'signs': signs, 'marks': marks}
+        (orphans if orphan else heads).append(head)
+    return {'heads': heads, 'signs': signs, 'marks': marks, 'orphans': orphans}
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -1218,15 +1232,19 @@ LOST_STEM = (0.3, 0.45)    # a stem that the copy cut from its thick head stands
                            # (staff spaces, sideways) and ends at most this far from the head (None: off)
 THROUGH_SIDE = 0.05        # a thin head that crosses a staff line is one piece: its ink over and under the line is joined
                            # through the line, up to this many staff spaces sideways
+LEAN_END = 0.0             # a stem that leans toward its thin head: the head's distance is counted from the stem's end, when
+#                            that end lies at most this many staff spaces from the stem's middle column (0: off)
 THIN_PAIR = 1.3            # two thin heads, one over the other: the stem of the one runs on into the other, so its own
                            # head lies up to this many staff spaces before the stroke's end (0: off)
 
 
-def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float]) -> int:
+def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float],
+               orphans: list[dict] | None = None) -> int:
     """Gives a thick head the stem that the copy cut from it: an upright stroke that no head has, and that ends
     close over the head at its right edge (a stem up) or close under it at its left edge (a stem down). A head that
     already has a stem to the other side becomes the head of both voices; thin_heads() then looks along its stems
-    for the other voice's own head. Returns how many stems were given."""
+    for the other voice's own head. `orphans` are marks as large as a head that have no stem at all: one that gets
+    a stem here is a head, and it is added to `heads`. Returns how many stems were given."""
     if not LOST_STEM:
         return 0
     space = layers['space']
@@ -1249,7 +1267,7 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                for other in strokes):
             continue
         best = None
-        for head in heads:
+        for head in heads + [orphan for orphan in orphans or [] if not orphan['stems']]:
             if head['staff'] != staff or head.get('thin'):
                 continue
             ways = []
@@ -1264,6 +1282,8 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                         best = (far, head, direction, end)
         if best:
             _, head, direction, end = best
+            if not any(head is other for other in heads):
+                heads.append(head)
             head['stems'].append({'direction': direction, 'x': int(round(x)), 'end': int(end), 'length': abs(head['cy'] - end),
                                   'lost': True})
             used.append((x, min(head['cy'], end), max(head['cy'], end)))
@@ -1417,7 +1437,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                   if abs(x - stem['x']) <= 0.35 * space and min(head['cy'], stem['end']) - 0.5 * space <= bottom
                   and top <= max(head['cy'], stem['end']) + 0.5 * space]
         matched |= {id(stem) for _, stem in owners}
-        asks.append((x, top, bottom, staff, owners, False))
+        asks.append((x, top, bottom, staff, owners, False, (float(stroke['xs'][0]), float(stroke['xs'][-1]))))
     if TWO_ALONG:
         # The stems of a head with two stems that are no stroke of their own: the stem up, the head and the stem
         # down were one long stroke, or the ink that leaves the head is the thin head itself.
@@ -1425,7 +1445,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             for stem in head['stems']:
                 if id(stem) not in matched:
                     asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
-                                 [(head, stem)], True))
+                                 [(head, stem)], True, None))
         if ONE_ALONG:
             # A head with one stem: the thin head of the other voice can hang on that same stem, farther along. The
             # ink that leaves the thick head is then the other voice's stem, and the two heads share it as a chord.
@@ -1433,7 +1453,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 if len(head['stems']) == 1 and not any(head is other for other in two):
                     stem = head['stems'][0]
                     asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
-                                 [(head, stem)], True))
+                                 [(head, stem)], True, None))
     found = []
     flags = {}
 
@@ -1484,7 +1504,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         return best[1] if best else None
 
     asked = {}       # the stroke of each thin head that was found from a stroke of its own: (x, top, bottom, direction)
-    for x, top, bottom, staff, owners, whole in asks:
+    for x, top, bottom, staff, owners, whole, leans in asks:
         best = None
         for piece in pieces:
             if piece.get('open') and not owners:
@@ -1498,6 +1518,11 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     past = top - piece['cy']
                     side = piece['cx'] - x
                     reach = piece['x0'] - x
+                if LEAN_END and leans and not owners and reach > 0.7 * space:
+                    # A stem that leans: its end is nearer to the head than its middle.
+                    lean = (x - leans[1]) if direction == 'up' else (leans[0] - x)
+                    if 0 < lean <= LEAN_END * space:
+                        side, reach = side - lean, reach - lean
                 if not (-0.15 * space <= side <= 1.6 * space and reach <= 0.7 * space):
                     continue
                 along = None
@@ -1604,6 +1629,10 @@ BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least thi
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
 FLAG_BACK = 0.08     # a printed flag comes back toward the head by this many staff spaces while it leaves the stem
 DOT_REACH = 1.3      # a dot stands at most this many staff spaces right of its head
+DOT_NEAR = 0.3       # and at least this many
+DOT_UNDER = 0.6      # its middle lies at most this many staff spaces under the middle of the head (and 0.7 over it)
+DOT_BETWEEN = None   # and not from this to this many staff spaces under it: a dot stands in a space, at the height of
+#                    the head or half a staff space from it (None: off)
 DOT_HIGH = 0.9       # a dot is at most this high, in staff spaces
 DOT_SLIM = 0.38      # and at least this wide for its height: a hand draws a dot as a short stroke
 SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
@@ -1997,9 +2026,46 @@ def dots(layers: dict, heads: list[dict]) -> None:
     for head in heads:
         head['dot'] = False
         for x, y in found:
-            if 0.1 * space <= x - head['x1'] <= DOT_REACH * space and abs(y - head['cy']) <= 0.7 * space:
+            if DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
+                    and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
                 head['dot'] = True
                 break
+        if not head['dot'] and LEDGER_DOT and abs(head['place']) > 4.6:
+            # A hand draws the ledger line through the head and on to the right, and sets the dot at its end or
+            # past its end.
+            end, blob = _ledger_end(layers, head)
+            if end >= head['x1'] + LEDGER_DOT[2] * space:
+                head['dot'] = blob or any(0.1 * space <= x - end <= LEDGER_DOT[1] * space
+                                          and abs(y - head['cy']) <= 0.7 * space for x, y in found)
+
+
+def _ledger_end(layers: dict, head: dict) -> tuple[int, bool]:
+    """Where the ledger line of a head ends at its right: (the column, True when the line ends in a blob as large
+    as a dot). The line is level ink, thin as a line, that leaves the head; the head's own right edge when no such
+    line leaves it."""
+    bare, space = layers['bare'], layers['space']
+    half = int(0.5 * space)
+    top, bottom = max(0, int(head['cy']) - half), min(bare.shape[0], int(head['cy']) + half + 1)
+    last = min(bare.shape[1], head['x1'] + 1 + int(LEDGER_DOT[0] * space))
+    heights = bare[top:bottom, head['x1'] + 1:last].sum(axis=0)
+    thin = THIN_LEDGER * space + 2
+    step = 0
+    while step < len(heights) and 0 < heights[step] <= thin:
+        step += 1
+    end = head['x1'] + step
+    wide = 0
+    while step + wide < len(heights) and thin < heights[step + wide] <= DOT_HIGH * space:
+        wide += 1
+    # The blob is round: its last columns are as low as the line again, and then the paper begins.
+    after = step + wide
+    while after < len(heights) and 0 < heights[after] <= thin and after - step - wide < 0.2 * space:
+        after += 1
+    blob = 0.14 * space <= wide <= 0.7 * space and after < len(heights) and heights[after] == 0
+    if blob:
+        far, left = int(LEDGER_DOT[3] * space), head['x1'] + 1 + step
+        rows = [row for row in (int(head['cy']) - far, int(head['cy']) + far) if 0 <= row < bare.shape[0]]
+        blob = not bare[rows, left:left + wide].any()
+    return end, bool(blob)
 
 
 def bar_lines(layers: dict, heads: list[dict]) -> dict[int, list[float]]:
