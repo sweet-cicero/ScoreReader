@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Checks the whole reader on a page that this script draws: bench/drawn_check.py [out folder for the pictures]
 
-The page has one system of two staves with quarter, half, dotted and beamed eighth notes and a bar line. It needs no
-test kit, so it runs anywhere. It is a check that the steps work together, not a measure of hard pages: for that,
+The page has one system of two staves with quarter, half, dotted and beamed eighth notes, bar lines and a tie. It
+needs no test kit, so it runs anywhere. It is a check that the steps work together, not a measure of hard pages: for that,
 see bench/kit.sh."""
 import os
 import sys
@@ -18,10 +18,11 @@ from scoreread.staves import find_staves  # noqa: E402
 from scoreread.systems import find_systems, lost_staves  # noqa: E402
 
 # For each staff, its symbols from the left: (place, kind). Place 0 is the middle line and +1 one step up.
-# Kinds: 'q' quarter, 'h' half, 'q.' dotted quarter, 'e' eighth (two in a row are beamed), '|' bar line.
-MUSIC = [[(-2, 'q'), (-1, 'q'), (0, 'h'), (0, '|'), (1, 'e'), (2, 'e'), (3, 'q'), (-3, 'h')],
-         [(2, 'q'), (1, 'q'), (-4, 'h'), (0, '|'), (-1, 'q.'), (-2, 'e'), (-3, 'e'), (4, 'h')]]
-LENGTHS = {'q': 1.0, 'h': 2.0, 'q.': 1.5, 'e': 0.5}
+# Kinds: 'q' quarter, 'h' half, 'q.' dotted quarter, 'e' eighth (two in a row are beamed), '|' bar line; 'h~' is a
+# half note with a tie to the next note.
+MUSIC = [[(-2, 'q'), (-1, 'q'), (0, 'h'), (0, '|'), (1, 'e'), (2, 'e'), (3, 'q'), (-3, 'h~'), (0, '|'), (-3, 'q')],
+         [(2, 'q'), (1, 'q'), (-4, 'h'), (0, '|'), (-1, 'q.'), (-2, 'e'), (-3, 'e'), (4, 'h'), (0, '|'), (2, 'q')]]
+LENGTHS = {'q': 1.0, 'h': 2.0, 'h~': 2.0, 'q.': 1.5, 'e': 0.5}
 NAMES = [{-4: 'E4', -3: 'F4', -2: 'G4', -1: 'A4', 0: 'B4', 1: 'C5', 2: 'D5', 3: 'E5', 4: 'F5'},     # treble clef
          {-4: 'G2', -3: 'A2', -2: 'B2', -1: 'C3', 0: 'D3', 1: 'E3', 2: 'F3', 3: 'G3', 4: 'A3'}]     # bass clef
 
@@ -37,6 +38,7 @@ def draw(space: int = 20) -> np.ndarray:
             cv2.line(image, (left, middle + line * space), (right, middle + line * space), 0, 2)
         x = left + 8 * space
         stems = []        # the stems of the eighth notes: (x, end, direction)
+        tied = None       # the head that a tie begins at: (x, y)
         for place, kind in symbols:
             if kind == '|':
                 cv2.line(image, (x, middle - 2 * space), (x, middle + 2 * space), 0, 3)
@@ -44,8 +46,12 @@ def draw(space: int = 20) -> np.ndarray:
                 continue
             y = int(round(middle - place * space / 2))
             cv2.ellipse(image, (x, y), (int(0.62 * space), int(0.42 * space)), -20, 0, 360, 0, -1, cv2.LINE_AA)
-            if kind == 'h':
+            if kind in ('h', 'h~'):
                 cv2.ellipse(image, (x, y), (int(0.42 * space), int(0.2 * space)), -20, 0, 360, 255, -1, cv2.LINE_AA)
+            if tied:          # the bow of the tie, under the two heads
+                cv2.ellipse(image, ((tied[0] + x) // 2, y + int(0.6 * space)), ((x - tied[0]) // 2 - int(0.9 * space), int(0.6 * space)),
+                            0, 0, 180, 0, 2, cv2.LINE_AA)
+            tied = (x, y) if kind == 'h~' else None
             if kind == 'q.':
                 cv2.circle(image, (x + int(1.2 * space), y - (space // 2 if place % 2 == 0 else 0)), int(0.16 * space), 0, -1, cv2.LINE_AA)
             up = place < 0
@@ -89,6 +95,10 @@ def main() -> int:
         print(f"{'ok ' if ok else 'BAD'} staff {number + 1}: read {' '.join(f'{name}:{length:g}' for name, length in read)}")
         if not ok:
             print(f"    drawn          {' '.join(f'{name}:{length:g}' for name, length in want)}")
+    want = sum(kind.endswith('~') for symbols in MUSIC for _, kind in symbols)
+    ties = [(first['staff'], f"{NAMES[first['staff']][round(first['place'])]}") for first, _ in result['ties']]
+    wrong += len(ties) != want
+    print(f"{'ok ' if len(ties) == want else 'BAD'} ties: read {ties} (drawn {want})")
     systems_ok = [len(system) for system in systems] == [2]
     print(f"{'ok ' if systems_ok else 'BAD'} systems: {[len(system) for system in systems]} (drawn [2]), clefs {result['clefs']}")
     return 1 if wrong or not systems_ok else 0

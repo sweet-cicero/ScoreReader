@@ -227,6 +227,8 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
                     notes.append({'onset': onset, 'length': length, 'voice': voice, 'step': step, 'alter': alter,
                                   'octave': octave, 'midi': midi, 'x': event['x'], 'place': event['place'],
                                   'head': event['head'], 'agreed': bool(event.get('agreed')),
+                                  'tie_start': bool(event['head'].get('tie_start')),
+                                  'tie_stop': bool(event['head'].get('tie_stop')),
                                   'votes': event.get('votes')})
             last_onset = onset
             last_shortest = min(event['length'] for event in column)
@@ -244,11 +246,15 @@ def _note_xml(note: dict, chord: bool) -> str:
     parts.append(f"<pitch><step>{note['step']}</step>"
                  + (f"<alter>{note['alter']}</alter>" if note['alter'] else '')
                  + f"<octave>{note['octave']}</octave></pitch>")
-    parts.append(f'<duration>{int(length * DIVISIONS)}</duration><voice>{note["voice"]}</voice>')
+    ties = [name for name, key in (('stop', 'tie_stop'), ('start', 'tie_start')) if note.get(key)]
+    parts.append(f'<duration>{int(length * DIVISIONS)}</duration>' + ''.join(f'<tie type="{name}"/>' for name in ties)
+                 + f'<voice>{note["voice"]}</voice>')
     if kind:
         parts.append(f'<type>{kind}</type>')
         if dot:
             parts.append('<dot/>')
+    if ties:
+        parts.append('<notations>' + ''.join(f'<tied type="{name}"/>' for name in ties) + '</notations>')
     parts.append('</note>')
     return ''.join(parts)
 

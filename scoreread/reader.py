@@ -2,7 +2,7 @@
 
 The steps: the layers of the ink (scoreread.layers), the symbols on them (scoreread.symbols), the clef and the key
 signature at the start of each staff (scoreread.starts), the sharps, flats and naturals before a note
-(scoreread.signs), and the music rules that turn the symbols into notes (scoreread.music).
+(scoreread.signs), the ties (scoreread.ties), and the music rules that turn the symbols into notes (scoreread.music).
 
 read_page() gives the same kind of result as scoreread.engine.read_page() (the copisteria step), so the two can be
 measured side by side on the test kit.
@@ -16,6 +16,7 @@ from .music import agree_lengths, build_staff, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_starts
 from .symbols import bar_lines, count_tails, dots, lost_stems, read_symbols, thin_heads, without_flag_loops
+from .ties import read_ties
 
 SIGNS = 'strokes'
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
@@ -24,11 +25,12 @@ CHECK = True         # the music check: the voices of a system agree on the leng
 def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
-    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys') for pictures and checks.
+    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties') for pictures and checks.
 
     Each note: 'staff', 'bar', 'onset' and 'length' (quarter notes, the onset from the bar's start), 'voice', 'step',
     'alter', 'octave', 'midi', 'x', 'place' (0 is the middle line, +1 a step up), 'agreed' (the music check changed
-    its length), 'votes' (how the voices voted on its steps) and 'mark': what the note was read from (the size and
+    its length), 'votes' (how the voices voted on its steps), 'tie_start' and 'tie_stop' (a tie begins or ends at
+    the note; the tied notes stay two notes, as in MusicXML) and 'mark': what the note was read from (the size and
     place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams)."""
     layers = read_layers(grey, places)
     symbols = read_symbols(layers)
@@ -67,6 +69,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
                 if sign['staff'] == head['staff'] and 0 <= head['x0'] - sign['x1'] <= 1.5 * space \
                         and abs(sign['place'] - head['place']) <= 1.0 and sign['x0'] > ends[head['staff']]:
                     head['sign'] = {'sharp': 1, 'flat': -1, 'natural': 0}[sign['kind']]
+    # A tie: a bow from a head to the next head of its pitch.
+    ties = read_ties(layers, heads)
     # Choir rule: in a system of three or more staves, a treble staff over the bass staff is the tenors'.
     width = max(staff['number'] for staff in staves) + 1
     if width >= 3:
@@ -101,4 +105,4 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     return {'musicxml': musicxml(parts, title), 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
-            'keys': [start['key'] for start in begin['starts']]}
+            'keys': [start['key'] for start in begin['starts']], 'ties': ties}

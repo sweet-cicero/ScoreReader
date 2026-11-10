@@ -27,7 +27,7 @@ yardstick and needs the test kit (see "The test kit" below).
 | 2. Systems | `scoreread/systems.py` | No | Puts the staves into systems from the page's ink: the opening line, bar lines through the gap, and bar lines at the same places. Ink in the margin does not count. Finds a staff whose lines the copy lost. |
 | 3. Clean page | `scoreread/page.py` | No | Makes each system level and puts the systems on a white page. The shadow of the binding and the page number stay behind. |
 | 4. Layers | `scoreread/layers.py` | No | Splits the ink into staff lines, upright strokes (stems and bar lines), thick marks (note heads, beams, flags), the holes of hollow heads, and the rest. `layers` draws them in colours. |
-| 5. Symbols | `scoreread/symbols.py`, `starts.py`, `signs.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, and the sharps, flats and naturals before a note. |
+| 5. Symbols | `scoreread/symbols.py`, `starts.py`, `signs.py`, `ties.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, the sharps, flats and naturals before a note, and the ties. |
 | 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
 
 Steps 4 to 6 are the own symbol step. They replace copisteria's network of version 0.4.
@@ -39,17 +39,17 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
 | Kind of score | Hymns | copisteria alone | homr alone | scoreread 0.4 (copisteria's network) | scoreread 0.5 (no model) |
 |---|---:|---:|---:|---:|---:|
 | Printed | 12 | 67 % | 82 % | 76 % | 89 % |
-| Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 80 % |
-| By hand | 5 | 65 % | 70 % | 79 % | 82 % |
+| Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 82 % |
+| By hand | 5 | 65 % | 70 % | 79 % | 84 % |
 | Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 72 % |
-| Digital PDF | 3 | 81 % | 72 % | 81 % | 98 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 85.3 % (5889 notes) |
+| Digital PDF | 3 | 81 % | 72 % | 81 % | 99 % |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 86.6 % (5978 notes) |
 
-- Over all hymns the own symbol step reads more notes right than the network it replaces: 85.3 % against 81 %.
-- It is behind the network on two kinds: old copies (80 % against 88 %) and the two poor pages (72 % against 95 %).
+- Over all hymns the own symbol step reads more notes right than the network it replaces: 86.6 % against 81 %.
+- It is behind the network on two kinds: old copies (82 % against 88 %) and the two poor pages (72 % against 95 %).
   These are the next work.
-- 7 of the 31 hymns are at 95 % or more, and 11 are at 90 % or more. 8 are under 80 %. The lowest are a hand copy
-  (Kontakion of the Nativity of the Forerunner, 65 %), two old copies (65 % and 66 %), a poor page (66 %) and two
+- 7 of the 31 hymns are at 95 % or more, and 15 are at 90 % or more. 7 are under 80 %. The lowest are a hand copy
+  (Kontakion of the Nativity of the Forerunner, 71 %), two old copies (68 % and 69 %), a poor page (66 %) and two
   Trisagion hymns with recitation notes (61 % and 70 %, see the limits).
 - The target is 95 % of all notes. It is not reached.
 
@@ -57,17 +57,20 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
 
 - The reader is not accurate enough yet to put a hymn into the app without a check. Most hymns still have 5 % to 35 %
   wrong notes.
-- The rules and their limits were set on the same 38 pages that test them, in 22 rounds of measuring. The figures
+- The rules and their limits were set on the same 38 pages that test them, in 28 rounds of measuring. The figures
   above are therefore the best case. New pages will read worse until they are measured too.
 - 164 typed notes (2.4 %) are recitation notes that the page does not print: the singers repeat a note for each
   syllable. A reader of the page cannot find them, so a perfect reader gets about 97.6 % on this kit.
 - The score counts each part. A staff of two parts is split by the stem direction (stem up is the upper part). One
   stem read wrong, or one head of a chord missed, gives the note to the wrong part.
-- Not read yet: rests, time signatures, ties and slurs, triplets, and the words. A rest or the digits of a time
-  signature can be read as a note. A tied note is read as two notes.
+- Not read yet: rests, time signatures, slurs, triplets, and the words. A rest or the digits of a time signature
+  can be read as a note. A tie is read when its bow runs from head to head on one line of the page (11 notes of the
+  kit; about as many tied notes are still read as two): a tie over a line break, a thick straight bow and a bow at
+  the far ends of the stems are not read.
 - Most of the wrong notes are of these kinds: a note read one step off, mostly on old copies and hand copies (about
-  250 notes), the note of the staff's other part (about 130), a half note read as a quarter because the copy filled
-  its hole (about 110), and an eighth note read as a quarter because its flag or beam was not seen (about 80).
+  240 notes; some 30 of them are a sharp or a flat of a hand that was not read), the note of the staff's other part
+  (about 120; in 88 of them the second head was not found), a half note read as a quarter because the copy filled
+  its hole (about 90), and an eighth note read as a quarter because its flag or beam was not seen (about 70).
 - A few typed notes are doubtful against the page (about ten were found). They count as wrong here, because the kit
   is not changed.
 - The output is MusicXML for one page. The reader does not join pages or write the app's hymn format yet.
@@ -75,10 +78,10 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
 ## Next steps
 
 The end goal is an engine of our own that reads these scores consistently. Every step is our own now, and the
-target of 95 % is still 10 points away.
+target of 95 % is still 8 points away.
 
 1. Old copies and poor pages: read the lengths and the heads that the network still reads better.
-2. Rests, time signatures and ties. With them, a check of each bar's length against the time signature.
+2. Rests and time signatures. With them, a check of each bar's length against the time signature.
 3. Read each page in two ways and look again at the places that disagree.
 4. Read the words.
 5. Join the pages of a hymn and write the app's hymn format.
