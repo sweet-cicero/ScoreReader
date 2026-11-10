@@ -39,17 +39,17 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
 | Kind of score | Hymns | copisteria alone | homr alone | scoreread 0.4 (copisteria's network) | scoreread 0.5 (no model) |
 |---|---:|---:|---:|---:|---:|
 | Printed | 12 | 67 % | 82 % | 76 % | 89 % |
-| Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 82 % |
-| By hand | 5 | 65 % | 70 % | 79 % | 84 % |
+| Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 83 % |
+| By hand | 5 | 65 % | 70 % | 79 % | 85 % |
 | Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 72 % |
 | Digital PDF | 3 | 81 % | 72 % | 81 % | 99 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 86.6 % (5978 notes) |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 86.9 % (5997 notes) |
 
-- Over all hymns the own symbol step reads more notes right than the network it replaces: 86.6 % against 81 %.
-- It is behind the network on two kinds: old copies (82 % against 88 %) and the two poor pages (72 % against 95 %).
+- Over all hymns the own symbol step reads more notes right than the network it replaces: 86.9 % against 81 %.
+- It is behind the network on two kinds: old copies (83 % against 88 %) and the two poor pages (72 % against 95 %).
   These are the next work.
-- 7 of the 31 hymns are at 95 % or more, and 15 are at 90 % or more. 7 are under 80 %. The lowest are a hand copy
-  (Kontakion of the Nativity of the Forerunner, 71 %), two old copies (68 % and 69 %), a poor page (66 %) and two
+- 7 of the 31 hymns are at 95 % or more, and 16 are at 90 % or more. 6 are under 80 %. The lowest are a hand copy
+  (Kontakion of the Nativity of the Forerunner, 71 %), two old copies (68 % and 69 %), a poor page (67 %) and two
   Trisagion hymns with recitation notes (61 % and 70 %, see the limits).
 - The target is 95 % of all notes. It is not reached.
 
@@ -57,7 +57,7 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
 
 - The reader is not accurate enough yet to put a hymn into the app without a check. Most hymns still have 5 % to 35 %
   wrong notes.
-- The rules and their limits were set on the same 38 pages that test them, in 28 rounds of measuring. The figures
+- The rules and their limits were set on the same 38 pages that test them, in 31 rounds of measuring. The figures
   above are therefore the best case. New pages will read worse until they are measured too.
 - 164 typed notes (2.4 %) are recitation notes that the page does not print: the singers repeat a note for each
   syllable. A reader of the page cannot find them, so a perfect reader gets about 97.6 % on this kit.
@@ -71,8 +71,14 @@ Notes right means pitch and length both right, counted by the kit's `score.py` a
   240 notes; some 30 of them are a sharp or a flat of a hand that was not read), the note of the staff's other part
   (about 120; in 88 of them the second head was not found), a half note read as a quarter because the copy filled
   its hole (about 90), and an eighth note read as a quarter because its flag or beam was not seen (about 70).
-- A few typed notes are doubtful against the page (about ten were found). They count as wrong here, because the kit
-  is not changed.
+- Some typed notes differ from the page. On one hand copy (the Koinonikon of Palm Sunday) about 15 notes that
+  count as wrong are read as the page shows them. They count as wrong here, because the kit is not changed.
+- For scale: copisteria's own output and this reader have 92.9 % of the notes right between them (a note counts
+  when one of the two has it right). 489 notes are wrong in both, 164 of them the recitation notes. So the notes
+  that only a network reads today would not bring the kit to 95 % either.
+- The reader also writes notes that are not there: about 270 on the kit, from time signatures, rests, letters of the
+  words, ornaments and slurs. They are counted apart and do not lower notes right (without them it would rise by
+  4 notes), but a singer would see them.
 - The output is MusicXML for one page. The reader does not join pages or write the app's hymn format yet.
 
 ## Next steps
