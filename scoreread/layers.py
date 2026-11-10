@@ -1,0 +1,281 @@
+"""Splits the ink of a clean page into layers: staff lines, upright strokes, thick marks and the rest. No model is used.
+
+A page is hard to read as one picture and easy to read as layers. On a clean page (scoreread.page) every staff line
+is level and its row is known, so each layer comes from a plain measure of the ink:
+
+1. Ink: the dark pixels of the page.
+2. Holes: paper that ink closes in, when it is as small as the inside of a hollow note head. A cell between two
+   staff lines and two upright strokes has straight sides, and it is left out. The holes are filled, so a hollow head
+   and a filled head are both a solid mark from here on, and the hole says later which of the two it was.
+3. Staff lines: the ink in the rows of each staff line, where nothing stands on the line. The test is the height of
+   the ink in that column: a line alone is as high as the line is thick, and a line with a note on it is higher.
+4. Upright strokes: ink that stands at least 1.6 staff spaces high in one column, also when it leans a little or a
+   weak copy broke it into dashes. Stems and bar lines are upright strokes.
+5. Thick marks: what stays after the staff lines and the thin part of each upright stroke are taken away, and a
+   round brush as wide as a third of a staff space still fits in. Note heads, beams and the heavy parts of clefs and
+   rests are thick marks; words, slurs and ledger lines are thinner.
+
+picture() gives each layer its own colour, so a person can check a page at a glance.
+"""
+from __future__ import annotations
+
+import cv2
+import numpy as np
+
+from .staves import ink_mask
+
+UPRIGHT = 1.3        # the least height of an upright stroke, in staff spaces
+LEAN = (0.0, 0.06, -0.06, 0.12, -0.12)   # the leans (dx/dy) an upright stroke may have
+DASH_GAP = 0.5       # a gap of this many staff spaces in a thin upright stroke is bridged
+SLIM = 0.62          # an upright stroke at most this wide (in staff spaces) is a stem or a bar line
+BRUSH = 0.32         # the round brush for thick marks, in staff spaces
+HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
+ROUND = 0.85         # the inside of a head fills at least this share of its hull: it has no dent
+CROSS = 0.2          # a mark goes through a staff line when its ink over and under the line is this near, sideways
+WEAK = (0.05, 0.2)   # the share of long strokes with gaps: a whole copy has at most the first, a weak copy the second
+WHOLE_GAP = 0.3      # on a whole copy, the gaps that are bridged are this share of the gaps bridged on a weak copy
+BLOT = 1.8           # solid ink that a disc of this many staff spaces fits in is a blot, not music
+
+
+def line_thickness(ink: np.ndarray, rows: list[float], x0: int, x1: int) -> float:
+    """The thickness of a staff's lines in px: the median height of the ink in the lines' rows."""
+    runs = []
+    height = ink.shape[0]
+    for row in rows:
+        row = int(round(row))
+        if row - 12 < 0 or row + 13 > height:
+            continue
+        for x in range(int(x0) + 20, int(x1) - 20, 7):
+            column = ink[row - 12:row + 13, x]
+            near = np.where(column[10:15])[0]
+            if len(near) == 0:
+                continue
+            centre = 10 + int(near[np.argmin(np.abs(near - 2))])
+            first = centre
+            while first > 0 and column[first - 1]:
+                first -= 1
+            last = centre
+            while last < 24 and column[last + 1]:
+                last += 1
+            runs.append(last - first + 1)
+    return float(np.median(runs)) if runs else 3.0
+
+
+def blots(ink: np.ndarray, space: float) -> np.ndarray:
+    """1 on the blots of the page: solid ink that a disc of BLOT staff spaces fits in, with the ink at its rim. A
+    punch hole, the shadow of a binding or a torn corner is a blot; no mark of music is that solid."""
+    size = int(round(BLOT * space)) | 1
+    solid = cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
+    if not solid.any():
+        return solid
+    rim = int(round(0.5 * space)) | 1
+    return cv2.dilate(solid, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (rim, rim)))
+
+
+def head_holes(ink: np.ndarray, space: float) -> np.ndarray:
+    """1 where paper is closed in by ink and can be the inside of a hollow note head.
+
+    The inside of a head is round: it has no dent. Paper that is closed in between two marks has one. A sharp or a
+    natural before a head closes in the paper between them, and so do two heads side by side: that paper is wide at
+    the staff lines and narrow at its middle, where the head bulges into it. A cell between two staff lines and two
+    upright strokes has no dent, but it has straight sides, and it is left out too."""
+    count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
+    keep = np.zeros(count, bool)
+    for index in range(1, count):
+        x, y, width, height, area = stats[index]
+        if area < 6 or area > HOLE[0] * space * space or height > HOLE[1] * space or width > HOLE[2] * space:
+            continue
+        part = (labels[y:y + height, x:x + width] == index).astype(np.uint8)
+        if height >= 0.6 * space and area >= 0.7 * width * height:
+            # A cell between two staff lines and two upright strokes: it is as high as the gap between the lines in
+            # most of its columns. The inside of a head is round, so few of its columns have the full height.
+            if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5:
+                continue
+        if area >= 0.06 * space * space:
+            contours, _ = cv2.findContours(part, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            hull = cv2.convexHull(np.vstack(contours))
+            # The hull runs through the middles of the rim's pixels: half a pixel is added all around it.
+            full = cv2.contourArea(hull) + cv2.arcLength(hull, True) / 2 + 1
+            if area < ROUND * full:
+                continue
+        keep[index] = True
+    return keep[labels].astype(np.uint8)
+
+
+def staff_lines(solid: np.ndarray, staves: list[dict]) -> np.ndarray:
+    """1 on the pixels of the staff lines that nothing else stands on."""
+    out = np.zeros_like(solid)
+    width = solid.shape[1]
+    for staff in staves:
+        thick = staff['thick']
+        limit = int(round(thick + max(2.0, 0.5 * thick)))
+        tall = cv2.morphologyEx(solid, cv2.MORPH_OPEN, np.ones((limit + 1, 1), np.uint8))
+        thin = solid & (1 - tall)
+        half = int(np.ceil(thick / 2 + 2))
+        first, last = max(0, int(staff['x0'] - 1.5 * staff['space'])), min(width, int(staff['x1'] + 1.5 * staff['space']))
+        for row in staff['rows']:
+            row = int(round(row))
+            out[max(0, row - half):row + half + 1, first:last] |= thin[max(0, row - half):row + half + 1, first:last]
+    return out
+
+
+def upright(ink: np.ndarray, length: int) -> np.ndarray:
+    """1 where the ink stands at least `length` px high along a line that is upright or leans a little."""
+    out = np.zeros_like(ink)
+    for lean in LEAN:
+        width = int(np.ceil(abs(lean) * length)) + 1
+        kernel = np.zeros((length, width), np.uint8)
+        for y in range(length):
+            x = int(round(abs(lean) * y))
+            kernel[y, x if lean >= 0 else width - 1 - x] = 1
+        out |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, kernel)
+    return out
+
+
+def read_layers(grey: np.ndarray, places: list[dict]) -> dict:
+    """The layers of a clean page. `places` is what clean_page() returns. The result holds the masks 'ink', 'holes',
+    'solid' (ink and holes), 'lines', 'free' (solid without the staff lines), 'joined' (free with the dashes of thin
+    strokes joined), 'up', 'stems' (the thin part of the slim upright strokes), 'marks' (free without stems) and
+    'thick'; 'bare' (the ink without staff lines and without the filling of the holes); 'strokes' (see _strokes);
+    'staves' (each staff: rows, x0, x1, space, thick, system, number, top, bottom) and 'space' (the page's staff
+    space in px)."""
+    ink = ink_mask(grey)
+    staves = []
+    for system, place in enumerate(places):
+        for number, (rows, (x0, x1)) in enumerate(zip(place['lines'], place['x'])):
+            staves.append({'rows': [float(row) for row in rows], 'x0': int(x0), 'x1': int(x1),
+                           'space': (rows[4] - rows[0]) / 4, 'thick': line_thickness(ink, rows, x0, x1),
+                           'system': system, 'number': number, 'top': place['top'], 'bottom': place['bottom']})
+    if not staves:
+        raise ValueError('a page without staves has no layers')
+    space = float(np.median([staff['space'] for staff in staves]))
+    ink = ink & (1 - blots(ink, space))
+    holes = head_holes(ink, space)
+    solid = ink | holes
+    lines = staff_lines(solid, staves)
+    free = solid & (1 - lines)
+    reach = int(max(3, round(0.3 * space)))
+    # A head that a hand drew as a slanted stroke across a thick staff line is no higher than the line in any one
+    # column, so the line was taken away under it and the head fell into two pieces. Where wide ink touches a staff
+    # line from above and, a little to the left, from below, the stroke goes through the line.
+    wide_ink = cv2.morphologyEx(free, cv2.MORPH_OPEN, np.ones((1, reach), np.uint8))
+    side = int(round(CROSS * space))
+    crossing = np.zeros_like(lines)
+    height, width = lines.shape
+    for staff in staves:
+        half = int(np.ceil(staff['thick'] / 2 + 2))
+        first, last = max(0, int(staff['x0'] - 1.5 * staff['space'])), min(width, int(staff['x1'] + 1.5 * staff['space']))
+        for row in staff['rows']:
+            row = int(round(row))
+            top, bottom = row - half - 1, row + half + 1
+            if top - 1 < 0 or bottom + 2 > height:
+                continue
+            # The stroke rises to the right: over the line its ink is at the right, under the line at the left.
+            over = wide_ink[top - 1:top + 1, first:last].max(axis=0).reshape(1, -1)
+            under = wide_ink[bottom:bottom + 2, first:last].max(axis=0).reshape(1, -1)
+            kernel = np.ones((1, side + 1), np.uint8)
+            both = cv2.dilate(over, kernel, anchor=(0, 0)) & cv2.dilate(under, kernel, anchor=(side, 0))
+            crossing[row - half:row + half + 1, first:last] = lines[row - half:row + half + 1, first:last] & both
+    lines = lines & (1 - crossing)
+    free = free | crossing
+    # A weak copy breaks a thin stem into dashes. Thin ink is joined over small gaps in its own column.
+    thin_ink = free & (1 - cv2.morphologyEx(free, cv2.MORPH_OPEN, np.ones((1, reach), np.uint8)))
+    gap = int(max(4, round(DASH_GAP * space)))
+    # A thin stroke that crosses a staff line was cut there when the line was taken away, if the copy had weakened
+    # it at the line. Where a staff line has thin ink close over it and close under it, the stroke goes through.
+    near = int(round(max(staff['thick'] for staff in staves) + 0.3 * space))
+    kernel = np.ones((near + 1, 1), np.uint8)
+    over = cv2.dilate(thin_ink, kernel, anchor=(0, near))
+    under = cv2.dilate(thin_ink, kernel, anchor=(0, 0))
+    through = lines & over & under
+    joined = free | cv2.morphologyEx(thin_ink | through, cv2.MORPH_CLOSE, np.ones((gap, 1), np.uint8))
+    up = upright(joined, int(round(UPRIGHT * space)))
+    strokes, stems = _strokes(up, joined, free, space)
+    # The page shows whether it is a weak copy: its long strokes have gaps. On a page whose strokes are whole, a gap
+    # ends a stroke, so the ink is joined over small gaps only.
+    long = [stroke for stroke in strokes if stroke['slim'] and stroke['y1'] - stroke['y0'] >= 2.5 * space]
+    broken = float(np.mean([((stroke['left'] + stroke['right'] - 1) <= 0).mean() > 0.03 for stroke in long])) if long else 0.0
+    weak = float(np.clip((broken - WEAK[0]) / (WEAK[1] - WEAK[0]), 0.0, 1.0))
+    bridge = WHOLE_GAP + (1.0 - WHOLE_GAP) * weak
+    if bridge < 1.0:
+        gap = int(max(3, round(DASH_GAP * bridge * space)))
+        joined = free | cv2.morphologyEx(thin_ink | through, cv2.MORPH_CLOSE, np.ones((gap, 1), np.uint8))
+    marks = free & (1 - stems)
+    brush = int(max(5, round(BRUSH * space))) | 1
+    thick = cv2.morphologyEx(marks, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (brush, brush)))
+    # The ink without the staff lines and without the filling of the holes, with thin strokes going through the lines.
+    bare = (ink & (1 - lines)) | through
+    return {'ink': ink, 'holes': holes, 'solid': solid, 'lines': lines, 'free': free, 'joined': joined, 'up': up,
+            'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
+            'bare': bare, 'weak': weak, 'bridge': bridge}
+
+
+def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float) -> tuple[list[dict], np.ndarray]:
+    """The upright strokes, and the mask of the thin part of each slim stroke.
+
+    Each stroke: 'x' (its column at its middle row), 'y0', 'y1', 'width' (px; the median width of the ink that it
+    stands in), 'slim' (True for a stem or a bar line), 'xs' (its column in each row from y0) and 'left', 'right' (how
+    far the ink reaches from that column in each row, in px; 0 where the stroke has a gap). Where a head, a beam or a
+    flag joins a stroke, the ink is much wider than the stroke; there the stroke's own part stays in the page."""
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(up, connectivity=8)
+    height, width = free.shape
+    strokes = []
+    stems = np.zeros_like(free)
+    for index in range(1, count):
+        x, y, wide, high, _ = stats[index]
+        part = labels[y:y + high, x:x + wide] == index
+        columns = np.arange(wide)
+        xs = np.rint(x + (part * columns).sum(axis=1) / np.maximum(1, part.sum(axis=1))).astype(int)
+        left = np.zeros(high, int)
+        right = np.zeros(high, int)
+        for step in range(high):
+            row = free[y + step]
+            centre = xs[step]
+            if not row[centre]:
+                near = [c for c in (centre - 1, centre + 1, centre - 2, centre + 2) if 0 <= c < width and row[c]]
+                if not near:
+                    continue
+                centre = near[0]
+            first = centre
+            while first > 0 and row[first - 1]:
+                first -= 1
+            last = centre
+            while last + 1 < width and row[last + 1]:
+                last += 1
+            left[step], right[step] = xs[step] - first + 1, last - xs[step] + 1
+        runs = left + right - 1
+        seen = runs[runs > 0]
+        own = float(np.median(seen)) if len(seen) else float(np.median(part.sum(axis=1)))
+        slim = own <= SLIM * space
+        strokes.append({'x': float(np.median(xs)), 'y0': int(y), 'y1': int(y + high - 1), 'width': own, 'slim': bool(slim),
+                        'xs': xs, 'left': left, 'right': right})
+        if slim:
+            limit = 1.6 * own + 2
+            for step in range(high):
+                if 0 < runs[step] <= limit:
+                    stems[y + step, xs[step] - left[step] + 1:xs[step] + right[step]] = 1
+                elif runs[step] == 0:
+                    stems[y + step, max(0, xs[step] - 1):xs[step] + 2] |= joined[y + step, max(0, xs[step] - 1):xs[step] + 2]
+    return strokes, stems & free
+
+
+COLOURS = {            # BGR
+    'lines': (205, 205, 205),
+    'rest': (130, 130, 130),
+    'stems': (230, 120, 0),
+    'thick': (0, 0, 0),
+    'holes': (0, 160, 255),
+}
+
+
+def picture(layers: dict) -> np.ndarray:
+    """The layers as one colour picture: staff lines light grey, upright strokes blue, thick marks black, the filled
+    inside of hollow heads orange, and all other ink dark grey."""
+    height, width = layers['ink'].shape
+    out = np.full((height, width, 3), 255, np.uint8)
+    out[layers['lines'] > 0] = COLOURS['lines']
+    out[layers['marks'] > 0] = COLOURS['rest']
+    out[layers['stems'] > 0] = COLOURS['stems']
+    out[layers['thick'] > 0] = COLOURS['thick']
+    out[(layers['holes'] > 0) & (layers['lines'] == 0)] = COLOURS['holes']
+    return out
