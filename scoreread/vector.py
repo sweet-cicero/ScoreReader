@@ -58,6 +58,7 @@ TIE_END = 1.9         # a tie begins and ends at most this many gaps from the mi
 TIE_LEVEL = 0.25      # the two ends of a tie are at one height: at most this many gaps apart
 TIE_OFF = 1.2         # and passes at most this many gaps over or under them
 DRONE_REST = (2.6, 0.6)  # gaps: an open head without a stem at most this far after a rest, or before it, is the ison
+PILE = 0.2              # pt: the hair lines of one pile are at most this far apart
 TWICE = 0.1             # gaps: two heads at one height this near to each other are one head, drawn twice
 DRONE_AHEAD = 3.0       # gaps: or one that stands this near before the next note
 WORDS_UNDER = 9.0     # a row of words belongs to a staff at most this many gaps under its last line
@@ -133,8 +134,30 @@ def _strokes(page) -> tuple[list[dict], list[dict], list[dict]]:
         elif abs(x1 - x0) <= THIN:
             upright.append({'x': (x0 + x1) / 2, 'top': top, 'bottom': bottom})
 
+    # A printer driver draws a thick stroke (a beam, a ledger line) as a pile of hair lines, one under the other:
+    # a pile is one stroke, or one shape when it is slanted or thick.
+    hairs = []
     for line in page.lines:
-        add(line['x0'], line['top'], line['x1'], line['bottom'], line.get('linewidth') or 0)
+        points = sorted((float(x), float(y)) for x, y in line.get('pts') or [])
+        if len(points) == 2 and points[1][0] - points[0][0] > THIN:
+            hairs.append((round(points[0][0], 1), round(points[1][0], 1), points[0][1], points[1][1], line.get('linewidth') or 0))
+        else:
+            add(line['x0'], line['top'], line['x1'], line['bottom'], line.get('linewidth') or 0)
+    piles: list[list[tuple]] = []
+    for hair in sorted(hairs):
+        last = piles[-1][-1] if piles else None
+        if last and hair[:2] == last[:2] and 0 <= hair[2] - last[2] <= PILE and abs((hair[3] - hair[2]) - (last[3] - last[2])) <= PILE:
+            piles[-1].append(hair)
+        else:
+            piles.append([hair])
+    for pile in piles:
+        (x0, x1, y0, y1, thick), last = pile[0], pile[-1]
+        high = last[2] - y0 + thick
+        if len(pile) >= 3 and (abs(y1 - y0) > 0.3 or high > THIN):
+            half = thick / 2
+            shapes.append({'points': [(x0, y0 - half), (x1, y1 - half), (x1, last[3] + half), (x0, last[2] + half)], 'thick': high})
+        elif abs(y1 - y0) <= 0.3:
+            add(x0, min(y0, y1), x1, max(last[2], last[3]), high)
     for box in page.rects:
         if box.get('fill') or box.get('stroke'):
             if min(box['x1'] - box['x0'], box['bottom'] - box['top']) <= THIN:
