@@ -44,6 +44,8 @@ RIM_WINGS = (0.25, 0.3)  # a ledger line at the rim of a hollow head: in this ma
                          # sides, it has ink in at least this share of the columns
 NO_LEDGER_FIVE = 5.75# and up to this place it stands in the first space; past it, its measured place stays
 NO_LEDGER = 6.3      # a head with no ledger line, up to this place beside the staff, stands in the first space (0: off)
+FAR_STEM = (2.0, 8.4, 0.75, 1.35)   # a head past NO_LEDGER with no ledger line is a note when its stem goes on this many
+#                      staff spaces past it, up to this place, and its box is from this to this share of the page's head (None: off)
 HEAD_NEAR = 1.5      # the page's head size comes from the marks at most this many staff spaces over or under a staff
 HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; else the middle of its ink
 LEDGER_INK = True    # a ledger line is ink: the filled inside of a hollow head does not count for it
@@ -915,10 +917,105 @@ def read_symbols(layers: dict) -> dict:
             head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
             found = ledger_place(layers, layers['staves'][staff], head)
             if found is None or (not head['ledgers'] and abs(place) > max(5.6, NO_LEDGER)):
-                continue
+                # A faint ledger line is lost in the copy. A letter of the words has a bowl and a stem too, but its
+                # stem is short: a head as large as the heads of the page on a long stem is a note.
+                wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+                if not (FAR_STEM and found is not None and abs(place) <= FAR_STEM[1]
+                        and any(stem['past'] >= FAR_STEM[0] * space for stem in mark['stems'])
+                        and FAR_STEM[2] * layers['head'][0] <= wide <= FAR_STEM[3] * layers['head'][0]
+                        and FAR_STEM[2] * layers['head'][1] <= high <= FAR_STEM[3] * layers['head'][1]):
+                    continue
             head['place'] = found
         heads.append(head)
     return {'heads': heads, 'signs': signs, 'marks': marks}
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# A second look: hollow heads from their holes
+
+HOLE_HEADS = (0.6, 2.2, 1.2, 0.55, 0.9, 6.5)   # a hole that no head owns is a hollow head when its area is from this to
+#                    this many times the usual hole of the page's hollow heads, it is this many times as wide as
+#                    high, it fills from this to this share of its box (an oval fills 0.79, a cell of the staff all
+#                    of it), and it lies up to this place (None: off)
+HOLE_RIM = 0.2       # the rim of such a head is this thick, in staff spaces
+HOLE_CELL = 0.85     # a hole in a space of the staff that is this share of the gap between two staff lines high is a cell
+HOLE_CLOSED = 0.6    # past its rim, paper shows at the left and at the right within this many staff spaces
+
+
+def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]:
+    """Hollow heads that the marks did not give: two half notes or whole notes, one over the other, grow together
+    into one mark that is too large for a head, and so does a head with the sign before it. But the hole of each
+    head is still there. The page teaches how large the holes of its hollow heads are; a hole of that size that lies
+    on its side as an oval, with its own rim at both sides, in no head that was read, is a hollow head.
+
+    The flag of a printed note, a natural, a flat and the digit 4 close in paper too, but that paper stands upright
+    or has corners. A cell between two staff lines and two strokes fills its whole box."""
+    if not HOLE_HEADS:
+        return []
+    space = layers['space']
+    holes, ink = layers['holes'], layers['ink']
+    own = []
+    for head in heads:
+        if head['hollow'] and not head.get('thin'):
+            own.append(float((holes[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0).sum()))
+    if len(own) < 3:
+        return []
+    usual = float(np.median(own))
+    count, labels, stats, centres = cv2.connectedComponentsWithStats((holes > 0).astype(np.uint8), connectivity=4)
+    rim = max(2, int(round(HOLE_RIM * space)))
+    far = int(round(HOLE_CLOSED * space))
+    out = []
+    for index in range(1, count):
+        x, y, wide, high, area = (int(value) for value in stats[index])
+        cx, cy = float(centres[index][0]), float(centres[index][1])
+        if not HOLE_HEADS[0] * usual <= area <= HOLE_HEADS[1] * usual or wide < HOLE_HEADS[2] * high:
+            continue
+        if not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
+            continue
+        if any(head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2 for head in heads):
+            continue
+        staff = _staff_of(layers, cx, cy)
+        if staff is None or cx < ends[staff] + 0.3 * space:
+            continue
+        place = pitch_place(layers['staves'][staff], cy)
+        if abs(place) > HOLE_HEADS[5]:
+            continue
+        # A cell of the staff is as high as the gap between two staff lines. The hole of a head has its own rim there.
+        gap = space - layers['staves'][staff]['thick']
+        if high >= HOLE_CELL * gap and abs(place - (2 * round((place - 1) / 2) + 1)) <= 0.3:
+            continue
+        # The paper between a flag and its stem lies at the far end of a stem. No head stands there.
+        if any(abs(stem['x'] - cx) <= (wide / 2 + 0.5 * space) and abs(stem['end'] - cy) <= LOOP_NEAR * space
+               and abs(head['cy'] - cy) >= 1.5 * space for head in heads for stem in head['stems']):
+            continue
+        # The rim: at the left and at the right of the hole there is ink, and past it paper again.
+        row = int(round(cy))
+        band = ink[max(0, row - 1):row + 2].max(axis=0)
+        closed = True
+        for step, start in ((-1, x - 1), (1, x + wide)):
+            column, seen = start, 0
+            while 0 <= column < len(band) and band[column] and seen <= far:
+                column += step
+                seen += 1
+            if seen == 0 or seen > far:
+                closed = False
+        if not closed:
+            continue
+        mark = {'x0': max(0, x - rim), 'x1': min(ink.shape[1] - 1, x + wide - 1 + rim), 'y0': max(0, y - rim),
+                'y1': min(ink.shape[0] - 1, y + high - 1 + rim), 'cx': cx, 'cy': cy}
+        stems = [way for way in (_way(layers, mark, True, True), _way(layers, mark, False, False)) if is_stem(way, space)]
+        head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
+                'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
+                'stems': stems, 'mark': None, 'from_hole': True, 'core': None, 'alt': None}
+        if abs(place) > 4.6:
+            # Beside the staff a head lies on its ledger lines. The letter p of the words has a bowl and a stem too.
+            head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
+            found = ledger_place(layers, layers['staves'][staff], head)
+            if found is None or not head['ledgers']:
+                continue
+            head['place'] = found
+        out.append(head)
+    return out
 
 
 # ----------------------------------------------------------------------------------------------------------------
