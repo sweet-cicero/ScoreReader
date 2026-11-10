@@ -17,6 +17,12 @@ comes from copisteria. Report each result with its limits.
 The engine's own steps so far: staves, systems, the clean page, the tenor clef rule and the ledger rule. The next
 own step is the symbol step. Ideas to test, each against the kit:
 
+- Layers: process a hard page through a series of low-level steps that make it easier to read. Split the ink into
+  staff lines, note heads, stems and beams, ledger lines and words, and give each layer its own strong colour. Rules
+  read one layer at a time, and the colour picture lets a person check a page at a glance. (The owner asked for
+  this: "processes it through a series of things to make it easier to read, either with different contrasting
+  colors or other methods of scanning the image at a lower level".) Measured so far: a cleaner picture alone corrects
+  layout mistakes (the test hymn went from 34 % to 85 %), but it does not make homr or Audiveris read hand-drawn notes.
 - Note heads from the ink itself: take the staff lines away, find the blobs, and tell filled from hollow by the
   hole. A hand-drawn head is a slanted stroke: its shape and its place on the known staff lines give the pitch.
 - The page teaches its own symbols: group the shapes that repeat on a page (one copyist draws one kind of clef, rest
