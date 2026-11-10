@@ -38,6 +38,240 @@ see the results and the limits below.
 Steps 4 to 6 are the own symbol step. They replaced copisteria's network of version 0.4, which is only a yardstick
 now: it lives in `bench/yardstick`, outside the reader (see "Tests").
 
+## How the reader works, in diagrams
+
+The diagrams show the logic of the reader as the code runs it. No box holds a model: each one is a rule on the ink,
+or on the signs of a PDF. The yardstick in `bench/yardstick` is a test tool, not a part of the reader, and is not
+shown. GitHub draws the diagrams from the text below (Mermaid).
+
+### The whole reader
+
+```mermaid
+flowchart TD
+    source["A page of a score: a PNG image or a page of a PDF"]
+    source --> kind{{"Is it a PDF with the signs of a music font, and with a staff?"}}
+    kind -- "Yes: notation software wrote it" --> drawing["<b>The PDF's own drawing</b><br/>vector.py<br/>No image is read. The words are read too."]
+    kind -- "No: a scan, a photo or an image" --> grey["<b>Grey image</b><br/>A PDF page is made at 300 dpi. The grey paper of a photo is made white."]
+    grey --> staves["<b>Step 1: staves</b><br/>staves.py"]
+    staves --> systems["<b>Step 2: systems</b><br/>systems.py"]
+    systems --> clean["<b>Step 3: clean page</b><br/>page.py"]
+    clean --> layers["<b>Step 4: layers of the ink</b><br/>layers.py"]
+    layers --> symbols["<b>Step 5: symbols</b><br/>words.py, symbols.py, starts.py, meter.py, signs.py, ties.py"]
+    symbols --> music["<b>Step 6: music rules</b><br/>music.py"]
+    drawing -------> music
+    music --> notes["<b>The notes</b><br/>name.musicxml and name.notes.json"]
+    clean -.-> layout["name.layout.json, name.clean.png and name.staves.png. The command layout stops here."]
+    layers -.-> picture["name.layers.png. The command layers stops here."]
+```
+
+### Steps 1 to 3: staves, systems and the clean page
+
+```mermaid
+flowchart LR
+    subgraph one["Step 1: staves"]
+        direction TB
+        s1["Keep only the long level runs of ink. Staff lines stay. Heads, stems and letters go."]
+        s2["Staff space: the most frequent distance between two neighbour lines."]
+        s3["In each upright band of the page, slide a comb of five teeth over the rows. A staff stands where all five teeth meet ink."]
+        s4["Link the bands along the staff's own slope. A page that tilts or bends is no problem."]
+        s5["Follow each staff past its ends where the lines are weak. Four of the five lines are enough."]
+        s6["Drop a staff that was found twice, and a blank staff."]
+        s1 --> s2 --> s3 --> s4 --> s5 --> s6
+    end
+    subgraph two["Step 2: systems"]
+        direction TB
+        y1["For each two staves that follow each other, measure what joins them: the opening line at the left end, bar lines through the gap, their own bar lines at the same places, and their notes in the same columns."]
+        y2["A line that goes on over the first staff or under the last staff is a shadow. It joins nothing."]
+        y3["Weigh all the links of the page together. The number of staves in a system is the one that agrees best with them."]
+        y4["Find a staff that the copy lost. The whole systems show where it stands, and what is left of its lines proves it."]
+        y1 --> y2 --> y3 --> y4
+    end
+    subgraph three["Step 3: clean page"]
+        direction TB
+        c1["Make each system level: in each column, every staff line moves to its mean height."]
+        c2["Cut each system from the emptiest row over it to the emptiest row under it. The words under a staff stay with their staff."]
+        c3["Put the systems on a white page. The shadow of the binding and the page number stay behind."]
+        c4["The result: the clean page, and the row of every staff line on it."]
+        c1 --> c2 --> c3 --> c4
+    end
+    one --> two --> three
+```
+
+### Step 4: the layers of the ink
+
+On the clean page the row of every staff line is known, so each layer comes from a plain measure of the ink. The
+colours are those of `name.layers.png`.
+
+```mermaid
+flowchart TD
+    page["Clean page"] --> ink["<b>Ink</b><br/>The dark pixels, without the blots: a punch hole, the shadow of a binding."]
+    ink --> holes["<b>Holes</b> (orange)<br/>Small round paper that ink closes in: the inside of a hollow note head."]
+    ink --> solid["<b>Solid ink</b><br/>The ink with its holes filled. A hollow head and a filled head are both one solid mark."]
+    holes --> solid
+    solid --> lines["<b>Staff lines</b> (light grey)<br/>The ink in the row of a line, where nothing stands on the line."]
+    solid --> free["<b>Free ink</b><br/>The solid ink without the staff lines. The dashes of a weak copy are joined."]
+    lines --> free
+    free --> strokes["<b>Upright strokes</b> (blue)<br/>Ink that stands high in one column. The slim ones are stems and bar lines."]
+    free --> marks["<b>Marks</b><br/>The free ink without the stems."]
+    strokes --> marks
+    marks --> thick["<b>Thick marks</b> (black)<br/>Where a round brush a third of a staff space wide still fits: note heads, beams, flags, the heavy parts of clefs."]
+    marks --> rest["<b>The rest</b> (dark grey)<br/>Words, slurs, ledger lines."]
+```
+
+### Step 5: from the layers to the symbols
+
+```mermaid
+flowchart LR
+    subgraph find["Find the heads"]
+        direction TB
+        f0["Rows of the words (words.py): a row of the page that crosses many small pieces of ink."]
+        f1["Thick marks (symbols.py), cut where two heads touch. The page shows the size of its own heads."]
+        f2["Name each mark by the upright ink that leaves it (see the next diagram)."]
+        f3["Pitch place: the height of the head between the known rows of the staff lines. For a hollow head, the middle of its hole. Beside the staff, the ledger lines are counted."]
+        f0 --> f1 --> f2 --> f3
+    end
+    subgraph more["Correct the heads"]
+        direction TB
+        m1["Clef, key signature and time signature at the start of each staff (starts.py, meter.py). The notes of a staff begin after them."]
+        m2["Bar lines: bare upright lines from the top line to the bottom line, with no head on them."]
+        m3["Heads that the thick marks do not show: a thin slanted head of a hand, found from its stem; a hollow head, found from its hole; a head whose stem the copy cut off."]
+        m4["Taken away: the joint of a slanted head with its stem, the loop of a printed flag, and the numbers of a time signature in the middle of a staff."]
+        m1 --> m2 --> m3 --> m4
+    end
+    subgraph around["Read around the heads"]
+        direction TB
+        a1["A stem ends where the words begin."]
+        a2["Flags and beams at the far end of each stem. The page shows the thickness of its own beams."]
+        a3["Dots at the right of a head."]
+        a4["Sharps, flats and naturals before a head (signs.py)."]
+        a5["Ties (ties.py): a thin bow from a head to the next head of its pitch."]
+        a6["The result: heads with place, stems, flags or beams, dots, signs and ties, in bars."]
+        a1 --> a2 --> a3 --> a4 --> a5 --> a6
+    end
+    find --> more --> around
+```
+
+What a thick mark is. Each mark is asked where upright ink leaves it.
+
+```mermaid
+flowchart TD
+    mark["A thick mark as large as a head can be"] --> letter{{"Does it stand in a row of the words?"}}
+    letter -- "yes" --> no1["A letter: no note"]
+    letter -- "no" --> strokes{{"Do strokes leave it as the strokes of a sign do?"}}
+    strokes -- "yes" --> sign["<b>A sharp:</b> slim strokes up and down at both sides. <b>A flat:</b> a small bowl with a stroke up from its left side. <b>A natural:</b> a stroke up at the left and a stroke down at the right."]
+    strokes -- "no" --> far{{"Does it hang on two stems side by side, or at the far end of another head's stem?"}}
+    far -- "yes" --> tail["A beam or a flag of that note"]
+    far -- "no" --> stem{{"Does slim ink climb from its right half, or fall from its left half, for more than a staff space?"}}
+    stem -- "yes" --> head["<b>A note head with its stem.</b> A stem up is the upper voice, a stem down the lower voice."]
+    stem -- "no" --> oval{{"Is it a hollow oval on its side, as large as the heads of the page?"}}
+    oval -- "yes" --> whole["<b>A whole note</b>"]
+    oval -- "no" --> orphan["No note, unless it is as large as a head and a stem that the copy cut off ends at it."]
+```
+
+### The clef, the key signature and the time signature
+
+```mermaid
+flowchart TD
+    start["The first columns of each staff (starts.py)"]
+    start --> shape["<b>The clef from its shape</b><br/>A treble clef begins far over the top line and ends under the bottom line. A bass clef stays inside the staff."]
+    start --> signs["<b>The signs after the clef</b><br/>From their upright strokes: a sharp has two strokes side by side, a flat has one stroke with a bowl. The strokes of a time signature are no signs."]
+    signs --> chain["<b>Chain</b><br/>Each next sign must stand where the fixed order of a key signature puts it, under a treble or a bass clef. A rest or the first note ends the chain. On a thick copy, where the first signs ran together, two later signs stand for the whole signature."]
+    chain --> key["<b>Key of the page</b><br/>The staves vote. A copy loses signs more easily than it gains them: a key that some staves show well wins over the staves that show none, and more signs win over fewer signs of their sort."]
+    key --> before["A page that shows no key has the key of the page before (--key-before). A system whose staves all show another key has that key."]
+    chain --> witness["The heights of the chain show the clef too: a second witness."]
+    shape --> clef
+    witness --> clef["<b>Clef</b><br/>The same staff of every system votes for its clef. Without a witness, the lowest staff of a system of two or more is a bass staff, and the others are treble staves."]
+    before --> ends["Where the notes begin on each staff: after its clef, its key signature and its time signature."]
+    clef --> ends
+```
+
+A time signature is found so that its numbers are not read as notes or as sharps. The numbers themselves are not
+read yet.
+
+```mermaid
+flowchart TD
+    mark["A mark in a staff, with the staff lines taken away (meter.py)"] --> halves{{"Is it two numbers, one over the other: one fills the staff from the top line to the middle line, and one from the middle line to the bottom line?"}}
+    halves -- "no" --> other["Not a time signature"]
+    halves -- "yes" --> note{{"Is it a bar line, the thick blot of a head, or one thin stem across the middle line?"}}
+    note -- "yes" --> other
+    note -- "no" --> where{{"Where does it stand?"}}
+    where -- "at the start of the staff" --> time["<b>A time signature</b><br/>Its numbers are no key signs, no sharps and no notes. The notes of the staff begin after it."]
+    where -- "in the middle of the staff" --> agree{{"Do two staves of the system show it at one place? In a system of one staff: does a bar line stand right before it?"}}
+    agree -- "yes" --> time
+    agree -- "no" --> other
+```
+
+### Step 6: the music rules
+
+How long a note is:
+
+```mermaid
+flowchart TD
+    head{{"Is the head hollow?"}}
+    head -- "yes" --> stem{{"Has it a stem?"}}
+    stem -- "no" --> whole["Whole note"]
+    stem -- "yes" --> half["Half note"]
+    head -- "no" --> tails{{"How many flags or beams at the far end of its stem?"}}
+    tails -- "0" --> quarter["Quarter note"]
+    tails -- "1" --> eighth["Eighth note"]
+    tails -- "2" --> sixteenth["Sixteenth note"]
+    whole & half & quarter & eighth & sixteenth --> dot{{"Does a dot stand at its right?"}}
+    dot -- "yes" --> longer["Half as long again"]
+    dot -- "no" --> same["As it is"]
+```
+
+From the symbols to the notes:
+
+```mermaid
+flowchart TD
+    heads["Heads of a staff, with their lengths"] --> voices["<b>Voices</b><br/>A stem up is voice 1, a stem down is voice 2. A head with both stems is in both voices."]
+    voices --> columns["<b>Bars and columns</b><br/>The notes between two bar lines are a bar. Notes that begin together stand in one column."]
+    columns --> check["<b>Music check</b><br/>For the staves of one system: from one column to the next, every voice says how long the step is. Where two or more voices agree and outnumber the others, a note that says something else is changed."]
+    check --> onsets["<b>Onsets</b><br/>In a bar, each column begins when the voices that sing in it are free."]
+    onsets --> pitch["<b>Pitch</b><br/>The clef names each pitch place. The key of the staff and the signs of the bar give its sharp or flat."]
+    clefs["Clefs and key of the page"] --> tenor["<b>Choir rule</b><br/>In a system of three or more staves, a treble staff over the bass staff is the tenors'. It sounds an octave lower."]
+    tenor --> pitch
+    pitch --> xml["<b>MusicXML</b><br/>The same staff of every system is one part."]
+```
+
+### A PDF that notation software wrote
+
+Such a PDF holds each sign as a character of a music font at its exact place (Maestro, Petrucci, Anastasia, Leland,
+Bravura and fonts like them), so nothing has to be recognised.
+
+```mermaid
+flowchart LR
+    subgraph lay["Find the staves"]
+        direction TB
+        p1["The characters, the drawn lines and the filled shapes of the page (vector.py)."]
+        p2["The page counts when characters of a music font show note heads, and a staff is found. Any other page is read as an image."]
+        p3["<b>Staves</b><br/>Five long level lines at even distances."]
+        p4["<b>Systems</b><br/>An upright stroke at the left that runs from one staff to the next joins them."]
+        p5["<b>Bar lines and stems</b><br/>An upright stroke over the whole height of a staff is a bar line. The others are stems."]
+        p1 --> p2 --> p3 --> p4 --> p5
+    end
+    subgraph signs["Look each sign up"]
+        direction TB
+        q1["<b>Heads</b><br/>Each head sign on the line or the space of the staff that it fits."]
+        q2["<b>Lengths</b><br/>Stems at the edge of a head. Flag signs and beam shapes at the free end of a stem. Dots."]
+        q3["<b>Clef, key and signs</b><br/>The clef sign and the key signature after it. Sharps, flats and naturals before a head."]
+        q4["<b>Ties</b><br/>A bow from a head to the next head at the same height, also over the end of a line."]
+        q5["<b>Words</b><br/>Each syllable under its note."]
+        q1 --> q2 --> q3 --> q4 --> q5
+    end
+    subgraph write["Write the notes"]
+        direction TB
+        r1["<b>Ison</b><br/>Only on a chant page, with one staff in each system: the open heads without a stem and without a syllable become a part of their own, held in time with the melody."]
+        r2["<b>Music rules of step 6</b><br/>Voices, columns, onsets, pitch and the choir rule."]
+        r3["MusicXML with the words, and name.notes.json"]
+        r1 --> r2 --> r3
+    end
+    lay --> signs --> write
+```
+
+Not in the diagrams, because the reader of scans does not do it yet: the words of a scan, rests, slurs, triplets,
+and the numbers of a time signature (see "Limits").
+
 ## Results on every score of LitChoir (the wide test)
 
 The wide test reads every score of the app that has a typed hymn to compare with: 366 scores on 657 pages, 516 of
