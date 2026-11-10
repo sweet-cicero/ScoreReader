@@ -23,6 +23,8 @@ DIVISIONS = 8
 ONE_LINE = 0.6       # the stems of two voices on one pitch, or a second apart, are one line: at most this far apart
 BESIDE = 1.8         # a whole note beside a note with a stem, on its pitch or a second from it, is at most this far from it
 BESIDE_DOT = 2.6     # or this far, at the right of a note with a dot
+ACROSS = 0.9         # the columns of two staves of a system are one column when they stand at most this far apart
+AGREE = 2            # this many voices must agree on the length of a step before another voice's note is changed
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -50,9 +52,9 @@ def length_of(head: dict, tails: int) -> Fraction:
     return base * Fraction(3, 2) if head.get('dot') else base
 
 
-def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, key: int, space: float) -> list[list[dict]]:
-    """The bars of a staff: each a list of notes {'onset', 'length', 'voice', 'step', 'alter', 'octave', 'midi', 'x',
-    'type', 'dot'} with onsets counted from the bar's start, in quarter notes."""
+def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: float) -> list[list[list[dict]]]:
+    """The notes of a staff in bars and columns: a list of bars, each a list of columns, each a list of events
+    {'x', 'place', 'voice', 'head', 'length', 'stem_x'}. The notes of a column begin together."""
     events = []
     for head in heads:
         place = int(round(head['place']))
@@ -85,7 +87,6 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
     measures = [[] for _ in range(len(edges) + 1)]
     for event in events:
         measures[sum(1 for x in edges if x < event['x'])].append(event)
-    base = key_alters(key)
     out = []
     for measure in measures:
         if not measure:
@@ -111,6 +112,95 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
                     break
             else:
                 columns.append([event])
+        out.append(columns)
+    return out
+
+
+def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[float]], space: float) -> int:
+    """A music check for the staves of one system: notes that begin together and whose next notes begin together are
+    as long as each other. Returns the number of lengths that were changed.
+
+    `plans` holds what staff_columns() gave for each staff of the system, and `bars` the bar lines of each staff. The
+    columns of the staves are lined up by their place along the system. From one column to the next, every voice
+    that has a note in both columns says how long that step is. Where two or more voices agree and outnumber the
+    others, the step is sure, and a note that says something else is changed: a flag or a dot was missed, a slur
+    was taken for a beam, or the hole of a half note was filled by the copy. A note that reaches over several
+    columns is only made shorter, never longer: a note can be missing after it, or a rest can stand there."""
+    xs = sorted(x for index in plans for x in bars.get(index, []))
+    groups = []
+    for x in xs:
+        if groups and x - groups[-1][-1] <= space:
+            groups[-1].append(x)
+        else:
+            groups.append([x])
+    edges = [sum(group) / len(group) for group in groups]
+    cells = {}
+    for index, measures in plans.items():
+        for measure in measures:
+            for column in measure:
+                x = sorted(event['x'] for event in column)[len(column) // 2]
+                cells.setdefault(sum(1 for edge in edges if edge < x), []).append((x, index, column))
+    changed = 0
+    for group in cells.values():
+        group.sort(key=lambda cell: cell[0])
+        clusters = []
+        for x, index, column in group:
+            best = None
+            for cluster in clusters[-2:]:
+                if all(other[1] != index for other in cluster['cells']) and abs(cluster['x'] - x) <= ACROSS * space \
+                        and (best is None or abs(cluster['x'] - x) < abs(best['x'] - x)):
+                    best = cluster
+            if best is None:
+                clusters.append({'x': x, 'cells': [(x, index, column)]})
+            else:
+                best['cells'].append((x, index, column))
+                best['x'] = sum(cell[0] for cell in best['cells']) / len(best['cells'])
+        where = {}
+        for number, cluster in enumerate(clusters):
+            for x, index, column in cluster['cells']:
+                for voice in sorted({event['voice'] for event in column}):
+                    where.setdefault((index, voice), []).append((number, [event for event in column if event['voice'] == voice]))
+        count = len(clusters)
+        votes = [dict() for _ in range(count)]
+        spans = []
+        for sequence in where.values():
+            for (number, events), (following, _) in zip(sequence, sequence[1:] + [(count, None)]):
+                length = min(event['length'] for event in events)
+                spans.append((number, following, events, length))
+                if following == number + 1:
+                    votes[number][length] = votes[number].get(length, 0) + 1
+        sure = [None] * count
+        for number in range(count):
+            if votes[number]:
+                best = max(votes[number], key=votes[number].get)
+                if votes[number][best] >= AGREE and votes[number][best] > sum(votes[number].values()) - votes[number][best]:
+                    sure[number] = best
+        for number, following, events, length in spans:
+            for event in events:      # for the record: how the voices voted on this note's steps
+                event['votes'] = [{str(value): votes[step][value] for value in votes[step]} for step in range(number, following)]
+            if any(sure[step] is None for step in range(number, following)):
+                continue
+            total = sum(sure[number:following], Fraction(0))
+            if total == length or not (total in TYPES or total / Fraction(3, 2) in TYPES):
+                continue
+            if following == number + 1 or length > total:
+                for event in events:
+                    event['length'] = total
+                    event['agreed'] = True
+                changed += 1
+    return changed
+
+
+def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, key: int, space: float,
+                measures: list[list[list[dict]]] | None = None) -> list[list[dict]]:
+    """The bars of a staff: each a list of notes {'onset', 'length', 'voice', 'step', 'alter', 'octave', 'midi', 'x',
+    'type', 'dot'} with onsets counted from the bar's start, in quarter notes. `measures` is what staff_columns()
+    gave for this staff, when the lengths were checked against the other staves first."""
+    if measures is None:
+        measures = staff_columns(staff, heads, bars, space)
+    base = key_alters(key)
+    out = []
+    for columns in measures:
         free = {1: Fraction(0), 2: Fraction(0)}
         last_onset, last_shortest = None, None
         notes = []
@@ -134,7 +224,8 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
                     step, alter, octave, midi = pitch_of(event['place'], clef, alter)
                     notes.append({'onset': onset, 'length': length, 'voice': voice, 'step': step, 'alter': alter,
                                   'octave': octave, 'midi': midi, 'x': event['x'], 'place': event['place'],
-                                  'head': event['head']})
+                                  'head': event['head'], 'agreed': bool(event.get('agreed')),
+                                  'votes': event.get('votes')})
             last_onset = onset
             last_shortest = min(event['length'] for event in column)
         out.append(notes)

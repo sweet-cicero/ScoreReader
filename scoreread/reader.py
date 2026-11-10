@@ -8,12 +8,13 @@ from __future__ import annotations
 import numpy as np
 
 from .layers import read_layers
-from .music import build_staff, musicxml
+from .music import agree_lengths, build_staff, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_starts
 from .symbols import bar_lines, count_tails, dots, read_symbols, thin_heads, without_flag_loops
 
 SIGNS = 'strokes'
+CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
 
 
 def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
@@ -64,14 +65,22 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
                 clefs[index] = 'G8vb'
     parts = [[] for _ in range(width)]
     notes = []
+    plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
+             for index, staff in enumerate(staves)}
+    # Music check: the voices of a system agree on the length of each step from column to column.
+    agreed = 0
+    if CHECK:
+        for system in sorted({staff['system'] for staff in staves}):
+            own = {index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
+            agreed += agree_lengths(own, bars, space)
     for index, staff in enumerate(staves):
-        own = [head for head in heads if head['staff'] == index]
-        for number, bar in enumerate(build_staff(staff, own, bars[index], clefs[index], key, space)):
+        for number, bar in enumerate(build_staff(staff, [], bars[index], clefs[index], key, space, plans[index])):
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': key})
             for note in bar:
                 head = note.pop('head')
                 stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (note['voice'] == 1)), None)
                 notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
+                                  agreed=note.get('agreed', False), votes=note.get('votes'),
                                   mark={'wide': int(head['x1'] - head['x0'] + 1), 'high': int(head['y1'] - head['y0'] + 1),
                                         'y': float(head['cy']), 'at': float(head['place']), 'hollow': bool(head['hollow']),
                                         'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')),
