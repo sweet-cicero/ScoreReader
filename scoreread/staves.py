@@ -27,6 +27,20 @@ def line_ink(ink: np.ndarray, length: int) -> np.ndarray:
     return cv2.morphologyEx(ink, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (length, 1)))
 
 
+FAINT = (11, 10, 40)    # a pale staff line is a level run of this many px (the last number) that is darker than the
+#                         paper over and under it by this many grey levels (the second), and thinner than the first,
+#                         in px (None: only dark lines are looked for)
+
+FAINT_EDGE = 1.1        # where both looks find a staff, the dark look's staff counts this many times its line ink
+
+
+def faint_lines(grey: np.ndarray) -> np.ndarray:
+    """1 on thin level lines that are too pale for ink_mask(): some copies print the staff in hair lines of grey,
+    under notes of full black. A line is looked for by its shape (thin, level, long), not by how dark it is."""
+    hat = cv2.morphologyEx(grey, cv2.MORPH_BLACKHAT, np.ones((FAINT[0], 1), np.uint8))
+    return line_ink((hat >= FAINT[1]).astype(np.uint8), FAINT[2])
+
+
 def staff_space(flat: np.ndarray) -> float:
     """The page's staff space in px: the most frequent distance between neighbour lines, 0 when no staff is found."""
     height, width = flat.shape
@@ -140,9 +154,51 @@ def _extend(chain: list[tuple[float, float, float]], ink: np.ndarray, band: int,
 
 
 def find_staves(grey: np.ndarray) -> list[dict]:
-    """The staves from the top of the page. Each: left, right (px), space (px) and lines: five lists of [x, y]."""
-    height, width = grey.shape
-    ink = ink_mask(grey)
+    """The staves from the top of the page. Each: left, right (px), space (px) and lines: five lists of [x, y].
+
+    With FAINT the page is looked at twice: with its dark ink alone, and with its pale level lines too. Where the
+    two looks give staves at the same place, the one whose weakest line has the most ink along it is kept (the dark
+    look's staff unless the other has FAINT_EDGE times as much): a staff that is one line off has a line without
+    ink, and a piece of a staff is shorter than the staff."""
+    dark = ink_mask(grey)
+    staves = _find(dark, dark)
+    if not FAINT:
+        return staves
+    both = dark | faint_lines(grey)
+    flat = line_ink(both, 25)
+    # The dark look is the surer one: the look with the pale lines wins a place only by a clear margin.
+    found = [(_support(flat, staff) * (1.0 if look else FAINT_EDGE), -look, staff)
+             for look, group in enumerate((staves, _find(both, dark))) for staff in group]
+    kept: list[dict] = []
+    for _, _, staff in sorted(found, key=lambda item: item[:2], reverse=True):
+        if not any(_same_place(staff, other) for other in kept):
+            kept.append(staff)
+    return sorted(kept, key=lambda staff: line_y(staff['lines'][0], (staff['left'] + staff['right']) / 2))
+
+
+def _support(flat: np.ndarray, staff: dict) -> int:
+    """How many columns (of every fourth) have line ink on the weakest of the staff's five lines."""
+    height = flat.shape[0]
+    hits = [0] * 5
+    for x in range(int(staff['left']), int(staff['right']) + 1, 4):
+        for number, points in enumerate(staff['lines']):
+            y = int(round(line_y(points, x)))
+            hits[number] += bool(0 <= y < height and flat[max(0, y - 2):y + 3, x].any())
+    return min(hits)
+
+
+def _same_place(one: dict, two: dict) -> bool:
+    """True when two staves share columns and their rows overlap there."""
+    left, right = max(one['left'], two['left']), min(one['right'], two['right'])
+    if right <= left:
+        return False
+    x = (left + right) / 2
+    return min(line_y(one['lines'][4], x), line_y(two['lines'][4], x)) > max(line_y(one['lines'][0], x), line_y(two['lines'][0], x))
+
+
+def _find(ink: np.ndarray, dark: np.ndarray) -> list[dict]:
+    """The staves that the line ink of `ink` shows. `dark` is the dark ink alone: what stands on a staff is dark."""
+    height, width = ink.shape
     space0 = staff_space(line_ink(ink, 25))
     if space0 <= 0:
         return []
@@ -241,7 +297,8 @@ def find_staves(grey: np.ndarray) -> list[dict]:
         columns = [dense[0], dense[-1]]
         staves.append({'left': int(columns[0]), 'right': int(columns[-1]), 'space': space,
                        'lines': [[[round(x, 1), round(y, 2)] for x, y in points] for points in lines]})
-    return [staff for staff in _without_twins(staves) if not _blank(ink, staff)]
+    # What stands on a staff is dark: pale lines beside the rows of a pale staff are no music.
+    return [staff for staff in _without_twins(staves) if not _blank(dark, staff)]
 
 
 def _blank(ink: np.ndarray, staff: dict) -> bool:

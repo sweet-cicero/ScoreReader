@@ -1,13 +1,11 @@
-"""Reads the symbols of a clean page with copisteria (Apache-2.0), a local reader. No network and no assistant.
+"""The yardstick: reads the symbols of a clean page with copisteria (Apache-2.0), a local reader with a neural network.
 
-copisteria is used for what it does well: it finds and names the symbols of hand-drawn and printed music. What it
-does badly on these scans is decided here instead:
+This is no part of the engine. scoreread reads a page with rules alone and never loads this folder. The yardstick
+shows on the same clean page, with the same staves and systems, what a network reads, so each own rule can be
+measured against it. Version 0.4 of the reader used this step; version 0.5 replaced it.
 
-- The staves. copisteria looks for staff lines in the rows of the whole page, so it finds a bent or tilted staff
-  twice or not at all. Here the staves come from scoreread.staves, and copisteria gets them as a fact.
-- The systems. copisteria takes them from the ink at the left of the staves. Here they come from scoreread.systems,
-  and copisteria gets them as a fact too.
-- The notes on the first ledger line (scoreread.ledger), as an option.
+copisteria gets the staves and the systems of scoreread as facts (it finds a bent or tilted staff twice or not at
+all), and the notes on the first ledger line can be checked with a rule (ledger.py), as an option.
 
 Where copisteria is installed: the folder in SCOREREAD_COPISTERIA, or tools/copisteria in the test kit (the folder in
 SCOREREAD_KIT; see the README).
@@ -139,11 +137,11 @@ def read_page(image_path: str | Path, places: list[dict], ledger: bool = False) 
         model = read.load_model(str(evidence), 'cpu')
         dets, cands, feats = inputs(png, model)
         rd = read_revised(dets, image.width, image.height, model, device='cpu', image=image, cands=cands, feats=feats)
-        from . import choir  # noqa: PLC0415
+        import choir  # noqa: PLC0415
         tenors = choir.tenor_clef(rd)
         changed = []
         if ledger:
-            from . import ledger as rule  # noqa: PLC0415
+            import ledger as rule  # noqa: PLC0415
             changed = rule.apply(rd, image)
         return {'musicxml': write.write(rd, texts=None, image=image), 'notes': notes_of(rd),
                 'staves': len(rd.layout.staves), 'systems': len(rd.layout.systems), 'ledger': changed,

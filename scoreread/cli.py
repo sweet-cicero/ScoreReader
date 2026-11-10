@@ -1,22 +1,41 @@
 """The command: a page of a score in, its notes out. Everything runs on this computer.
 
-usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--ledger] [--name NAME]
+usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K]
+       python -m scoreread hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME]
+       python -m scoreread layers <page.png | score.pdf> --out <folder> [--page N]
        python -m scoreread layout <page.png | score.pdf> --out <folder> [--page N]
 
 read    finds the staves and the systems, builds the clean page, reads it, and writes:
           <name>.musicxml     the notes
-          <name>.notes.json   each note head with its place on the clean page
+          <name>.notes.json   each note with its place on the clean page and what it was read from
           <name>.layout.json  the staves and systems that were found
           <name>.clean.png    the clean page that was read
           <name>.staves.png   the scan with the staves drawn on it (small), as a check
+          <name>.layers.png   the clean page with each layer of ink in its own colour
+hymn    reads the pages of a hymn in order (all pages of a PDF, or those of --pages; or some images) and joins
+        them: <name>.musicxml holds the whole hymn, each staff of the systems as one part, and <name>.hymn.json says
+        what was read on each page. Each page is also written as `read` writes it (<name>-p1..., counted from the
+        first page that was read). The staves of all pages vote together for the key of the hymn; a page keeps
+        another key only where most of its staves show it clearly. A page that shows no key signature has the key
+        of the page before, and the staves keep their clefs from page to page unless a page shows others.
+layers  does the first steps and writes the picture of the layers (no reading), to check a hard page at a glance.
 layout  does only the first steps (no reading), to check a page fast.
 
-A PDF page is made into an image at 300 dpi with pdftoppm. --ledger turns the ledger rule on (see ledger.py).
+A PDF that notation software wrote (Finale, MuseScore, Encore) is read from its own drawing, with its words: every
+sign is a character of a music font at its exact place (scoreread.vector; needs pdfplumber). --drawing off reads such
+a page as an image instead.
+
+The symbols are read with rules on the ink: no model, and only OpenCV and NumPy are needed. --key-before gives the
+key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature.
+
+A PDF page is made into an image at 300 dpi with pdftoppm. A page that is a photo kept with no size of its own (a
+phone picture at 72 dpi makes a page of 42 by 56 inches) is made as long as an A4 page at 300 dpi.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -25,9 +44,23 @@ from pathlib import Path
 
 import cv2
 
-from .page import clean_page
+from .page import clean_page, flat_paper
 from .staves import draw, find_staves
-from .systems import find_systems
+from .systems import find_systems, lost_staves
+
+
+PAGE_MAX = 17.0     # inches: a longer PDF page is a picture that was kept with no size of its own
+PAGE_LONG = 3508    # pixels: such a page is made this long, as an A4 page at 300 dpi
+
+
+def render(path, page: int, stem) -> None:
+    """Makes <stem>.png of a PDF page: at 300 dpi, or as long as an A4 page when the page has no true size."""
+    told = subprocess.run(['pdfinfo', '-f', str(page), '-l', str(page), str(path)], capture_output=True, text=True).stdout
+    size = re.search(r'Page\s+%d size:\s+([\d.]+) x ([\d.]+) pts' % page, told)
+    huge = size is not None and max(float(size.group(1)), float(size.group(2))) / 72 > PAGE_MAX
+    scale = ['-scale-to', str(PAGE_LONG)] if huge else ['-r', '300']
+    subprocess.run(['pdftoppm', *scale, '-gray', '-f', str(page), '-l', str(page), '-singlefile', '-png', str(path),
+                    str(stem)], check=True)
 
 
 def load(path: Path, page: int) -> tuple:
@@ -35,53 +68,183 @@ def load(path: Path, page: int) -> tuple:
     if path.suffix.lower() == '.pdf':
         with tempfile.TemporaryDirectory() as folder:
             stem = Path(folder) / 'page'
-            subprocess.run(['pdftoppm', '-r', '300', '-gray', '-f', str(page), '-l', str(page), '-singlefile', '-png',
-                            str(path), str(stem)], check=True)
+            render(path, page, stem)
             grey = cv2.imread(str(stem) + '.png', cv2.IMREAD_GRAYSCALE)
         return grey, f'{path.stem}-p{page}'
     return cv2.imread(str(path), cv2.IMREAD_GRAYSCALE), path.stem
 
 
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog='scoreread', description='Reads a page of a score on this computer.')
-    parser.add_argument('command', choices=['read', 'layout'])
-    parser.add_argument('source')
-    parser.add_argument('--out', required=True)
-    parser.add_argument('--page', type=int, default=1)
-    parser.add_argument('--ledger', action='store_true')
-    parser.add_argument('--name', default=None)
-    args = parser.parse_args(argv)
-    start = time.time()
-    grey, name = load(Path(args.source), args.page)
+def prepare(source: Path, page: int) -> dict | None:
+    """The first steps on the image of a page: {'grey', 'stem' (a name for its files), 'staves', 'systems', 'clean',
+    'places'}; None when the file cannot be opened. A page with no staff has no 'clean'."""
+    grey, stem = load(source, page)
     if grey is None:
-        print(f'scoreread: cannot open {args.source}. Give a PNG image or a PDF file.', file=sys.stderr)
-        return 2
-    name = args.name or name
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+        return None
+    grey = flat_paper(grey)
     staves = find_staves(grey)
+    ready = {'grey': grey, 'stem': stem, 'staves': staves}
+    if staves:
+        systems = find_systems(grey, staves)
+        ready['staves'], ready['systems'] = lost_staves(grey, staves, systems)
+        ready['clean'], ready['places'] = clean_page(grey, ready['staves'], ready['systems'])
+    return ready
+
+
+def drawn(source: Path, page: int, name: str | None) -> dict | None:
+    """What the drawing of a PDF page gives, when notation software wrote it: no image is read. None for a scan,
+    and when pdfplumber is not installed (the page is then read as an image)."""
+    if source.suffix.lower() != '.pdf':
+        return None
+    try:
+        from .vector import read_pdf_page  # noqa: PLC0415
+        return read_pdf_page(source, page, title=name or '')
+    except ImportError:
+        return None
+
+
+def read_one(command: str, source: Path, page: int, out: Path, name: str | None = None, drawing: str = 'auto',
+             key_before: int | None = None, clefs_before: list[str] | None = None, key_hymn: int | None = None,
+             looked: tuple | None = None) -> tuple[int, dict, dict | None]:
+    """Does `command` ('read', 'layers' or 'layout') on one page and writes its files to `out`. Returns the exit
+    code, the summary that the command prints, and what the reader gave (None when nothing was read). `looked` is
+    what a first look at the page gave already: (the drawing's result or None, what prepare() gave or None)."""
+    start = time.time()
+    out.mkdir(parents=True, exist_ok=True)
+    result, ready = looked if looked else (None, None)
+    if command == 'read' and drawing == 'auto' and result is None and looked is None:
+        # A PDF that notation software wrote holds its signs and its words as they are: no image is read.
+        result = drawn(source, page, name)
+    if result is not None:
+        name = name or f'{source.stem}-p{page}'
+        (out / f'{name}.musicxml').write_text(result['musicxml'])
+        (out / f'{name}.notes.json').write_text(json.dumps(
+            {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'], 'key': result['key'],
+             'clefs': result['clefs'], 'drawing': True}))
+        return 0, {'name': name, 'staves': result['staves'], 'systems': result['systems'], 'symbols': 'drawing',
+                   'notes': len(result['notes']), 'syllables': sum(1 for note in result['notes'] if note.get('lyric')),
+                   'key': result['key'], 'clefs': result['clefs'], 'seconds': round(time.time() - start, 1)}, result
+    ready = ready or prepare(source, page)
+    if ready is None:
+        print(f'scoreread: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
+        return 2, {}, None
+    grey, staves = ready['grey'], ready['staves']
+    name = name or ready['stem']
     if not staves:
-        print(f'scoreread: no staff found on {args.source}. Check that the page is upright and holds music.', file=sys.stderr)
-        return 1
-    systems = find_systems(grey, staves)
-    page, places = clean_page(grey, staves, systems)
-    cv2.imwrite(str(out / f'{name}.clean.png'), page)
+        print(f'scoreread: no staff found on {source}' + (f', page {page}' if source.suffix.lower() == '.pdf' else '')
+              + '. Check that the page is upright and holds music.', file=sys.stderr)
+        return 1, {'name': name, 'staves': 0}, None
+    systems, clean, places = ready['systems'], ready['clean'], ready['places']
+    cv2.imwrite(str(out / f'{name}.clean.png'), clean)
     cv2.imwrite(str(out / f'{name}.staves.png'), cv2.resize(draw(grey, staves), None, fx=0.4, fy=0.4, interpolation=cv2.INTER_AREA))
-    layout = {'source': str(args.source), 'page': args.page, 'width': int(grey.shape[1]), 'height': int(grey.shape[0]),
+    layout = {'source': str(source), 'page': page, 'width': int(grey.shape[1]), 'height': int(grey.shape[0]),
               'staves': staves, 'systems': systems, 'clean_page': places}
     (out / f'{name}.layout.json').write_text(json.dumps(layout))
     summary = {'name': name, 'staves': len(staves), 'systems': [len(system) for system in systems]}
-    if args.command == 'read':
-        from .engine import read_page  # noqa: PLC0415
-        result = read_page(out / f'{name}.clean.png', places, ledger=args.ledger)
-        (out / f'{name}.musicxml').write_text(result['musicxml'])
-        (out / f'{name}.notes.json').write_text(json.dumps(
-            {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'], 'ledger': result['ledger']}))
-        summary.update(notes=len(result['notes']), reader_staves=result['staves'], reader_systems=result['systems'],
-                       ledger_changes=len(result['ledger']), tenor_staves=len(result['tenor_staves']))
+    result = None
+    if command in ('layers', 'read'):
+        from .layers import picture, read_layers  # noqa: PLC0415
+        from .reader import read_page  # noqa: PLC0415
+        if command == 'layers':
+            cv2.imwrite(str(out / f'{name}.layers.png'), picture(read_layers(clean, places)))
+        else:
+            result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before, key_hymn=key_hymn)
+            cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
+            (out / f'{name}.musicxml').write_text(result['musicxml'])
+            (out / f'{name}.notes.json').write_text(json.dumps(
+                {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'],
+                 'key': result['key'], 'clefs': result['clefs'], 'space': result['layers']['space']}))
+            summary.update(symbols='own', notes=len(result['notes']), key=result['key'], clefs=result['clefs'])
     summary['seconds'] = round(time.time() - start, 1)
-    print(json.dumps(summary))
-    return 0
+    return 0, summary, result
+
+
+def page_numbers(source: Path, wanted: str | None) -> list[int]:
+    """The pages of a source to read: those of `wanted` ('2-4' or '1,3,5'), or all pages of a PDF. An image is one page."""
+    if source.suffix.lower() != '.pdf':
+        return [1]
+    if wanted:
+        pages = []
+        for piece in wanted.split(','):
+            first, _, last = piece.partition('-')
+            pages.extend(range(int(first), int(last or first) + 1))
+        return pages
+    told = subprocess.run(['pdfinfo', str(source)], capture_output=True, text=True).stdout
+    count = re.search(r'Pages:\s+(\d+)', told)
+    return list(range(1, int(count.group(1)) + 1)) if count else [1]
+
+
+def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: str | None = None, drawing: str = 'auto',
+              key_before: int | None = None) -> tuple[int, dict]:
+    """Reads the pages of a hymn in order and joins them: <name>.musicxml holds the whole hymn. Each page is also
+    written as `read` writes it. The key signature holds for the whole hymn: a first look at every page lets the
+    staves of all pages vote for it together. A page without a key signature has the key of the page before, and
+    the clefs of the page before are a witness for the clefs of a page."""
+    from .hymn import join_pages  # noqa: PLC0415
+    from .music import musicxml  # noqa: PLC0415
+    from .reader import page_starts  # noqa: PLC0415
+    from .starts import hymn_key  # noqa: PLC0415
+    start = time.time()
+    name = name or sources[0].stem
+    # The first look: the first steps on each page, and what the start of each staff shows.
+    looked, shown = [], []
+    for source in sources:
+        for page in page_numbers(source, pages):
+            stem = f'{name}-p{len(looked) + 1}'
+            result = drawn(source, page, stem) if drawing == 'auto' else None
+            ready = prepare(source, page) if result is None else None
+            if result is None and ready is None:
+                print(f'scoreread: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
+                return 2, {}
+            if ready is not None and ready['staves']:
+                shown.append(page_starts(ready['clean'], ready['places']))
+            looked.append((source, page, stem, (result, ready)))
+    whole = hymn_key(shown)
+    read, told = [], []
+    clefs_before = None
+    for source, page, stem, first in looked:
+        code, summary, result = read_one('read', source, page, out, stem, drawing, key_before, clefs_before, whole, first)
+        told.append(dict(summary, source=str(source), page=page, read=result is not None))
+        if result is not None:
+            read.append(result)
+            key_before = result['key']
+            clefs_before = result.get('system_clefs') or clefs_before
+    if not read:
+        return 1, {'name': name, 'pages': told}
+    parts, names = join_pages(read)
+    (out / f'{name}.musicxml').write_text(musicxml(parts, name, names))
+    summary = {'name': name, 'pages': told, 'parts': len(parts), 'bars': max(len(part) for part in parts),
+               'notes': sum(len(result['notes']) for result in read),
+               'syllables': sum(1 for result in read for note in result['notes'] if note.get('lyric')),
+               'seconds': round(time.time() - start, 1)}
+    if whole is not None:
+        summary['key'] = whole
+    (out / f'{name}.hymn.json').write_text(json.dumps(summary))
+    return 0, summary
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog='scoreread', description='Reads the pages of a score on this computer.')
+    parser.add_argument('command', choices=['read', 'hymn', 'layers', 'layout'])
+    parser.add_argument('source', nargs='+')
+    parser.add_argument('--out', required=True)
+    parser.add_argument('--page', type=int, default=1)
+    parser.add_argument('--pages', default=None, help="for hymn: the pages of the PDF, as '2-4' or '1,3,5' (all pages without it)")
+    parser.add_argument('--name', default=None)
+    parser.add_argument('--drawing', choices=['auto', 'off'], default='auto')
+    parser.add_argument('--key-before', type=int, default=None,
+                        help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
+    args = parser.parse_args(argv)
+    if args.command == 'hymn':
+        code, summary = read_hymn([Path(source) for source in args.source], Path(args.out), args.name, args.pages,
+                                  args.drawing, args.key_before)
+    else:
+        if len(args.source) > 1:
+            parser.error(f'{args.command} takes one page; `hymn` reads several')
+        code, summary, _ = read_one(args.command, Path(args.source[0]), args.page, Path(args.out), args.name, args.drawing,
+                                    args.key_before)
+    if summary:
+        print(json.dumps(summary))
+    return code
 
 
 if __name__ == '__main__':

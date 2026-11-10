@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Checks the systems finder on the test pages: bench/systems_check.py <kit folder>
-The expected number of staves in each system comes from the kit's cases.json."""
+The expected number of staves in each system comes from the kit's cases.json. A staff whose lines the copy lost is
+found after the systems (lost_staves), as the reader does it."""
 import json
 import os
 import sys
@@ -9,7 +10,7 @@ import cv2
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from scoreread.staves import find_staves, ink_mask  # noqa: E402
-from scoreread.systems import find_systems, joined  # noqa: E402
+from scoreread.systems import find_systems, joined, lost_staves  # noqa: E402
 
 kit = sys.argv[1]
 wrong = 0
@@ -20,6 +21,7 @@ for case in json.load(open(os.path.join(kit, 'cases.json')))['cases']:
         grey = cv2.imread(os.path.join(kit, 'pages', name + '.png'), cv2.IMREAD_GRAYSCALE)
         staves = find_staves(grey)
         systems = find_systems(grey, staves)
+        staves, systems = lost_staves(grey, staves, systems)
         sizes = [len(system) for system in systems]
         want = len(case['layout'])
         ok = all(size == want for size in sizes)
