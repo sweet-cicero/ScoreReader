@@ -37,6 +37,8 @@ KEY_STRONG = (0.5, 2)   # a key of two or more signs that this many staves show 
 KEY_WEAK = True         # one unclear mark alone (see read_start) is a witness for a lost key only beside a clear one
 KEY_OTHER = 0.35        # a staff that shows a key of the other sort this well stops KEY_STRONG (None: off)
 KEY_MORE = True         # for KEY_STRONG, a staff that shows more signs is a witness for a key of fewer signs too
+KEY_GUESS = True        # staves with signs added by GAPS are witnesses for KEY_STRONG only where they are more than
+#                         the staves that show fewer signs clearly
 KEY_SYSTEM = 0.5        # a system of two or more staves that all show one key this well has that key, also where
 #                         the page has another (a page with two pieces) (None: off)
 GAPS = (1.0, 0.25, 0.5) # two signs at the places of the second and third sign of a key signature (at most this far
@@ -46,6 +48,7 @@ GAPS = (1.0, 0.25, 0.5) # two signs at the places of the second and third sign o
 TIME = (0.25, 2.5)      # the numbers of a time signature are no key signs, and the notes begin after them: the numbers
 #                         begin at most this far before the clef's end and this far after the key signature, in
 #                         staff spaces (None: off)
+TRIM = True             # a short dash beyond a longer gap at an end of an upright stroke is no part of the stroke
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
 #                         staff's left end, in staff spaces: a bass clef ends over the bottom line (None: off)
@@ -61,6 +64,7 @@ def start_strokes(layers: dict, staff: dict, first: int, last: int) -> list[dict
     if last - first < 3 or y1 - y0 < 3:
         return []
     region = np.ascontiguousarray(ink[y0:y1, first:last])
+    raw = region
     # A weak copy breaks a thin stroke into dashes: thin ink is joined over small gaps in its own column.
     reach = int(max(3, round(0.3 * space)))
     thin = region & (1 - cv2.morphologyEx(region, cv2.MORPH_OPEN, np.ones((1, reach), np.uint8)))
@@ -71,6 +75,35 @@ def start_strokes(layers: dict, staff: dict, first: int, last: int) -> list[dict
     strokes = []
     for index in range(1, count):
         x, y, wide, high, _ = stats[index]
+        if TRIM:
+            # A dash at an end of the stroke that is shorter than the gap before it is no part of the stroke: a
+            # rest of a staff line under a flat, for example.
+            rows = raw[y:y + high, x:x + wide].any(axis=1)
+            for _ in range(2):
+                filled = np.nonzero(rows)[0]
+                empty = np.nonzero(~rows[filled[0]:filled[-1] + 1])[0] + filled[0] if len(filled) else []
+                if not len(empty):
+                    break
+                dash, gap_rows = filled[-1] - empty[-1], 1
+                while empty[-1] - gap_rows in empty:
+                    gap_rows += 1
+                if dash >= gap_rows:
+                    break
+                rows[empty[-1] - gap_rows + 1:] = False
+            for _ in range(2):
+                filled = np.nonzero(rows)[0]
+                empty = np.nonzero(~rows[filled[0]:filled[-1] + 1])[0] + filled[0] if len(filled) else []
+                if not len(empty):
+                    break
+                dash, gap_rows = empty[0] - filled[0], 1
+                while empty[0] + gap_rows in empty:
+                    gap_rows += 1
+                if dash >= gap_rows:
+                    break
+                rows[:empty[0] + gap_rows] = False
+            filled = np.nonzero(rows)[0]
+            if len(filled):
+                y, high = y + int(filled[0]), int(filled[-1] - filled[0] + 1)
         top, bottom = y0 + y, y0 + y + high - 1
         strokes.append({'x': first + x + (wide - 1) / 2, 'x0': first + x, 'x1': first + x + wide - 1, 'top': int(top),
                         'bottom': int(bottom), 'wide': wide / space, 'high': high / space,
@@ -365,7 +398,7 @@ def read_start(layers: dict, index: int) -> dict:
         for clef, (found, miss) in plain.items():
             if found:
                 chains[(clef, kind)] = (found, miss)
-    out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs, time=time, weak=False)
+    out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs, time=time, weak=False, gaps=0)
     if not chains:
         return out
     # The best chain: the most signs; then the clef of the shape; then the nearest to its places.
@@ -378,7 +411,7 @@ def read_start(layers: dict, index: int) -> dict:
     weak = len(found) == 1 and (bool(found[0].get('joined')) or shape['clef'] is None
                                 or found[0]['x0'] < shape['x1'] - 0.25 * space)
     out.update(key=len(found) if kind == 'sharp' else -len(found), key_clef=clef, miss=miss, end=max(shape['x1'], found[-1]['x1']),
-               weak=weak)
+               weak=weak, gaps=sum(1 for sign in found if sign.get('gap')))
     return out
 
 
@@ -408,8 +441,14 @@ def vote_key(rows: list[dict], before: int | None = None) -> int:
     if KEY_STRONG:
         for sort in (-1, 1):
             shown = {}
+            # Signs that were added for run-together ones (GAPS) are a guess. Where more staves show fewer signs of
+            # this sort clearly, the copy did not run them together, and the guess is no witness.
+            guessed = sum(1 for row in rows if row['key'] * sort >= 2 and row.get('gaps'))
+            fewer = sum(1 for row in rows if row['key'] * sort >= 1 and not row.get('gaps') and not row.get('weak')
+                        and row['miss'] <= KEY_STRONG[0])
             for row in rows:
-                if row['key'] * sort >= 2 and row['miss'] <= KEY_STRONG[0]:
+                if row['key'] * sort >= 2 and row['miss'] <= KEY_STRONG[0] \
+                        and not (KEY_GUESS and row.get('gaps') and guessed <= fewer):
                     shown[row['key']] = shown.get(row['key'], 0) + 1
             if KEY_MORE:
                 # A staff that shows more signs is a witness for fewer too: the copy lost the rest elsewhere.
