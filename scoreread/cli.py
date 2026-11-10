@@ -27,7 +27,7 @@ import cv2
 
 from .page import clean_page
 from .staves import draw, find_staves
-from .systems import find_systems
+from .systems import find_systems, lost_staves
 
 
 def load(path: Path, page: int) -> tuple:
@@ -64,6 +64,7 @@ def main(argv=None) -> int:
         print(f'scoreread: no staff found on {args.source}. Check that the page is upright and holds music.', file=sys.stderr)
         return 1
     systems = find_systems(grey, staves)
+    staves, systems = lost_staves(grey, staves, systems)
     page, places = clean_page(grey, staves, systems)
     cv2.imwrite(str(out / f'{name}.clean.png'), page)
     cv2.imwrite(str(out / f'{name}.staves.png'), cv2.resize(draw(grey, staves), None, fx=0.4, fy=0.4, interpolation=cv2.INTER_AREA))

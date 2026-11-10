@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .staves import ink_mask, line_y
+from .staves import _blank, ink_mask, line_ink, line_y
 
 COVER = 0.6      # a joining line covers this share of the gap between two staves (measured: 0.73 to 1.00 for one
                  # system, 0.00 to 0.42 for two systems)
@@ -23,6 +23,8 @@ INSIDE = 1.0     # and how far inside (a clef begins after that, and a clef's in
 ALIGNED = 0.6    # share of the bar lines of two staves that must stand at the same places (measured: 0.50 to 1.00
                  # for one system, 0.00 to 0.40 for two systems)
 APART = 0.34     # at or under this share, the bar lines say that the staves are two systems
+LOST_LINES = (0.3, 2)   # a staff that the copy lost still shows this share of at least this many of its five lines
+LOST_SHIFT = 1.0        # and it stands at most this many staff spaces from where the page's whole systems have it
 
 
 def _path_cover(window: np.ndarray) -> float:
@@ -159,3 +161,103 @@ def find_systems(grey: np.ndarray, staves: list[dict]) -> list[list[int]]:
         else:
             systems.append([index])
     return systems
+
+
+def _mean_row(points: list, left: float, right: float) -> float:
+    return float(np.mean([line_y(points, x) for x in np.linspace(left, right, 9)]))
+
+
+def lost_staves(grey: np.ndarray, staves: list[dict], systems: list[list[int]]) -> tuple[list[dict], list[list[int]]]:
+    """(staves, systems) with the staves that the copy lost.
+
+    Every system of a choir page has the same staves. A poor copy can lose most of the lines of one staff: then the
+    comb of five lines does not find it, a system has fewer staves than the others, and the notes of that staff are
+    left over. The lost staff stands as far from its partner as in a system that is whole, and it bends as its
+    partner does. What is left of its lines shows that it is there, and moves it into its exact place: at least
+    LOST_LINES[1] of the five lines still have ink along LOST_LINES[0] of the staff. A lost staff has 'lost': True."""
+    full = max((len(system) for system in systems), default=0)
+    whole = [system for system in systems if len(system) == full]
+    if full < 2 or len(whole) == len(systems):
+        return staves, systems
+    ink = ink_mask(grey)
+    height = ink.shape[0]
+
+    def distance(first: int, second: int, line: int) -> float:
+        """How far line `line` of the staff at place `second` lies under the top line of the staff at place `first`,
+        in staff spaces: the middle of the whole systems."""
+        found = []
+        for system in whole:
+            a, b = staves[system[first]], staves[system[second]]
+            left, right = max(a['left'], b['left']), min(a['right'], b['right'])
+            found.append((_mean_row(b['lines'][line], left, right) - _mean_row(a['lines'][0], left, right)) / a['space'])
+        return float(np.median(found))
+
+    def look(anchor: dict, first: int, second: int) -> tuple[float, dict | None]:
+        """The lost staff at place `second` of a system whose staff `anchor` stands at place `first`: (the ink on
+        its lines, the staff), or (0, None) when the page shows no such staff."""
+        space = anchor['space']
+        dash = line_ink(ink, max(5, int(0.5 * space)))
+        xs = np.arange(int(anchor['left']), int(anchor['right']), 2)
+        base = np.array([line_y(anchor['lines'][0], x) for x in xs])
+        reach = int(LOST_SHIFT * space)
+        best = None
+        for shift in range(-reach, reach + 1):
+            covers = []
+            for line in range(5):
+                rows = np.round(base + distance(first, second, line) * space + shift).astype(int)
+                inside = (rows >= 1) & (rows < height - 1)
+                if inside.sum() < 0.9 * len(xs):
+                    covers = None
+                    break
+                hit = dash[rows[inside] - 1, xs[inside]] | dash[rows[inside], xs[inside]] | dash[rows[inside] + 1, xs[inside]]
+                covers.append(float(hit.mean()))
+            if covers and (best is None or sum(covers) > best[0]):
+                best = (sum(covers), shift, covers)
+        if best is None or sum(cover >= LOST_LINES[0] for cover in best[2]) < LOST_LINES[1]:
+            return 0.0, None
+        lines = [[[point[0], round(line_y(anchor['lines'][0], point[0]) + distance(first, second, line) * space + best[1], 2)]
+                  for point in anchor['lines'][0]] for line in range(5)]
+        staff = {'left': anchor['left'], 'right': anchor['right'], 'space': space, 'lines': lines, 'lost': True}
+        middle = (staff['left'] + staff['right']) / 2
+        top, bottom = line_y(lines[0], middle), line_y(lines[4], middle)
+        for other in staves:
+            x = min(max(middle, other['left']), other['right'])
+            if min(bottom, line_y(other['lines'][4], x)) - max(top, line_y(other['lines'][0], x)) > -0.5 * space:
+                return 0.0, None        # another staff stands there
+        if _blank(ink, staff):
+            return 0.0, None
+        return best[0], staff
+
+    added: list[tuple[int, dict]] = []      # (the number of the system, the lost staff)
+    for number, system in enumerate(systems):
+        if len(system) == full:
+            continue
+        best = None
+        for first in range(full - len(system) + 1):
+            # The staves of the system stand at the places first, first + 1, ... of a whole system.
+            own = {first + k: staves[index] for k, index in enumerate(system)}
+            found, total = [], 0.0
+            for place in range(full):
+                if place in own:
+                    continue
+                near = min(own, key=lambda other: abs(other - place))
+                score, staff = look(own[near], near, place)
+                if staff is None:
+                    found = None
+                    break
+                found.append(staff)
+                total += score
+            if found and (best is None or total > best[0]):
+                best = (total, found)
+        if best:
+            added += [(number, staff) for staff in best[1]]
+    if not added:
+        return staves, systems
+    owner = {id(staves[index]): number for number, system in enumerate(systems) for index in system}
+    owner.update({id(staff): number for number, staff in added})
+    every = sorted(staves + [staff for _, staff in added],
+                   key=lambda staff: line_y(staff['lines'][0], (staff['left'] + staff['right']) / 2))
+    out: list[list[int]] = [[] for _ in systems]
+    for index, staff in enumerate(every):
+        out[owner[id(staff)]].append(index)
+    return every, out

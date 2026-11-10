@@ -28,6 +28,7 @@ STEP = (0.45, 1.7)           # the next sign of a key signature begins this far 
 PRIOR = 1.5                  # the weight of the custom of choir music among the witnesses for a clef (a clef's shape is 1)
 FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef's left edge, in staff spaces
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
+OPENING = 3.0       # a clef begins at most this many staff spaces after the line that opens its system (0: off)
 LOST_CLEF = 3.4     # the room of a clef that the copy lost, in staff spaces from the staff's left end
 
 
@@ -225,12 +226,13 @@ def clef_shape(layers: dict, staff: dict) -> dict:
     y0, y1 = max(0, int(top - 3.2 * space)), min(free.shape[0], int(bottom + 2.6 * space))
     x0, x1 = max(0, int(staff['x0'] - 0.3 * space)), min(free.shape[1], int(staff['x0'] + 12 * space))
     region = free[y0:y1, x0:x1].copy()
-    for _, begin, end in bare_lines(layers, staff, x0, x1):
+    opening = bare_lines(layers, staff, x0, x1)
+    for _, begin, end in opening:
         region[:, max(0, begin - x0 - 2):max(0, end - x0 + 3)] = 0
     # The staff lines were taken away: a thin mark is joined again over the rows of the lines.
     region = cv2.morphologyEx(region, cv2.MORPH_CLOSE, np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
     count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
-    best = None
+    found = []
     for label in range(1, count):
         x, y, wide, high, area = stats[label]
         if y + high - 1 < top - y0 + 0.5 * space or y > bottom - y0 - 0.5 * space or wide < 1.4 * space or high < 2.0 * space:
@@ -242,13 +244,26 @@ def clef_shape(layers: dict, staff: dict) -> dict:
             clef = 'F'          # a bass clef hangs from the top line and ends over the bottom line
         else:
             continue
-        if best is None or x < best[0]:
-            best = (x, y, wide, high, clef, over, under)
+        found.append((x, y, wide, high, clef, over, under))
+    found.sort()
+    if OPENING and len(found) >= 2:
+        # The lines of a staff can go on to the left of the line that opens the system, and the shadow of a binding
+        # stands there. A mark before that line is no clef when a clef stands right after the line.
+        for _, begin, end in opening:
+            before = [mark for mark in found if x0 + mark[0] + mark[2] <= begin]
+            after = [mark for mark in found if 0 <= x0 + mark[0] - end <= OPENING * space]
+            if before and after:
+                found = [mark for mark in found if x0 + mark[0] + mark[2] > begin]
+                break
+    best = found[0] if found else None
     if best is None:
-        return {'clef': None, 'x0': float(staff['x0']), 'x1': float(staff['x0']), 'over': 0.0, 'under': 0.0, 'wide': 0.0}
+        return {'clef': None, 'x0': float(staff['x0']), 'x1': float(staff['x0']), 'over': 0.0, 'under': 0.0, 'wide': 0.0,
+                'left': float(staff['x0'])}
     x, y, wide, high, clef, over, under = best
+    # Where the staff begins: at the line that opens the system, when the clef stands right after one.
+    left = [end for _, begin, end in opening if 0 <= x0 + x - end <= OPENING * space] if OPENING else []
     return {'clef': clef, 'x0': float(x0 + x), 'x1': float(x0 + x + min(wide, 3.4 * space)), 'over': over, 'under': under,
-            'wide': wide / space}
+            'wide': wide / space, 'left': float(max(left)) if left else float(staff['x0'])}
 
 
 def read_start(layers: dict, index: int) -> dict:
@@ -311,7 +326,7 @@ def read_starts(layers: dict) -> dict:
             tally[staff['number']][start['key_clef']] += 2.0 if start['miss'] <= 0.6 else 1.0
     clefs, ends = [], []
     # A clef that the copy lost still takes its room: as much as the clefs that the page shows, from the staff's left end.
-    rooms = [(start['x1'] - staff['x0']) / staff['space'] for start, staff in zip(starts, staves) if start['clef']]
+    rooms = [(start['x1'] - start['left']) / staff['space'] for start, staff in zip(starts, staves) if start['clef']]
     room = float(np.median(rooms)) if rooms else LOST_CLEF
     kind = 'sharp' if key > 0 else 'flat'
     seen = []          # for each staff: (where its notes begin, what shows it: 'key', 'clef' or None)
@@ -332,13 +347,19 @@ def read_starts(layers: dict) -> dict:
     # far from the left end of each staff. The staves that show the key signature say it best. A staff that shows
     # nothing (the copy cut off its clef), or whose "clef" stands far to the right (it is a note), begins there too.
     best = 'key' if any(shown == 'key' for _, shown in seen) else 'clef'
-    usual = [(end - staff['x0']) / staff['space'] for (end, shown), staff in zip(seen, staves) if shown == best]
+    usual = [(end - start['left']) / staff['space'] for (end, shown), start, staff in zip(seen, starts, staves) if shown == best]
     usual = float(np.median(usual)) if usual and USUAL_START else None
+    # A staff without a clef begins where the other staves of its system begin.
+    lefts = {}
+    for start, staff in zip(starts, staves):
+        if start['clef']:
+            lefts.setdefault(staff['system'], []).append(start['left'])
     for (end, shown), start, staff in zip(seen, starts, staves):
-        if usual is not None and (end is None or (end - staff['x0']) / staff['space'] > usual + USUAL_START):
-            end = staff['x0'] + usual * staff['space']
+        left = start['left'] if start['clef'] or staff['system'] not in lefts else float(np.median(lefts[staff['system']]))
+        if usual is not None and (end is None or (end - left) / staff['space'] > usual + USUAL_START):
+            end = left + usual * staff['space']
         elif end is None:
-            end = max(start['x1'], staff['x0'] + min(room, 2 * LOST_CLEF) * staff['space'])
+            end = max(start['x1'], left + min(room, 2 * LOST_CLEF) * staff['space'])
             end += (abs(key) * 1.1 + 1.0) * staff['space'] if key else 0.0
         ends.append(end)
     return {'key': key, 'clefs': clefs, 'ends': ends, 'starts': starts}

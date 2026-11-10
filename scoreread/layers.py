@@ -30,6 +30,7 @@ DASH_GAP = 0.5       # a gap of this many staff spaces in a thin upright stroke 
 SLIM = 0.62          # an upright stroke at most this wide (in staff spaces) is a stem or a bar line
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
+HOLE_GAP = 0.2       # a break of up to this many staff spaces in the rim of a hollow head is closed for the open holes
 ROUND = 0.85         # the inside of a head fills at least this share of its hull: it has no dent
 CROSS = 0.2          # a mark goes through a staff line when its ink over and under the line is this near, sideways
 WEAK = (0.05, 0.2)   # the share of long strokes with gaps: a whole copy has at most the first, a weak copy the second
@@ -151,6 +152,12 @@ def read_layers(grey: np.ndarray, places: list[dict]) -> dict:
     space = float(np.median([staff['space'] for staff in staves]))
     ink = ink & (1 - blots(ink, space))
     holes = head_holes(ink, space)
+    # The rim of a hollow head can have a small break, in print and in a copy: the paper inside is closed in again
+    # when the break is closed. These open holes are kept apart: they are asked only where a head is missing.
+    size = int(max(3, round(HOLE_GAP * space))) | 1
+    closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((size, 1), np.uint8)) \
+        | cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((1, size), np.uint8))
+    open_holes = head_holes(closed, space) & (1 - ink) & (1 - holes)
     solid = ink | holes
     lines = staff_lines(solid, staves)
     free = solid & (1 - lines)
@@ -205,7 +212,7 @@ def read_layers(grey: np.ndarray, places: list[dict]) -> dict:
     thick = cv2.morphologyEx(marks, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (brush, brush)))
     # The ink without the staff lines and without the filling of the holes, with thin strokes going through the lines.
     bare = (ink & (1 - lines)) | through
-    return {'grey': grey, 'ink': ink, 'holes': holes, 'solid': solid, 'lines': lines, 'free': free, 'joined': joined, 'up': up,
+    return {'grey': grey, 'ink': ink, 'holes': holes, 'open_holes': open_holes, 'solid': solid, 'lines': lines, 'free': free, 'joined': joined, 'up': up,
             'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
             'bare': bare, 'weak': weak, 'bridge': bridge}
 
