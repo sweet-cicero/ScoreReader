@@ -24,6 +24,7 @@ FLAT_PLACES = {'G': [0, 3, -1, 2, -2, 1, -3], 'F': [-2, 1, -3, 0, -4, -1, -5]}  
 SIGN_STROKE = (1.1, 3.6)     # the height of an upright stroke of a sharp or a flat, in staff spaces
 PAIR = (0.28, 0.85)          # the two strokes of a sharp are this far apart, in staff spaces
 FIT = 1.3                    # a sign may stand this many pitch places from its place in the order
+FLAT_DRIFT = (-0.5, 0.3)     # the left edge of a flat's stroke moves at most this far to the left and to the right, in staff spaces
 STEP = (0.45, 1.7)           # the next sign of a key signature begins this far right of the last, in staff spaces
 PRIOR = 1.5                  # the weight of the custom of choir music among the witnesses for a clef (a clef's shape is 1)
 FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef's left edge, in staff spaces
@@ -146,7 +147,7 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict
         # down to the foot.
         sides = stroke_sides(layers, stroke, space) if stroke['high'] >= 1.3 else None
         stroke['sides'] = sides
-        if sides and sides['top'] <= 0.65 and 0.3 <= sides['bulge'] <= 1.0 and abs(sides['drift']) <= 0.3 \
+        if sides and sides['top'] <= 0.65 and 0.3 <= sides['bulge'] <= 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
                 and sides['foot'] <= 0.3:
             signs.append({'kind': 'flat', 'x0': float(stroke['x0']), 'x1': float(stroke['x0'] + (sides['thick'] + sides['bulge']) * space),
                           'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,

@@ -27,6 +27,7 @@ LEVEL = 0.6              # the strokes of a sharp begin and end at most this man
 EVEN = 0.72              # and the shorter one has at least this share of the longer one's height
 NARROW = 0.62            # a head on a sign is a part of the sign when it is narrower than this share of the page's heads
 GLUED = 0.6              # a head that a sign touches reaches this share of a head's width past the sign
+BOWL_HEAD = True         # a head without a stem that lies on a flat is the flat's bowl
 TANGLE = (1.2, 1.4, 2.4, 0.4)   # a sharp that a quick hand scribbled: at least this wide, from this to this high (staff
                                 # spaces), with at least this much ink (staff spaces squared) (None: such sharps are not read)
 TANGLE_CROSS = (0.4, 0.15)      # its two bars cross this share of its columns, and its two strokes this share of its rows
@@ -110,11 +111,18 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
         on = lying(sign, full)
+        if BOWL_HEAD and sign['kind'] == 'flat':
+            # The bowl of a flat that a hand drew large is an oval as wide as a head: a head without a stem that
+            # lies on a flat is its bowl.
+            bowls = [head for head in on if not head['stems'] and not head.get('thin')]
+            on = [head for head in on if not any(head is bowl for bowl in bowls)]
+        else:
+            bowls = []
         # A head that the sign touches: one mark, much wider than the sign.
         glued = [head for head in on if head['x1'] - sign['x1'] >= GLUED * wide and abs(head['place'] - place) <= HIGH]
         if on and len(glued) != len(on):
             continue
-        drop = lying(sign, small)
+        drop = lying(sign, small) + bowls
         best = None
         for head in own:
             if any(head is other for other in drop):
