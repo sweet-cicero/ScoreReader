@@ -29,6 +29,9 @@ REACH = 3.6          # a head stands at most this many staff spaces over or unde
 CORE = 0.6           # the core of a head: an oval of this share of its width and height
 HOLLOW = 0.08        # a head is hollow when this share of it was a hole
 RIM = 0.8            # a note without a stem has its own ink at this share of the rim of its hole
+FLAG_END = 0.7       # the flag of such a note begins at most this many staff spaces from the end of the stem
+FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
+SOLID_LOOP = 0.8     # ink this share of a head's height over or under a hole is a filled head beside a flag's loop (0: off)
 WHOLE = (1.12, 0.98, 0.8, 1.7)   # a whole note: its width over its height, its width over the page's head width, and
                                  # its height over the page's head height (least, most)
 HEAD_WIDE = (0.65, 3.0)   # the width of a head, in staff spaces: from a small slanted stroke to a large hand-drawn oval
@@ -37,6 +40,7 @@ SHORT_STEM = (0.9, 0.45)   # a head on a ledger line may have a stem this short:
 SHORT_SLIM = 0.15    # such a short stem is slim for this share of its way past the head
 RIM_WINGS = (0.25, 0.3)  # a ledger line at the rim of a hollow head: in this many staff spaces past the head, at both
                          # sides, it has ink in at least this share of the columns
+NO_LEDGER_FIVE = 5.75# and up to this place it stands in the first space; past it, its measured place stays
 NO_LEDGER = 6.3      # a head with no ledger line, up to this place beside the staff, stands in the first space (0: off)
 HEAD_NEAR = 1.5      # the page's head size comes from the marks at most this many staff spaces over or under a staff
 HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; else the middle of its ink
@@ -244,6 +248,22 @@ def thick_marks(layers: dict) -> list[dict]:
                 right[own_high - tall:, own_wide - cut:] = mask[own_high - tall:, own_wide - cut:]
                 parts = [_mark(left, holes, x, y, mark['blob']), _mark(right, holes, x, y, mark['blob'])]
         parts = [part for part in parts if part and part['area'] >= SMALL * space * space]
+        if len(parts) < 2 and SOLID_LOOP and mark['hole'] >= HOLLOW:
+            # A filled head with paper closed in beside it: the flag of a printed eighth note comes back to its head,
+            # and the head, the stem, the flag and a staff line close in a small room. The ink over that room (or
+            # under it) is as high as a whole head, and no rim of a hollow head is: the mark is that filled head.
+            inside = np.nonzero((mask & holes).any(axis=1))[0]
+            over, under = int(inside[0]), own_high - 1 - int(inside[-1])
+            if max(over, under) >= SOLID_LOOP * high and min(over, under) <= 0.4 * high:
+                part = mask[:inside[0]] if over > under else mask[inside[-1] + 1:]
+                # The filled head is solid. A hollow head that a hand drew on a staff line can have one half of its
+                # inside open to the paper: the ink around that half is as high as a head too, but it is a ring.
+                first = 0 if over > under else int(inside[-1]) + 1
+                own = np.ascontiguousarray(layers['ink'][y + first:y + first + part.shape[0], x:x + part.shape[1]])
+                outline, _ = cv2.findContours(own, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+                full = cv2.drawContours(np.zeros(own.shape, np.uint8), outline, -1, 1, cv2.FILLED)
+                if part.sum() >= 0.45 * wide * high and own.sum() >= 0.9 * full.sum():
+                    mark['solid_cy'] = float((0 if over > under else inside[-1] + 1) + y + np.nonzero(part)[0].mean())
         marks += parts if len(parts) >= 2 else [mark]
     return marks
 
@@ -431,7 +451,7 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
     rows, space = sorted(head.get('ledgers') or []), staff['space']
     place = head['place']
     if not rows:
-        if NO_LEDGER and 4.6 < abs(place) <= NO_LEDGER:
+        if NO_LEDGER and 4.6 < abs(place) <= NO_LEDGER_FIVE:
             return 5.0 if place > 0 else -5.0     # a head beside the staff with no ledger line stands in the first space
         return place
     up = place > 0
@@ -581,6 +601,47 @@ def _places(staff: dict, mark: dict) -> dict:
             'bottom': pitch_place(staff, mark['y1']), 'thick': staff['thick'] / staff['space']}
 
 
+def _flag_loop(layers: dict, marks: list[dict], mark: dict) -> bool:
+    """True when a hollow mark is the loop of a printed flag, not a head. The flag of a printed eighth note comes back
+    toward its head, and the flag, the stem and the staff lines close in small rooms at the right side of the stem.
+    The note itself is a filled head as large as the heads of the page, its stem has the flag at its far end, and
+    the room has no stem of its own: the upright ink that leaves it is that stem, or it goes to that head."""
+    space = layers['space']
+    wide, high = layers['head']
+    for other in marks:
+        if other is mark or other['kind'] != 'head' or (other['hole'] >= HOLLOW and other.get('solid_cy') is None):
+            continue
+        if abs(other['cx'] - mark['cx']) > 2 * space or abs(other['cy'] - mark['cy']) > 6 * space:
+            continue
+        if other['x1'] - other['x0'] + 1 < 0.75 * wide or other['y1'] - other['y0'] + 1 < 0.75 * high:
+            continue
+        for stem in other['stems']:
+            side = -1 if stem['direction'] == 'up' else 1
+            if abs(stem['x'] - mark['x0']) > 0.35 * space or (mark['cy'] - other['cy']) * side < 0.7 * space \
+                    or (mark['cy'] - stem['end']) * side > 0.8 * space:
+                continue
+            own = True
+            for way in mark['stems']:
+                same = way['direction'] == stem['direction'] and abs(way['x'] - stem['x']) <= 0.35 * space \
+                    and abs(way['end'] - stem['end']) <= 0.5 * space
+                first, last = sorted((mark['cy'], way['end']))
+                to_head = other['x0'] - 0.35 * space <= way['x'] <= other['x1'] + 0.35 * space \
+                    and first - 0.3 * space <= other['cy'] <= last + 0.3 * space
+                own = own and (same or to_head)
+            if not own:
+                continue
+            staff = _staff_of(layers, other['cx'], other['cy'])
+            if staff is None:
+                continue
+            pieces = tail_marks(layers, dict(other, staff_ref=layers['staves'][staff]), stem)
+            # A printed flag is thick where it begins, at the very end of its stem. A hollow head beside the stem of
+            # another voice is ink at the right side of that stem too, but it lies before the end.
+            if any(piece['right'] and piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6 and piece['back'] >= FLAG_BACK
+                   and piece['from_end'] <= FLAG_END for piece in pieces):
+                return True
+    return False
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -617,6 +678,11 @@ def read_symbols(layers: dict) -> dict:
                             and way['slim'] >= SHORT_SLIM * way['past'] and way['inked'] >= INKED * way['past'] \
                             and _on_ledger(layers, mark):
                         mark['stems'].append(way)
+    if FLAG_LOOP:
+        for mark in marks:
+            if mark['kind'] == 'head' and mark['hole'] >= HOLLOW and mark.get('solid_cy') is None \
+                    and _flag_loop(layers, marks, mark):
+                mark['kind'] = 'loop'
     # A mark at the far end of another head's stem is that note's flag or beam: at the top right of a stem that goes
     # up from a head, or at the bottom right of a stem that goes down from a head.
     for mark in marks:
@@ -652,6 +718,8 @@ def read_symbols(layers: dict) -> dict:
             continue
         hollow = mark['hole'] >= HOLLOW
         cy = mark['hole_cy'] if HOLE_PLACE and hollow and mark['hole_cy'] is not None else mark['cy']
+        if hollow and mark.get('solid_cy') is not None and mark['stems']:
+            hollow, cy = False, mark['solid_cy']
         place = pitch_place(layers['staves'][staff], cy)
         if mark['kind'] != 'head':
             if abs(place) <= 7.5:
@@ -818,6 +886,9 @@ BEAM_NEXT = 7.0      # the next stem of a beam stands at most this many staff sp
 BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least this share as thick as the page's beams
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
 FLAG_BACK = 0.08     # a printed flag comes back toward the head by this many staff spaces while it leaves the stem
+DOT_REACH = 1.3      # a dot stands at most this many staff spaces right of its head
+DOT_HIGH = 0.9       # a dot is at most this high, in staff spaces
+DOT_SLIM = 0.38      # and at least this wide for its height: a hand draws a dot as a short stroke
 TAIL_START = 0.4     # the hook of a flag begins this near to the end of its stem, in staff spaces
 
 
@@ -982,15 +1053,15 @@ def dots(layers: dict, heads: list[dict]) -> None:
     found = []
     for index in range(1, count):
         x, y, wide, high, area = stats[index]
-        if not (0.14 * space <= wide <= 0.6 * space and 0.14 * space <= high <= 0.6 * space):
+        if not (0.14 * space <= wide <= 0.6 * space and 0.14 * space <= high <= DOT_HIGH * space):
             continue
-        if area < 0.55 * wide * high or not 0.6 <= wide / high <= 1.7:
+        if area < 0.55 * wide * high or not DOT_SLIM <= wide / high <= 1.7:
             continue
         found.append((float(centres[index][0]), float(centres[index][1])))
     for head in heads:
         head['dot'] = False
         for x, y in found:
-            if 0.1 * space <= x - head['x1'] <= 1.3 * space and abs(y - head['cy']) <= 0.7 * space:
+            if 0.1 * space <= x - head['x1'] <= DOT_REACH * space and abs(y - head['cy']) <= 0.7 * space:
                 head['dot'] = True
                 break
 

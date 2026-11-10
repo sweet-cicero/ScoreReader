@@ -27,6 +27,7 @@ FIT = 1.3                    # a sign may stand this many pitch places from its 
 STEP = (0.45, 1.7)           # the next sign of a key signature begins this far right of the last, in staff spaces
 PRIOR = 1.5                  # the weight of the custom of choir music among the witnesses for a clef (a clef's shape is 1)
 FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef's left edge, in staff spaces
+USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
 LOST_CLEF = 3.4     # the room of a clef that the copy lost, in staff spaces from the staff's left end
 
 
@@ -312,18 +313,32 @@ def read_starts(layers: dict) -> dict:
     # A clef that the copy lost still takes its room: as much as the clefs that the page shows, from the staff's left end.
     rooms = [(start['x1'] - staff['x0']) / staff['space'] for start, staff in zip(starts, staves) if start['clef']]
     room = float(np.median(rooms)) if rooms else LOST_CLEF
+    kind = 'sharp' if key > 0 else 'flat'
+    seen = []          # for each staff: (where its notes begin, what shows it: 'key', 'clef' or None)
     for start, staff in zip(starts, staves):
-        if not start['clef']:
-            start = dict(start, x1=max(start['x1'], staff['x0'] + min(room, 2 * LOST_CLEF) * staff['space']))
-        seen = tally[staff['number']]
-        clefs.append('G' if seen['G'] > seen['F'] else 'F')
+        votes = tally[staff['number']]
+        clefs.append('G' if votes['G'] > votes['F'] else 'F')
         # Where the notes of this staff begin: after its own key signature when it shows the page's key; if not,
         # after the room that the page's key signature takes.
-        kind = 'sharp' if key > 0 else 'flat'
         own = [found for (clef, sort), (found, _) in start['chains'].items() if sort == kind and len(found) >= abs(key)] if key else []
         if own:
             found = max(own, key=lambda signs: signs[0]['x0'] >= start['x1'] - 0.25 * staff['space'])
-            ends.append(max(start['x1'], found[abs(key) - 1]['x1']))
+            seen.append((max(start['x1'], found[abs(key) - 1]['x1']), 'key'))
+        elif start['clef']:
+            seen.append((start['x1'] + (abs(key) * 1.1 + 1.0) * staff['space'] if key else start['x1'], 'clef'))
         else:
-            ends.append(start['x1'] + (abs(key) * 1.1 + 1.0) * staff['space'] if key else start['x1'])
+            seen.append((None, None))
+    # The page teaches where the notes begin: every system has the same clef and key signature, so they end equally
+    # far from the left end of each staff. The staves that show the key signature say it best. A staff that shows
+    # nothing (the copy cut off its clef), or whose "clef" stands far to the right (it is a note), begins there too.
+    best = 'key' if any(shown == 'key' for _, shown in seen) else 'clef'
+    usual = [(end - staff['x0']) / staff['space'] for (end, shown), staff in zip(seen, staves) if shown == best]
+    usual = float(np.median(usual)) if usual and USUAL_START else None
+    for (end, shown), start, staff in zip(seen, starts, staves):
+        if usual is not None and (end is None or (end - staff['x0']) / staff['space'] > usual + USUAL_START):
+            end = staff['x0'] + usual * staff['space']
+        elif end is None:
+            end = max(start['x1'], staff['x0'] + min(room, 2 * LOST_CLEF) * staff['space'])
+            end += (abs(key) * 1.1 + 1.0) * staff['space'] if key else 0.0
+        ends.append(end)
     return {'key': key, 'clefs': clefs, 'ends': ends, 'starts': starts}
