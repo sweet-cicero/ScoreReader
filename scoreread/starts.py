@@ -31,8 +31,9 @@ FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef'
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
 OPENING = 3.0       # a clef begins at most this many staff spaces after the line that opens its system (0: off)
 LOST_CLEF = 3.4     # the room of a clef that the copy lost, in staff spaces from the staff's left end
-G_TAIL = None           # (0.9, 4.5): a treble clef that does not rise over the top line hangs this far under the bottom line, and is
-#                         this high in all, in staff spaces: a bass clef ends over the bottom line (None: off)
+G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
+#                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
+#                         staff's left end, in staff spaces: a bass clef ends over the bottom line (None: off)
 
 
 def start_strokes(layers: dict, staff: dict, first: int, last: int) -> list[dict]:
@@ -245,7 +246,8 @@ def clef_shape(layers: dict, staff: dict) -> dict:
             clef = 'G'
         elif -0.8 <= over <= 0.7 and -2.2 <= under <= 0.4:
             clef = 'F'          # a bass clef hangs from the top line and ends over the bottom line
-        elif G_TAIL and under >= G_TAIL[0] and high >= G_TAIL[1] * space and over >= -0.5:
+        elif G_TAIL and G_TAIL[0] <= under <= G_TAIL[2] and high >= G_TAIL[1] * space and over >= -0.5 \
+                and x0 + x - staff['x0'] <= G_TAIL[3] * space:
             clef = 'G'          # a treble clef of a hand that stays under the top line: its tail hangs under the staff
         else:
             continue
