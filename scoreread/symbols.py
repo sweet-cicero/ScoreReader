@@ -1625,6 +1625,41 @@ def without_flag_loops(heads: list[dict], space: float) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+JOINT = (0.45, 1.5, 0.6)   # where a slanted head meets its stem inside a thick staff line: a mark at most this high (staff
+#                            spaces), at most this many places from a larger head of that stem at the same side of
+#                            the stem, and at most this share of its area (None: off)
+
+
+def without_joints(heads: list[dict], space: float) -> list[dict]:
+    """The heads without the joints of slanted heads. A hand draws a head as a slanted stroke that runs into its
+    stem. Where the stroke meets the stem inside a thick staff line, a flat piece of it stays when the line is taken
+    away, and that piece looks like a small head on the line. Two heads a step apart on one stem stand at the two
+    sides of the stem, so a flat mark beside a larger head at the same side of their stem is no head."""
+    if not JOINT:
+        return heads
+    def size(head: dict) -> float:
+        return float(head.get('area') or (head['x1'] - head['x0'] + 1) * (head['y1'] - head['y0'] + 1))
+
+    gone = set()
+    for head in heads:
+        if head.get('thin') or head['y1'] - head['y0'] + 1 > JOINT[0] * space:
+            continue
+        # The joint lies in a line of the staff.
+        if abs(head['place']) > 4.3 or abs(head['place'] / 2 - round(head['place'] / 2)) > 0.15:
+            continue
+        for stem in head['stems']:
+            for other in heads:
+                if other is head or other['staff'] != head['staff'] or id(other) in gone:
+                    continue
+                if not 0.5 <= abs(other['place'] - head['place']) <= JOINT[1] or size(head) > JOINT[2] * size(other):
+                    continue
+                shared = any(far['direction'] == stem['direction'] and abs(far['x'] - stem['x']) <= 0.35 * space
+                             for far in other['stems'])
+                if shared and (head['cx'] - stem['x']) * (other['cx'] - stem['x']) > 0:
+                    gone.add(id(head))
+    return [head for head in heads if id(head) not in gone]
+
+
 def dots(layers: dict, heads: list[dict]) -> None:
     """Sets head['dot'] to True where a dot stands at the right of a head: a small round mark in the space beside it."""
     space = layers['space']
