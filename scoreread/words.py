@@ -15,7 +15,7 @@ import numpy as np
 WORDS = True               # the bands of the words are looked for
 LETTERS = (0.35, 1.8, 6.0, 5.0)   # a letter (or a word of joined letters) is a free piece of ink from this to this many
 #                                   staff spaces high, at most this wide, and at most this many times as wide as high
-LINE = (8, 0.3, 0.6, 3.5)  # a band of words: a row that crosses at least this many letters; the band goes on while its
+LINE = (8, 0.3, 0.6, 2.4)  # a band of words: a row that crosses at least this many letters; the band goes on while its
 #                            rows cross this share of them (and two at least); from this to this many staff spaces high
 WORDS_FAR = 9.0            # the words stand at most this many staff spaces over the first staff or under the last
 WORDS_NEAR = 0.3           # a stem's end this many staff spaces before the band lies in the band (a letter's top)

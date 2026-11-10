@@ -35,6 +35,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     the note; the tied notes stay two notes, as in MusicXML) and 'mark': what the note was read from (the size and
     place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams)."""
     layers = read_layers(grey, places)
+    # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
+    words = layers['words'] = word_bands(layers)
     symbols = read_symbols(layers)
     heads = symbols['heads']
     space = layers['space']
@@ -55,7 +57,6 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
-    words = word_bands(layers)
     cut_stems(layers, heads, words)
     count_tails(layers, heads)
     heads = without_flag_loops(heads, space)

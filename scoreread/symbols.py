@@ -46,6 +46,12 @@ NO_LEDGER_FIVE = 5.75# and up to this place it stands in the first space; past i
 NO_LEDGER = 6.3      # a head with no ledger line, up to this place beside the staff, stands in the first space (0: off)
 FAR_STEM = (2.0, 8.4, 0.75, 1.35)   # a head past NO_LEDGER with no ledger line is a note when its stem goes on this many
 #                      staff spaces past it, up to this place, and its box is from this to this share of the page's head (None: off)
+WORD_STEM = (0.35, 2.0, 0.7, 1.4, 1.0)   # a mark at most 2.0 staff spaces before the words is a note when its upright
+#                    ink goes on this many staff spaces past it and into the words (or it is slim and ends at most
+#                    1.0 staff spaces before them), and the mark is from this to this share as high as the heads of
+#                    the page (None: off)
+WORD_MARKS = True    # a thick mark in a band of words is a letter: no head and no sign
+LEDGER_WORDS = True  # a ledger line is looked for up to the words, not in them
 HEAD_NEAR = 1.5      # the page's head size comes from the marks at most this many staff spaces over or under a staff
 HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; else the middle of its ink
 LEDGER_INK = True    # a ledger line is ink: the filled inside of a hollow head does not count for it
@@ -412,6 +418,42 @@ def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
     return best
 
 
+def _at_staff(layers: dict, mark: dict) -> bool:
+    """True when a mark stands where a head needs no ledger line (in the staff or in the first space beside it), or
+    on a ledger line."""
+    index = _staff_of(layers, mark['cx'], mark['cy'])
+    if index is None:
+        return False
+    return abs(pitch_place(layers['staves'][index], mark['cy'])) <= 5.6 or _on_ledger(layers, mark)
+
+
+def _in_words(layers: dict, mark: dict) -> bool:
+    """True when a mark stands in a band of words (scoreread.words): it is a letter."""
+    space = layers['space']
+    return any(band['x0'] <= mark['cx'] <= band['x1'] and band['top'] <= mark['cy'] <= band['bottom']
+               and mark['y0'] >= band['top'] - 0.3 * space and mark['y1'] <= band['bottom'] + 0.5 * space
+               for band in layers.get('words') or [])
+
+
+def _into_words(layers: dict, mark: dict, way: dict | None, before: float = 0.3) -> dict | None:
+    """The band of words (scoreread.words) that the upright ink of a mark runs into, or ends at most `before` staff
+    spaces before, when the mark stands clear of the band and near it; else None."""
+    if not way:
+        return None
+    space = layers['space']
+    for band in layers.get('words') or []:
+        if not band['x0'] <= way['x'] <= band['x1']:
+            continue
+        if way['direction'] == 'down':
+            if mark['cy'] < band['top'] - 0.2 * space and band['top'] <= mark['y1'] + WORD_STEM[1] * space \
+                    and way['end'] >= band['top'] - before * space:
+                return band
+        elif mark['cy'] > band['bottom'] + 0.2 * space and band['bottom'] >= mark['y0'] - WORD_STEM[1] * space \
+                and way['end'] <= band['bottom'] + before * space:
+            return band
+    return None
+
+
 def is_stem(way: dict | None, space: float) -> bool:
     """True when the upright ink that leaves a mark is a stem: long enough, and slim where it is past the mark.
     The head of a chord over or under a head is upright ink too, but it is not slim."""
@@ -501,6 +543,14 @@ def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
     else:
         top, bottom = int(staff['rows'][4] + 0.35 * space), int(head['y1'] + 0.3 * space)
     top, bottom = max(0, top), min(free.shape[0] - 1, bottom)
+    if LEDGER_WORDS:
+        # The level strokes of the letters are no ledger lines.
+        for band in layers.get('words') or []:
+            if band['x0'] <= head['cx'] <= band['x1']:
+                if not above and head['cy'] < band['top'] <= bottom:
+                    bottom = band['top'] - 1
+                if above and head['cy'] > band['bottom'] >= top:
+                    top = band['bottom'] + 1
     if bottom <= top:
         return []
     window = free[top:bottom + 1, first:last + 1]
@@ -817,10 +867,15 @@ def read_symbols(layers: dict) -> dict:
         mark['ways'] = {f"{'up' if up else 'down'}_{'right' if right else 'left'}": _way(layers, mark, up, right)
                         for up in (True, False) for right in (True, False)}
         mark['kind'] = _kind(mark, space)
-        # A beam hangs on two stems that leave it the same way, one at each end.
+        if WORD_MARKS and mark['kind'] and _in_words(layers, mark):
+            mark['kind'] = None       # a letter of the words
+        # A beam hangs on two stems that leave it the same way, one at each end. (Right over the words, the two are
+        # letters under a head. Under the words a slur hangs on two letters, and that is no head.)
         ways = mark['ways']
         for left, right in (('down_left', 'down_right'), ('up_left', 'up_right')):
-            if is_stem(ways[left], space) and is_stem(ways[right], space) and ways[right]['x'] - ways[left]['x'] >= space:
+            if is_stem(ways[left], space) and is_stem(ways[right], space) and ways[right]['x'] - ways[left]['x'] >= space \
+                    and not (WORD_STEM and left == 'down_left' and _into_words(layers, mark, ways[left])
+                             and _into_words(layers, mark, ways[right]) and _at_staff(layers, mark)):
                 mark['kind'] = 'beam' if mark['kind'] == 'head' else mark['kind']
         if mark['kind'] == 'head':
             for name in ('up_right', 'down_left'):
@@ -835,6 +890,19 @@ def read_symbols(layers: dict) -> dict:
                             and way['slim'] >= SHORT_SLIM * way['past'] and way['inked'] >= INKED * way['past'] \
                             and _on_ledger(layers, mark):
                         mark['stems'].append(way)
+            if not mark['stems'] and WORD_STEM:
+                # A note right over the words has no room for its stem: the stem is a short slim stub that ends
+                # before the words, or it runs into a letter. A mark as high as the heads of the page with such
+                # upright ink is that note. (Under the words a slur is such a mark too.)
+                high = mark['y1'] - mark['y0'] + 1
+                for name in ('down_left',):
+                    way = mark['ways'][name]
+                    if way and way['past'] >= WORD_STEM[0] * space and _at_staff(layers, mark) \
+                            and WORD_STEM[2] * layers['head'][1] <= high <= WORD_STEM[3] * layers['head'][1] \
+                            and (_into_words(layers, mark, way) or (WORD_STEM[4] and way['slim'] >= 0.8 * way['past']
+                                                                    and _into_words(layers, mark, way, WORD_STEM[4]))):
+                        mark['stems'].append(way)
+                        mark['word_stem'] = True
     if FLAG_LOOP:
         for mark in marks:
             if mark['kind'] == 'head' and mark['hole'] >= HOLLOW and mark.get('solid_cy') is None \
@@ -920,7 +988,7 @@ def read_symbols(layers: dict) -> dict:
                 # A faint ledger line is lost in the copy. A letter of the words has a bowl and a stem too, but its
                 # stem is short: a head as large as the heads of the page on a long stem is a note.
                 wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
-                if not (FAR_STEM and found is not None and abs(place) <= FAR_STEM[1]
+                if not (FAR_STEM and found is not None and abs(place) <= FAR_STEM[1] and not mark.get('word_stem')
                         and any(stem['past'] >= FAR_STEM[0] * space for stem in mark['stems'])
                         and FAR_STEM[2] * layers['head'][0] <= wide <= FAR_STEM[3] * layers['head'][0]
                         and FAR_STEM[2] * layers['head'][1] <= high <= FAR_STEM[3] * layers['head'][1]):
