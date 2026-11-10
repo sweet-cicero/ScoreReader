@@ -211,11 +211,13 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
                 onset = last_onset + last_shortest
             for voice in {event['voice'] for event in column}:
                 lengths = [event['length'] for event in column if event['voice'] == voice]
-                length = min(lengths)
-                free[voice] = onset + length
+                free[voice] = onset + min(lengths)
                 for event in column:
                     if event['voice'] != voice:
                         continue
+                    # Each head keeps its own length: a head of the other voice whose stem was not found stands in
+                    # this voice's column too.
+                    length = event['length']
                     name = (MIDDLE[clef] + event['place']) % 7
                     sign = event['head'].get('sign')
                     if sign is not None:

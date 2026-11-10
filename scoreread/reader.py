@@ -83,7 +83,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
                                   agreed=note.get('agreed', False), votes=note.get('votes'),
                                   mark={'wide': int(head['x1'] - head['x0'] + 1), 'high': int(head['y1'] - head['y0'] + 1),
                                         'y': float(head['cy']), 'at': float(head['place']), 'hollow': bool(head['hollow']),
-                                        'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')),
+                                        'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'alt': head.get('alt'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')),
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))

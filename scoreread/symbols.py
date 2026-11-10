@@ -33,6 +33,14 @@ WHOLE = (1.12, 0.98, 0.8, 1.7)   # a whole note: its width over its height, its 
                                  # its height over the page's head height (least, most)
 HEAD_WIDE = (0.65, 3.0)   # the width of a head, in staff spaces: from a small slanted stroke to a large hand-drawn oval
 HEAD_HIGH = (0.3, 2.0)    # and its height
+SHORT_STEM = (0.9, 0.45)   # a head on a ledger line may have a stem this short: from its middle, and past its edge
+SHORT_SLIM = 0.15    # such a short stem is slim for this share of its way past the head
+RIM_WINGS = (0.25, 0.3)  # a ledger line at the rim of a hollow head: in this many staff spaces past the head, at both
+                         # sides, it has ink in at least this share of the columns
+NO_LEDGER = 6.3      # a head with no ledger line, up to this place beside the staff, stands in the first space (0: off)
+HEAD_NEAR = 1.5      # the page's head size comes from the marks at most this many staff spaces over or under a staff
+HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; else the middle of its ink
+LEDGER_INK = True    # a ledger line is ink: the filled inside of a hollow head does not count for it
 SHARP_SLIM = 0.3     # the strokes of a sharp are slim for this many staff spaces where they leave its mark
 
 
@@ -89,7 +97,8 @@ def _mark(mask: np.ndarray, holes: np.ndarray, x: int, y: int, blob: int) -> dic
     inside = mask & holes
     return {'x0': int(x + xs.min()), 'x1': int(x + xs.max()), 'y0': int(y + ys.min()), 'y1': int(y + ys.max()),
             'area': size, 'cx': float(x + xs.mean()), 'cy': float(y + ys.mean()), 'hole': float(inside.sum()) / size,
-            'hole_cy': float(y + np.nonzero(inside)[0].mean()) if inside.any() else None, 'blob': blob}
+            'hole_cy': float(y + np.nonzero(inside)[0].mean()) if inside.any() else None, 'blob': blob,
+            'profile': mask[ys.min():ys.max() + 1].sum(axis=1)}
 
 
 def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tuple[float, float]]:
@@ -167,7 +176,13 @@ def thick_marks(layers: dict) -> list[dict]:
             mark = _mark(whole[first:last + 1], holes[first:last + 1], x, y + first, index)
             if mark and mark['area'] >= SMALL * space * space:
                 pieces.append((mark, whole[first:last + 1], holes[first:last + 1], x, y + first))
-    wide, high = head_size([piece[0] for piece in pieces], space)
+    own = [piece[0] for piece in pieces]
+    if HEAD_NEAR:
+        # The words under the staves have thick marks too: the letters of a typewriter are small and round. Only the
+        # marks in and near the staves show the size of the page's heads.
+        own = [mark for mark in own if any(staff['rows'][0] - HEAD_NEAR * space <= mark['cy'] <= staff['rows'][4] + HEAD_NEAR * space
+                                           and staff['x0'] <= mark['cx'] <= staff['x1'] for staff in layers['staves'])]
+    wide, high = head_size(own, space)
     layers['head'] = (wide, high)
     marks = []
     for mark, mask, holes, x, y in pieces:
@@ -375,6 +390,9 @@ def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
     if bottom <= top:
         return []
     window = free[top:bottom + 1, first:last + 1]
+    if LEDGER_INK:
+        # The filling of a hollow head is no ink: a wide half note beside the staff is not its own ledger line.
+        window = window & (1 - layers['holes'][top:bottom + 1, first:last + 1])
     cover = window.mean(axis=1)
     cover[1:] = np.maximum(cover[1:], window[:-1].mean(axis=1))    # a line that leans a little
     rows, run = [], []
@@ -385,6 +403,22 @@ def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
             if len(run) <= 0.6 * space:
                 rows.append(top + (run[0] + run[-1]) / 2)
             run = []
+    if RIM_WINGS and (head.get('hollow') or head.get('hole', 0.0) >= HOLLOW):
+        # The upper and the lower rim of a wide hollow head are level ink too. A ledger line at the edge of such a
+        # head goes on past the head at both sides.
+        high = head['y1'] - head['y0'] + 1
+        reach = int(round(RIM_WINGS[0] * space))
+        kept = []
+        for row in rows:
+            at_rim = head['y0'] - 1 <= row <= head['y0'] + 0.3 * high or head['y1'] - 0.3 * high <= row <= head['y1'] + 1
+            if at_rim:
+                band = free[max(0, int(row) - 2):int(row) + 3]
+                left = band[:, max(0, head['x0'] - reach):max(0, head['x0'] - 1)].max(axis=0, initial=0)
+                right = band[:, head['x1'] + 2:head['x1'] + reach + 1].max(axis=0, initial=0)
+                if not (left.size and right.size and left.mean() >= RIM_WINGS[1] and right.mean() >= RIM_WINGS[1]):
+                    continue
+            kept.append(row)
+        rows = kept
     return rows
 
 
@@ -397,6 +431,8 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
     rows, space = sorted(head.get('ledgers') or []), staff['space']
     place = head['place']
     if not rows:
+        if NO_LEDGER and 4.6 < abs(place) <= NO_LEDGER:
+            return 5.0 if place > 0 else -5.0     # a head beside the staff with no ledger line stands in the first space
         return place
     up = place > 0
     merged = []
@@ -418,6 +454,28 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
     if abs(found) < abs(place) - 2.2:
         return None       # too few ledger lines for a head this far from the staff: a letter over a hyphen
     return found if abs(found - place) <= 1.6 else place
+
+
+def _on_ledger(layers: dict, mark: dict) -> bool:
+    """True when a mark beside the staff lies on a ledger line or hangs on one."""
+    index = _staff_of(layers, mark['cx'], mark['cy'])
+    if index is None:
+        return False
+    staff = layers['staves'][index]
+    if abs(pitch_place(staff, mark['cy'])) <= 4.6:
+        return False
+    free, space = layers['free'], staff['space']
+    reach = int(round(0.35 * space))
+    for row in ledger_lines(layers, staff, mark):
+        if not mark['y0'] - 0.2 * space <= row <= mark['y1'] + 0.2 * space:
+            continue
+        # The line goes on past the mark at both sides: the arc of a fermata is thick ink too, but it ends there.
+        top, bottom = max(0, int(row) - 2), int(row) + 3
+        left = free[top:bottom, max(0, mark['x0'] - reach):max(0, mark['x0'] - 1)].max(axis=0, initial=0)
+        right = free[top:bottom, mark['x1'] + 2:mark['x1'] + reach + 1].max(axis=0, initial=0)
+        if left.size and right.size and left.mean() >= 0.7 and right.mean() >= 0.7:
+            return True
+    return False
 
 
 def _share_stems(marks: list[dict], space: float) -> None:
@@ -507,6 +565,22 @@ def _rim(layers: dict, mark: dict) -> float:
     return float((ring & own).sum()) / max(1, int(ring.sum()))
 
 
+def _places(staff: dict, mark: dict) -> dict:
+    """Other measures of a mark's place on its staff, for the record: 'mass' (the middle of its ink), 'bare' (the
+    middle of its ink outside the rows of the staff lines), 'box' (the middle of its box), 'top' and 'bottom' (its
+    edges)."""
+    profile = np.asarray(mark['profile'], float)
+    rows = mark['y0'] + np.arange(len(profile))
+    half = staff['thick'] / 2 + 0.5
+    off = np.ones(len(profile), bool)
+    for line in staff['rows']:
+        off &= np.abs(rows - line) > half
+    bare = float((rows[off] * profile[off]).sum() / profile[off].sum()) if profile[off].sum() > 0 else mark['cy']
+    return {'mass': pitch_place(staff, mark['cy']), 'bare': pitch_place(staff, bare),
+            'box': pitch_place(staff, (mark['y0'] + mark['y1']) / 2), 'top': pitch_place(staff, mark['y0']),
+            'bottom': pitch_place(staff, mark['y1']), 'thick': staff['thick'] / staff['space']}
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -534,6 +608,15 @@ def read_symbols(layers: dict) -> dict:
             for name in ('up_right', 'down_left'):
                 if is_stem(mark['ways'][name], space):
                     mark['stems'].append(mark['ways'][name])
+            if not mark['stems'] and SHORT_STEM:
+                # A note on a ledger line under the staff has little room over the words: its stem is short. The
+                # ledger line shows that the mark is a note.
+                for name in ('up_right', 'down_left'):
+                    way = mark['ways'][name]
+                    if way and way['length'] >= SHORT_STEM[0] * space and way['past'] >= SHORT_STEM[1] * space \
+                            and way['slim'] >= SHORT_SLIM * way['past'] and way['inked'] >= INKED * way['past'] \
+                            and _on_ledger(layers, mark):
+                        mark['stems'].append(way)
     # A mark at the far end of another head's stem is that note's flag or beam: at the top right of a stem that goes
     # up from a head, or at the bottom right of a stem that goes down from a head.
     for mark in marks:
@@ -568,7 +651,7 @@ def read_symbols(layers: dict) -> dict:
         if staff is None:
             continue
         hollow = mark['hole'] >= HOLLOW
-        cy = mark['hole_cy'] if hollow and mark['hole_cy'] is not None else mark['cy']
+        cy = mark['hole_cy'] if HOLE_PLACE and hollow and mark['hole_cy'] is not None else mark['cy']
         place = pitch_place(layers['staves'][staff], cy)
         if mark['kind'] != 'head':
             if abs(place) <= 7.5:
@@ -587,13 +670,13 @@ def read_symbols(layers: dict) -> dict:
                 continue
         head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': mark['cx'], 'cy': cy,
                 'staff': staff, 'place': place, 'hollow': hollow, 'hole': mark['hole'], 'stems': mark['stems'],
-                'mark': number, 'core': core_light(layers, mark)}
+                'mark': number, 'core': core_light(layers, mark), 'alt': _places(layers['staves'][staff], mark)}
         if abs(place) > 4 + 2 * REACH:
             continue
         if abs(place) > 4.6:
             head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
             found = ledger_place(layers, layers['staves'][staff], head)
-            if found is None or (not head['ledgers'] and abs(place) > 5.6):
+            if found is None or (not head['ledgers'] and abs(place) > max(5.6, NO_LEDGER)):
                 continue
             head['place'] = found
         heads.append(head)
@@ -603,10 +686,12 @@ def read_symbols(layers: dict) -> dict:
 # ----------------------------------------------------------------------------------------------------------------
 # Heads that a hand drew as one thin stroke
 
-THIN_WIDE = (0.55, 2.2)    # the width of a head drawn as one stroke, in staff spaces
+THIN_WIDE = (0.55, 2.6)    # the width of a head drawn as one stroke, in staff spaces
 THIN_HIGH = (0.2, 1.3)     # and its height
 THIN_NEAR = 1.3            # the head lies at most this many staff spaces from the end of its stem
 THIN_HOLLOW = 0.15         # such a head is hollow when its ink goes around this share of its box
+LOOP_STEM = True           # an open oval may have its stem as one of its sides
+LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
 
 
@@ -649,10 +734,16 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         own = part & (marks[y:y + high, x:x + wide] > 0)
         if own.sum() < 0.35 * area:
             continue
+        loop = _loop(part, space)
+        if LOOP_STEM and loop < THIN_HOLLOW:
+            # The stem was taken out of the marks: an oval that has its stem as one side is open there.
+            edge = int(round(0.25 * space))
+            first, last = max(0, x - edge), min(ink.shape[1], x + wide + edge)
+            with_stem = (labels[y:y + high, first:last] == index) | (layers['stems'][y:y + high, first:last] > 0)
+            loop = max(loop, _loop(with_stem, space) * with_stem.shape[1] / wide)
         pieces.append({'x0': int(x), 'y0': int(y), 'x1': int(x + wide - 1), 'y1': int(y + high - 1), 'area': int(area),
                        'cx': float(centres[index][0]), 'cy': float(centres[index][1]),
-                       'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area,
-                                   _loop(part, space))})
+                       'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area, loop)})
     used = [(stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end'])) for head in heads for stem in head['stems']]
     strokes = [stroke for stroke in layers['strokes'] if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 >= THIN_STEM * space]
     found = []
@@ -685,7 +776,9 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     past = top - piece['cy']
                     side = piece['cx'] - x
                     reach = piece['x0'] - x
-                if not (-0.25 * space <= past <= THIN_NEAR * space and -0.15 * space <= side <= 1.6 * space
+                # The stem of an open oval runs along its side, so the oval's middle lies before the stem's end.
+                back = 0.25 * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1) if piece['hole'] >= THIN_HOLLOW else 0.0)
+                if not (-back <= past <= THIN_NEAR * space and -0.15 * space <= side <= 1.6 * space
                         and reach <= 0.7 * space):
                     continue
                 far = abs(past) + max(0.0, reach)
@@ -706,7 +799,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         if abs(place) > 4.6:
             head['ledgers'] = ledger_lines(layers, staves[staff], head)
             place = ledger_place(layers, staves[staff], head)
-            if place is None or (not head['ledgers'] and abs(head['place']) > 5.6):
+            if place is None or (not head['ledgers'] and abs(head['place']) > max(5.6, NO_LEDGER)):
                 continue
             head['place'] = place
         found.append(head)
