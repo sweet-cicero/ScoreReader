@@ -908,7 +908,9 @@ OPEN_HOLE = 0.12           # the open hole of such a head has at least this area
 TWO_STEMS = True           # a thick head with two stems may give one of them to a thin head of the other voice
 TWO_ALONG = 1.0            # that thin head hangs anywhere on the stem, up to this many staff spaces before its far end (0: off)
 TWO_APART = True           # and it may touch the thick head: the thick head's own ink is no part of it
+THIN_LEDGER = 0.25         # a ledger line is at most this thick, in staff spaces: a thin head on it is higher (0: off)
 LINE_REST = 0.6            # a piece no higher than a staff line is a rest of the line when less than this share is its own ink (0: off)
+ONE_ALONG = 1.0            # on the one stem of a thick head too, when it lies this many staff spaces from that head (0: off)
 ALONG_HIGH = 0.4           # such a thin head is at least this high, in staff spaces: the rest of a staff line is flat
 OPEN_RIM = 0.5             # an open hole has the head's own ink at this share of its rim (0: off)
 LOOP_STEM = True           # an open oval may have its stem as one of its sides
@@ -959,6 +961,29 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
     pieces = []
     for index in range(1, count):
         x, y, wide, high, area = stats[index]
+        cx, cy = float(centres[index][0]), float(centres[index][1])
+        if THIN_LEDGER and THIN_WIDE[1] * space < wide <= 6 * space and THIN_HIGH[0] * space <= high <= THIN_HIGH[1] * space:
+            # A thin head on a ledger line or under it is one piece of ink with the line, and the line is longer than
+            # a head. The line is the level ink that goes through most of the piece; the head is where the piece has
+            # ink over or under that line.
+            staff = _staff_of(layers, cx, cy)
+            whole = labels[y:y + high, x:x + wide] == index
+            line = np.nonzero(whole.sum(axis=1) >= 0.6 * wide)[0]
+            if staff is not None and not staves[staff]['rows'][0] - 0.6 * space <= cy <= staves[staff]['rows'][4] + 0.6 * space:
+                rest = whole.copy()
+                if len(line) and line[-1] - line[0] + 1 <= max(3.0, THIN_LEDGER * space):
+                    rest[max(0, line[0] - 1):line[-1] + 2] = False
+                    body = np.nonzero(rest.sum(axis=0) >= max(2.0, 0.08 * space))[0]
+                else:
+                    # No one level line: the head is where the ink is higher than a line is thick.
+                    body = np.nonzero(whole.sum(axis=0) > max(3.0, THIN_LEDGER * space))[0]
+                if len(body) and THIN_WIDE[0] * space <= body[-1] - body[0] + 1 <= THIN_WIDE[1] * space \
+                        and max(body[0], wide - 1 - body[-1]) >= 0.3 * space:
+                    ys, xs = np.nonzero(rest[:, body[0]:body[-1] + 1])
+                    cx, cy = float(x + body[0] + xs.mean()), float(y + ys.mean())
+                    rows = np.nonzero(whole[:, body[0]:body[-1] + 1].any(axis=1))[0]
+                    x, y, wide, high = x + int(body[0]), y + int(rows[0]), int(body[-1] - body[0] + 1), int(rows[-1] - rows[0] + 1)
+                    area = int((labels[y:y + high, x:x + wide] == index).sum())
         if not (THIN_WIDE[0] * space <= wide <= THIN_WIDE[1] * space and THIN_HIGH[0] * space <= high <= THIN_HIGH[1] * space):
             continue
         if area < 0.06 * space * space:
@@ -986,7 +1011,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     | (layers['lines'][y0:y + high + over, first:last] > 0)
                 loop = max(loop, _loop(box, space) * box.shape[0] * box.shape[1] / (wide * high))
         pieces.append({'x0': int(x), 'y0': int(y), 'x1': int(x + wide - 1), 'y1': int(y + high - 1), 'area': int(area),
-                       'cx': float(centres[index][0]), 'cy': float(centres[index][1]),
+                       'cx': cx, 'cy': cy,
                        'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area, loop)})
     # A thick head with a stem up and a stem down can be two notes: a thin head of the other voice lies right over
     # it or under it, and its stem passed through the thick head. So the stems of such a head are asked too.
@@ -1043,6 +1068,14 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 if id(stem) not in matched:
                     asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
                                  [(head, stem)], True))
+        if ONE_ALONG:
+            # A head with one stem: the thin head of the other voice can hang on that same stem, farther along. The
+            # ink that leaves the thick head is then the other voice's stem, and the two heads share it as a chord.
+            for head in heads:
+                if len(head['stems']) == 1 and not any(head is other for other in two):
+                    stem = head['stems'][0]
+                    asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
+                                 [(head, stem)], True))
     found = []
     flags = {}
 
@@ -1071,13 +1104,21 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 if not (-0.15 * space <= side <= 1.6 * space and reach <= 0.7 * space):
                     continue
                 along = None
-                if TWO_ALONG and len(owners) == 1 and owners[0][1]['direction'] == direction and len(owners[0][0]['stems']) == 2:
+                if TWO_ALONG and len(owners) == 1 and owners[0][1]['direction'] == direction \
+                        and (len(owners[0][0]['stems']) == 2 or (whole and len(owners[0][0]['stems']) == 1 and ONE_ALONG
+                                                                 and -0.6 * space <= reach <= 0.2 * space)):
                     # The thin head of the other voice hangs on this stem anywhere between the thick head and the
                     # stem's far end, at its own side of the stem. A flag hangs at the far end.
                     owner, stem = owners[0]
                     between = (owner['cy'] - piece['cy']) if direction == 'up' else (piece['cy'] - owner['cy'])
                     to_end = (piece['y0'] - stem['end']) if direction == 'up' else (stem['end'] - piece['y1'])
-                    if between >= 0.3 * space and to_end >= TWO_ALONG * space and side >= 0.15 * space \
+                    alone = len(owner['stems']) == 1
+                    # Beside the staff the words are near: there only an oval counts on a stem that a head has alone.
+                    rows = staves[staff]['rows']
+                    if alone and piece['hole'] < THIN_HOLLOW and not rows[0] - 0.6 * space <= piece['cy'] <= rows[4] + 0.6 * space:
+                        continue
+                    if between >= (ONE_ALONG if alone else 0.3) * space and to_end >= TWO_ALONG * space \
+                            and side >= 0.15 * space \
                             and piece['y1'] - piece['y0'] + 1 >= ALONG_HIGH * space and not flagged(owner, stem) \
                             and not any(abs(head['cx'] - piece['cx']) <= 0.7 * space and abs(head['cy'] - piece['cy']) <= 0.45 * space
                                         for head in heads + found):
@@ -1107,9 +1148,11 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         if owners:
             owner, stem = owners[0]
             between = (owner['cy'] - piece['cy']) if direction == 'up' else (piece['cy'] - owner['cy'])
-            if len(owners) > 1 or stem['direction'] != direction or between < 0.3 * space or len(owner['stems']) < 2:
+            shared = whole and len(owner['stems']) == 1 and not any(owner is other for other in two)
+            if len(owners) > 1 or stem['direction'] != direction or between < 0.3 * space or (len(owner['stems']) < 2 and not shared):
                 continue
-            owner['stems'].remove(stem)
+            if not shared:
+                owner['stems'].remove(stem)
             end = stem['end'] if whole else end
         elif TWO_ALONG:
             # A thick head under or over this thin head took the thin head's own ink for a stem: it is none.
