@@ -4,8 +4,8 @@ The steps: the layers of the ink (scoreread.layers), the symbols on them (scorer
 signature at the start of each staff (scoreread.starts), the sharps, flats and naturals before a note
 (scoreread.signs), the ties (scoreread.ties), and the music rules that turn the symbols into notes (scoreread.music).
 
-read_page() gives the same kind of result as scoreread.engine.read_page() (the copisteria step), so the two can be
-measured side by side on the test kit.
+The yardstick (bench/yardstick, copisteria's network) gives the same kind of result for the same clean page, so the
+two can be measured side by side on the test kit. Nothing of it is loaded here.
 """
 from __future__ import annotations
 

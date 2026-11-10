@@ -1,7 +1,6 @@
 """The command: a page of a score in, its notes out. Everything runs on this computer.
 
-usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--name NAME]
-                                [--symbols own | copisteria] [--ledger]
+usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K]
        python -m scoreread layers <page.png | score.pdf> --out <folder> [--page N]
        python -m scoreread layout <page.png | score.pdf> --out <folder> [--page N]
 
@@ -11,7 +10,7 @@ read    finds the staves and the systems, builds the clean page, reads it, and w
           <name>.layout.json  the staves and systems that were found
           <name>.clean.png    the clean page that was read
           <name>.staves.png   the scan with the staves drawn on it (small), as a check
-          <name>.layers.png   the clean page with each layer of ink in its own colour (own symbol step only)
+          <name>.layers.png   the clean page with each layer of ink in its own colour
 layers  does the first steps and writes the picture of the layers (no reading), to check a hard page at a glance.
 layout  does only the first steps (no reading), to check a page fast.
 
@@ -19,9 +18,8 @@ A PDF that notation software wrote (Finale, MuseScore, Encore) is read from its 
 sign is a character of a music font at its exact place (scoreread.vector; needs pdfplumber). --drawing off reads such
 a page as an image instead.
 
---symbols names the symbol step. `own` (the default) reads the symbols with rules on the ink: no model, and only
-OpenCV and NumPy are needed. `copisteria` reads them with copisteria's network, as a yardstick; it needs copisteria
-(see the README), and --ledger turns the ledger rule on for it (see ledger.py).
+The symbols are read with rules on the ink: no model, and only OpenCV and NumPy are needed. --key-before gives the
+key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature.
 
 A PDF page is made into an image at 300 dpi with pdftoppm. A page that is a photo kept with no size of its own (a
 phone picture at 72 dpi makes a page of 42 by 56 inches) is made as long as an A4 page at 300 dpi.
@@ -75,15 +73,13 @@ def main(argv=None) -> int:
     parser.add_argument('source')
     parser.add_argument('--out', required=True)
     parser.add_argument('--page', type=int, default=1)
-    parser.add_argument('--symbols', choices=['own', 'copisteria'], default='own')
-    parser.add_argument('--ledger', action='store_true')
     parser.add_argument('--name', default=None)
     parser.add_argument('--drawing', choices=['auto', 'off'], default='auto')
     parser.add_argument('--key-before', type=int, default=None,
                         help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
     args = parser.parse_args(argv)
     start = time.time()
-    if args.command == 'read' and args.symbols == 'own' and args.drawing == 'auto' and Path(args.source).suffix.lower() == '.pdf':
+    if args.command == 'read' and args.drawing == 'auto' and Path(args.source).suffix.lower() == '.pdf':
         # A PDF that notation software wrote holds its signs and its words as they are: no image is read.
         try:
             from .vector import read_pdf_page  # noqa: PLC0415
@@ -123,7 +119,7 @@ def main(argv=None) -> int:
               'staves': staves, 'systems': systems, 'clean_page': places}
     (out / f'{name}.layout.json').write_text(json.dumps(layout))
     summary = {'name': name, 'staves': len(staves), 'systems': [len(system) for system in systems]}
-    if args.command == 'layers' or (args.command == 'read' and args.symbols == 'own'):
+    if args.command in ('layers', 'read'):
         from .layers import picture, read_layers  # noqa: PLC0415
         from .reader import read_page  # noqa: PLC0415
         if args.command == 'layers':
@@ -136,15 +132,6 @@ def main(argv=None) -> int:
                 {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'],
                  'key': result['key'], 'clefs': result['clefs'], 'space': result['layers']['space']}))
             summary.update(symbols='own', notes=len(result['notes']), key=result['key'], clefs=result['clefs'])
-    elif args.command == 'read':
-        from .engine import read_page  # noqa: PLC0415
-        result = read_page(out / f'{name}.clean.png', places, ledger=args.ledger)
-        (out / f'{name}.musicxml').write_text(result['musicxml'])
-        (out / f'{name}.notes.json').write_text(json.dumps(
-            {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'], 'ledger': result['ledger']}))
-        summary.update(symbols='copisteria', notes=len(result['notes']), reader_staves=result['staves'],
-                       reader_systems=result['systems'], ledger_changes=len(result['ledger']),
-                       tenor_staves=len(result['tenor_staves']))
     summary['seconds'] = round(time.time() - start, 1)
     print(json.dumps(summary))
     return 0
