@@ -1689,6 +1689,8 @@ THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from 
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
+THIN_BEAM_OVER = 0.6            # a thin beam passes over a stem between its two stems that ends this many staff spaces before it (0: off)
+THIN_BEAM_STAFF = True          # the thickness of a staff line that hides a beam is that of the beam's own staff
 THIN_BEAM_END = 0.0             # the beam may meet a stem this many staff spaces past the end that was found for it (0: off)
 LAST_HEAD = 'words'             # the flags of a stem hang past the last head on it: 'words' (for a stem that ends at the
 #                                 words), 'all' (for every stem), or None (past the stem's own head only)
@@ -1860,6 +1862,19 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                     if head['staff'] == staff and stem['direction'] == direction:
                         places.setdefault(int(round(stem['x'] / (0.3 * space))), []).append((head, stem))
             ordered = [places[key] for key in sorted(places)]
+            if THIN_BEAM_OVER:
+                # A stem that ends well before the line from the stem at its left to the stem at its right does not
+                # reach their beam: the beam passes over it.
+                kept = list(ordered)
+                for number in range(len(ordered) - 2, 0, -1):
+                    one, mid, two = ordered[number - 1][0][1], ordered[number][0][1], ordered[number + 1][0][1]
+                    if not (0.8 * space <= two['x'] - one['x'] <= BEAM_NEXT * space and abs(two['end'] - one['end']) <= 2.5 * space):
+                        continue
+                    at = one['end'] + (two['end'] - one['end']) * (mid['x'] - one['x']) / (two['x'] - one['x'])
+                    short = (mid['end'] - at) if direction == 'up' else (at - mid['end'])
+                    if short >= THIN_BEAM_OVER * space and _thin_beam(layers, one, two):
+                        del kept[number]
+                ordered = kept
             joined = []
             for left, right in zip(ordered, ordered[1:]):
                 one, two = left[0][1], right[0][1]
@@ -1935,6 +1950,11 @@ def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end
     if x2 - x1 < 0.4 * space:
         return False
     thick = max(staff['thick'] for staff in layers['staves'])
+    if THIN_BEAM_STAFF:
+        # The lines of this staff: a faint page has thinner lines at one staff than at another.
+        index = _staff_of(layers, (one_x + two_x) / 2, (one_end + two_end) / 2)
+        if index is not None:
+            thick = layers['staves'][index]['thick']
     fat = (thick + max(1.5, THIN_BEAM_FAT * thick), thick + 0.45 * space) if THIN_BEAM_FAT else None
     seen = hidden = 0
     shown, under = [], []
