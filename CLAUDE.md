@@ -11,7 +11,7 @@ under 99 % of the notes that its pages show. The words under the notes belong to
 words is of no use. Recited syllables that no page prints are counted apart, and the reader must mark a reciting
 note. The work does not stop at a partial result. Report each result with its limits.
 
-Not reached yet: 80.9 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 75.7 % on scans; 59
+Not reached yet: 81.8 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 76.8 % on scans; 59
 scores at 99 % or more), 19 % of the syllables (none from scans), and 88.9 % on the kit (6137 of 6901).
 
 ## Direction
@@ -43,7 +43,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   `signs.py`, `ties.py`, `music.py`). `scoreread/vector.py` reads a software-made PDF from its drawing.
 - `bench/` holds the tests. Measure each change with `bash bench/kit.sh <name>` and the kit's `score.py`.
   `bench/yardstick/` is copisteria's step (`bash bench/kit.sh <name> --yardstick`).
-- The wide test (every score of LitChoir) runs with scripts outside git, because it needs the app's scans.
+- The wide test (every score of LitChoir) runs with scripts outside git, because it needs the app's scans. It reads
+  each score as `hymn` does: the pages in order, the key and the clefs carried, one vote for the hymn's key.
 - Switch one rule at a time and score it alone on all 38 pages, and on the wide test's pages that it changes.
   Rules scored together hide a rule that costs notes.
 - `experiments/` holds the record of the first tests.

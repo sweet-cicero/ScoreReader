@@ -39,6 +39,8 @@ KEY_OTHER = 0.35        # a staff that shows a key of the other sort this well s
 KEY_MORE = True         # for KEY_STRONG, a staff that shows more signs is a witness for a key of fewer signs too
 KEY_GUESS = True        # staves with signs added by GAPS are witnesses for KEY_STRONG only where they are more than
 #                         the staves that show fewer signs clearly
+KEY_HYMN = 0.5          # with the key of the whole hymn given: a page keeps another key only where more than this
+#                         share of its staves show it clearly (None: off)
 KEY_SYSTEM = 0.5        # a system of two or more staves that all show one key this well has that key, also where
 #                         the page has another (a page with two pieces) (None: off)
 GAPS = (1.0, 0.25, 0.5) # two signs at the places of the second and third sign of a key signature (at most this far
@@ -382,8 +384,9 @@ def read_start(layers: dict, index: int) -> dict:
         # The strokes of the numbers of a time signature are no sharps and no flats.
         time = start_sign(layers, staff, shape['x1'] - TIME[0] * space, start + 13 * space)
         if time:
-            signs = [sign for sign in signs
-                     if not time['x0'] - 0.2 * space <= (sign['x0'] + sign['x1']) / 2 <= time['x1'] + 0.2 * space]
+            # And a flat after the sign of common time is the flat of the first note, not a key signature.
+            last = float('inf') if time.get('common') else time['x1'] + 0.2 * space
+            signs = [sign for sign in signs if not time['x0'] - 0.2 * space <= (sign['x0'] + sign['x1']) / 2 <= last]
     chains = {}
 
     def present(x: float, step: float, place: float) -> bool:
@@ -464,6 +467,24 @@ def vote_key(rows: list[dict], before: int | None = None) -> int:
     return key
 
 
+def page_key(rows: list[dict], own: int, hymn: int | None) -> int:
+    """The key of a page of a hymn: `own` is what its staves voted for, and `hymn` what the staves of all pages of
+    the hymn voted for together. The key signature holds for the whole hymn: a page keeps another key only where
+    more than KEY_HYMN of its staves show it clearly (a page with another piece)."""
+    if hymn is None or KEY_HYMN is None or own == hymn:
+        return own
+    clear = sum(1 for row in rows if row['key'] == own and row['key'] and row['miss'] <= KEY_LOST[0]
+                and not row.get('weak') and not row.get('gaps'))
+    return own if clear > KEY_HYMN * len(rows) else hymn
+
+
+def hymn_key(pages: list[list[dict]]) -> int | None:
+    """The key that the staves of all pages of a hymn vote for together: `pages` holds what read_start() gave for
+    each staff of each page. None with fewer than two pages: a page alone has only its own vote."""
+    rows = [row for page in pages for row in page]
+    return vote_key(rows) if len(pages) >= 2 and rows else None
+
+
 def system_keys(rows: list[dict], systems: list[int], key: int) -> list[int]:
     """The key of each staff: the page's key, or with KEY_SYSTEM the key that all the staves of its system show well.
     A system that shows fewer signs of the page's sort has lost signs, and it keeps the page's key."""
@@ -484,7 +505,8 @@ def system_keys(rows: list[dict], systems: list[int], key: int) -> list[int]:
     return keys
 
 
-def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[str] | None = None) -> dict:
+def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[str] | None = None,
+                key_hymn: int | None = None) -> dict:
     """The clefs and the key of a page: {'key', 'clefs' (one for each staff: 'G' or 'F'), 'ends' (for each staff, the
     x where its clef and key signature end), 'starts' (what read_start() gave for each staff), 'keys' (the key of
     each staff: the page's key, or the key of its own system, see KEY_SYSTEM)}.
@@ -497,7 +519,7 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
     or more, and a treble staff when it is not."""
     staves = layers['staves']
     starts = [read_start(layers, index) for index in range(len(staves))]
-    key = vote_key(starts, key_before)
+    key = page_key(starts, vote_key(starts, key_before), key_hymn)
     width = max(staff['number'] for staff in staves) + 1
     # Choir music is the weak witness: the lowest staff of a system of two or more is a bass staff, the others are
     # treble staves.

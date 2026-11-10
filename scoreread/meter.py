@@ -25,6 +25,17 @@ TIME_PAIR = 1.5          # the staves of a system change the time at one place: 
 TIME_AFTER = 3.0         # in a system of one staff, a bar line stands at most this far before the numbers
 TIME_HEAD = (0.7, 0.05)  # and no ink is as thick as this in every direction, in staff spaces, over more than this
 #                          share of a square staff space: that is the head of a note (a bold number has small such spots)
+COMMON = True            # the sign of common time (C) at the start of a staff is found too (False: only numbers)
+COMMON_HIGH = (1.5, 2.7) # the C is this high, in staff spaces
+COMMON_WIDE = (0.35, 2.3)    # and this wide (a hand copy draws a thin bow, and the staff lines take its two ends)
+COMMON_OFF = 0.6         # its middle stands at most this far from the middle line
+COMMON_INK = 0.5         # its ink fills at most this share of its box
+COMMON_WHOLE = 0.8       # the bow has ink in this share of its rows
+COMMON_END = 0.2         # the two ends of the bow: this share of its height each
+COMMON_BOW = (-0.05, 0.1)    # each end begins at least this far right of the middle of the bow, and one of them this far
+COMMON_BLOT = 0.5        # the thickest spot of the bow is under this, in staff spaces: a thicker one is the head of a note
+#                          with its stem down (on the wide test the signs have 0.27 to 0.46, such a note 0.54 and more)
+COMMON_THICK = 0.65      # the stroke in the middle of the bow is at most this thick, and nothing stands right of it
 
 
 def _free(layers: dict) -> np.ndarray:
@@ -109,10 +120,69 @@ def time_signs(layers: dict, staff: dict, first: float | None = None, last: floa
     return found
 
 
+def common_signs(layers: dict, staff: dict, first: float, last: float) -> list[dict]:
+    """The signs of common time (a C) of a staff between the columns first and last: each {'x0', 'x1', 'common'}.
+
+    The C is an open bow about two staff spaces high around the middle line: one thin stroke at its left that an
+    end turns to the right, and nothing in its middle or at its right. A note head is one space high, the stroke
+    of a flat and of a natural is straight, and a flat has its bowl beside the stroke. (The sign of cut time, a C
+    with an upright stroke through it, is not looked for: on the copies of the wide test nearly every find was a
+    note.)"""
+    free = _free(layers)
+    height, width = free.shape
+    space, rows = staff['space'], staff['rows']
+    middle = rows[2]
+    y0, y1 = max(0, int(rows[0] - 1.5 * space)), min(height, int(rows[4] + 1.5 * space) + 1)
+    x0, x1 = max(0, int(first)), min(width, int(last) + 1)
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return []
+    region = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
+                              np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
+    found = []
+    for label in range(1, count):
+        x, y, bw, bh, _ = stats[label]
+        if not COMMON_HIGH[0] * space <= bh <= COMMON_HIGH[1] * space or not COMMON_WIDE[0] * space <= bw <= COMMON_WIDE[1] * space:
+            continue
+        if abs(y0 + y + bh / 2 - middle) > COMMON_OFF * space:
+            continue
+        box = labels[y:y + bh, x:x + bw] == label
+        if box.mean() > COMMON_INK:
+            continue
+        # The bow: its left edge stands furthest left in the middle, and an end turns to the right (the staff lines
+        # often take the other end of a thin bow).
+        inked = box.any(axis=1)
+        if inked.mean() < COMMON_WHOLE:
+            continue
+        left = np.where(inked, box.argmax(axis=1), bw).astype(float)
+        end = max(1, int(round(COMMON_END * bh)))
+        heart = left[end:bh - end][inked[end:bh - end]]
+        if not len(heart) or not inked[:end].any() or not inked[bh - end:].any():
+            continue
+        inner = float(np.percentile(heart, 20))
+        top, bottom = left[:end][inked[:end]].min() - inner, left[bh - end:][inked[bh - end:]].min() - inner
+        if min(top, bottom) < COMMON_BOW[0] * space or max(top, bottom) < COMMON_BOW[1] * space:
+            continue
+        # The middle rows hold one thin stroke at the left, and nothing right of it.
+        quarter = max(1, bh // 4)
+        reach = int(inner + COMMON_THICK * space)
+        if box[quarter:bh - quarter, reach:].any(axis=1).mean() > 0.15:
+            continue
+        # A note with its stem down is a stroke with a turn at its top too: its head is a thick blot.
+        if 2 * cv2.distanceTransform(np.pad(box.astype(np.uint8), 2), cv2.DIST_L2, 5).max() >= COMMON_BLOT * space:
+            continue
+        found.append({'x0': float(x0 + x), 'x1': float(x0 + x + bw - 1), 'common': True})
+    return sorted(found, key=lambda sign: sign['x0'])
+
+
 def start_sign(layers: dict, staff: dict, first: float, last: float) -> dict | None:
-    """The time signature that begins between the columns first and last, at the start of a staff: {'x0', 'x1'}."""
-    found = [sign for sign in time_signs(layers, staff, first, last + TIME_WIDE[1] * staff['space']) if sign['x0'] <= last]
-    return found[0] if found else None
+    """The time signature that begins between the columns first and last, at the start of a staff: {'x0', 'x1'};
+    two numbers, or with COMMON the sign of common time ('common': True)."""
+    reach = last + TIME_WIDE[1] * staff['space']
+    found = [sign for sign in time_signs(layers, staff, first, reach) if sign['x0'] <= last]
+    if COMMON:
+        found += [sign for sign in common_signs(layers, staff, first, reach) if sign['x0'] <= last]
+    return min(found, key=lambda sign: sign['x0']) if found else None
 
 
 def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:

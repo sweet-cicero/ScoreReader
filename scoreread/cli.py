@@ -15,8 +15,9 @@ read    finds the staves and the systems, builds the clean page, reads it, and w
 hymn    reads the pages of a hymn in order (all pages of a PDF, or those of --pages; or some images) and joins
         them: <name>.musicxml holds the whole hymn, each staff of the systems as one part, and <name>.hymn.json says
         what was read on each page. Each page is also written as `read` writes it (<name>-p1..., counted from the
-        first page that was read). A page that shows no key signature has the key of the page before, and the
-        staves keep their clefs from page to page unless a page shows others.
+        first page that was read). The staves of all pages vote together for the key of the hymn; a page keeps
+        another key only where most of its staves show it clearly. A page that shows no key signature has the key
+        of the page before, and the staves keep their clefs from page to page unless a page shows others.
 layers  does the first steps and writes the picture of the layers (no reading), to check a hard page at a glance.
 layout  does only the first steps (no reading), to check a page fast.
 
@@ -73,42 +74,66 @@ def load(path: Path, page: int) -> tuple:
     return cv2.imread(str(path), cv2.IMREAD_GRAYSCALE), path.stem
 
 
-def read_one(command: str, source: Path, page: int, out: Path, name: str | None = None, drawing: str = 'auto',
-             key_before: int | None = None, clefs_before: list[str] | None = None) -> tuple[int, dict, dict | None]:
-    """Does `command` ('read', 'layers' or 'layout') on one page and writes its files to `out`. Returns the exit
-    code, the summary that the command prints, and what the reader gave (None when nothing was read)."""
-    start = time.time()
-    out.mkdir(parents=True, exist_ok=True)
-    if command == 'read' and drawing == 'auto' and source.suffix.lower() == '.pdf':
-        # A PDF that notation software wrote holds its signs and its words as they are: no image is read.
-        try:
-            from .vector import read_pdf_page  # noqa: PLC0415
-            result = read_pdf_page(source, page, title=name or '')
-        except ImportError:
-            result = None       # pdfplumber is not installed: the page is read as an image
-        if result is not None:
-            name = name or f'{source.stem}-p{page}'
-            (out / f'{name}.musicxml').write_text(result['musicxml'])
-            (out / f'{name}.notes.json').write_text(json.dumps(
-                {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'], 'key': result['key'],
-                 'clefs': result['clefs'], 'drawing': True}))
-            return 0, {'name': name, 'staves': result['staves'], 'systems': result['systems'], 'symbols': 'drawing',
-                       'notes': len(result['notes']), 'syllables': sum(1 for note in result['notes'] if note.get('lyric')),
-                       'key': result['key'], 'clefs': result['clefs'], 'seconds': round(time.time() - start, 1)}, result
+def prepare(source: Path, page: int) -> dict | None:
+    """The first steps on the image of a page: {'grey', 'stem' (a name for its files), 'staves', 'systems', 'clean',
+    'places'}; None when the file cannot be opened. A page with no staff has no 'clean'."""
     grey, stem = load(source, page)
     if grey is None:
+        return None
+    grey = flat_paper(grey)
+    staves = find_staves(grey)
+    ready = {'grey': grey, 'stem': stem, 'staves': staves}
+    if staves:
+        systems = find_systems(grey, staves)
+        ready['staves'], ready['systems'] = lost_staves(grey, staves, systems)
+        ready['clean'], ready['places'] = clean_page(grey, ready['staves'], ready['systems'])
+    return ready
+
+
+def drawn(source: Path, page: int, name: str | None) -> dict | None:
+    """What the drawing of a PDF page gives, when notation software wrote it: no image is read. None for a scan,
+    and when pdfplumber is not installed (the page is then read as an image)."""
+    if source.suffix.lower() != '.pdf':
+        return None
+    try:
+        from .vector import read_pdf_page  # noqa: PLC0415
+        return read_pdf_page(source, page, title=name or '')
+    except ImportError:
+        return None
+
+
+def read_one(command: str, source: Path, page: int, out: Path, name: str | None = None, drawing: str = 'auto',
+             key_before: int | None = None, clefs_before: list[str] | None = None, key_hymn: int | None = None,
+             looked: tuple | None = None) -> tuple[int, dict, dict | None]:
+    """Does `command` ('read', 'layers' or 'layout') on one page and writes its files to `out`. Returns the exit
+    code, the summary that the command prints, and what the reader gave (None when nothing was read). `looked` is
+    what a first look at the page gave already: (the drawing's result or None, what prepare() gave or None)."""
+    start = time.time()
+    out.mkdir(parents=True, exist_ok=True)
+    result, ready = looked if looked else (None, None)
+    if command == 'read' and drawing == 'auto' and result is None and looked is None:
+        # A PDF that notation software wrote holds its signs and its words as they are: no image is read.
+        result = drawn(source, page, name)
+    if result is not None:
+        name = name or f'{source.stem}-p{page}'
+        (out / f'{name}.musicxml').write_text(result['musicxml'])
+        (out / f'{name}.notes.json').write_text(json.dumps(
+            {'notes': result['notes'], 'staves': result['staves'], 'systems': result['systems'], 'key': result['key'],
+             'clefs': result['clefs'], 'drawing': True}))
+        return 0, {'name': name, 'staves': result['staves'], 'systems': result['systems'], 'symbols': 'drawing',
+                   'notes': len(result['notes']), 'syllables': sum(1 for note in result['notes'] if note.get('lyric')),
+                   'key': result['key'], 'clefs': result['clefs'], 'seconds': round(time.time() - start, 1)}, result
+    ready = ready or prepare(source, page)
+    if ready is None:
         print(f'scoreread: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
         return 2, {}, None
-    grey = flat_paper(grey)
-    name = name or stem
-    staves = find_staves(grey)
+    grey, staves = ready['grey'], ready['staves']
+    name = name or ready['stem']
     if not staves:
         print(f'scoreread: no staff found on {source}' + (f', page {page}' if source.suffix.lower() == '.pdf' else '')
               + '. Check that the page is upright and holds music.', file=sys.stderr)
         return 1, {'name': name, 'staves': 0}, None
-    systems = find_systems(grey, staves)
-    staves, systems = lost_staves(grey, staves, systems)
-    clean, places = clean_page(grey, staves, systems)
+    systems, clean, places = ready['systems'], ready['clean'], ready['places']
     cv2.imwrite(str(out / f'{name}.clean.png'), clean)
     cv2.imwrite(str(out / f'{name}.staves.png'), cv2.resize(draw(grey, staves), None, fx=0.4, fy=0.4, interpolation=cv2.INTER_AREA))
     layout = {'source': str(source), 'page': page, 'width': int(grey.shape[1]), 'height': int(grey.shape[0]),
@@ -122,7 +147,7 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
         if command == 'layers':
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(read_layers(clean, places)))
         else:
-            result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before)
+            result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before, key_hymn=key_hymn)
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
             (out / f'{name}.musicxml').write_text(result['musicxml'])
             (out / f'{name}.notes.json').write_text(json.dumps(
@@ -151,25 +176,38 @@ def page_numbers(source: Path, wanted: str | None) -> list[int]:
 def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: str | None = None, drawing: str = 'auto',
               key_before: int | None = None) -> tuple[int, dict]:
     """Reads the pages of a hymn in order and joins them: <name>.musicxml holds the whole hymn. Each page is also
-    written as `read` writes it. A page without a key signature has the key of the page before, and the clefs of the
-    page before are a witness for the clefs of a page."""
+    written as `read` writes it. The key signature holds for the whole hymn: a first look at every page lets the
+    staves of all pages vote for it together. A page without a key signature has the key of the page before, and
+    the clefs of the page before are a witness for the clefs of a page."""
     from .hymn import join_pages  # noqa: PLC0415
     from .music import musicxml  # noqa: PLC0415
+    from .reader import page_starts  # noqa: PLC0415
+    from .starts import hymn_key  # noqa: PLC0415
     start = time.time()
     name = name or sources[0].stem
-    read, told = [], []
-    clefs_before = None
+    # The first look: the first steps on each page, and what the start of each staff shows.
+    looked, shown = [], []
     for source in sources:
         for page in page_numbers(source, pages):
-            stem = f'{name}-p{len(told) + 1}'
-            code, summary, result = read_one('read', source, page, out, stem, drawing, key_before, clefs_before)
-            told.append(dict(summary, source=str(source), page=page, read=result is not None))
-            if code == 2:
+            stem = f'{name}-p{len(looked) + 1}'
+            result = drawn(source, page, stem) if drawing == 'auto' else None
+            ready = prepare(source, page) if result is None else None
+            if result is None and ready is None:
+                print(f'scoreread: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
                 return 2, {}
-            if result is not None:
-                read.append(result)
-                key_before = result['key']
-                clefs_before = result.get('system_clefs') or clefs_before
+            if ready is not None and ready['staves']:
+                shown.append(page_starts(ready['clean'], ready['places']))
+            looked.append((source, page, stem, (result, ready)))
+    whole = hymn_key(shown)
+    read, told = [], []
+    clefs_before = None
+    for source, page, stem, first in looked:
+        code, summary, result = read_one('read', source, page, out, stem, drawing, key_before, clefs_before, whole, first)
+        told.append(dict(summary, source=str(source), page=page, read=result is not None))
+        if result is not None:
+            read.append(result)
+            key_before = result['key']
+            clefs_before = result.get('system_clefs') or clefs_before
     if not read:
         return 1, {'name': name, 'pages': told}
     parts, names = join_pages(read)
@@ -178,6 +216,8 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
                'notes': sum(len(result['notes']) for result in read),
                'syllables': sum(1 for result in read for note in result['notes'] if note.get('lyric')),
                'seconds': round(time.time() - start, 1)}
+    if whole is not None:
+        summary['key'] = whole
     (out / f'{name}.hymn.json').write_text(json.dumps(summary))
     return 0, summary
 

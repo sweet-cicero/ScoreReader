@@ -13,9 +13,9 @@ import numpy as np
 
 from .layers import read_layers
 from .meter import mid_signs
-from .music import agree_lengths, build_staff, musicxml, staff_columns
+from .music import MIDDLE, agree_lengths, build_staff, musicxml, staff_columns
 from .signs import note_signs
-from .starts import read_starts
+from .starts import read_start, read_starts
 from .symbols import bar_lines, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
     thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
@@ -24,14 +24,28 @@ from .words import cut_stems, word_bands
 SIGNS = 'strokes'
 TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scoreread.meter)
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
+TENORS = 2.5         # a number: a treble staff over the bass staff is the tenors' only when its notes do not sound this many
+                     # places under the notes of the bass staff (the middle note of each); None: always the tenors'
+
+
+def page_starts(grey: np.ndarray, places: list[dict]) -> list[dict]:
+    """A first look at a clean page: what the start of each staff shows (its clef and its key signature), for the
+    vote of all pages of a hymn on its key (scoreread.starts.hymn_key)."""
+    if not places:
+        return []
+    layers = read_layers(grey, places)
+    layers['words'] = word_bands(layers)
+    return [read_start(layers, index) for index in range(len(layers['staves']))]
 
 
 def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
-              clefs_before: list[str] | None = None) -> dict:
+              clefs_before: list[str] | None = None, key_hymn: int | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
     ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times') for pictures and checks.
     `key_before` is the key of the page before in the same hymn: a page that shows no key signature has that key.
+    `clefs_before` are the clefs of the staves of a system on that page, and `key_hymn` is the key that the staves
+    of all pages of the hymn voted for together (see scoreread.starts).
 
     'key' is the key of the page, and 'staff_keys' the key of each staff (a page with two pieces has two keys).
 
@@ -52,7 +66,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = symbols['heads']
     space = layers['space']
     staves = layers['staves']
-    begin = read_starts(layers, key_before, clefs_before)
+    begin = read_starts(layers, key_before, clefs_before, key_hymn)
     system_clefs = {staff['number']: clef for staff, clef in zip(staves, begin['clefs'])}
     key, clefs, ends, keys = begin['key'], list(begin['clefs']), begin['ends'], begin['keys']
     # Notes begin after the clef and the key signature.
@@ -108,9 +122,19 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     width = max(staff['number'] for staff in staves) + 1
     if width >= 3:
         low = {staff['system']: clefs[index] for index, staff in enumerate(staves) if staff['number'] == width - 1}
-        for index, staff in enumerate(staves):
-            if staff['number'] == width - 2 and clefs[index] == 'G' and low.get(staff['system']) == 'F':
-                clefs[index] = 'G8vb'
+        tenors = [index for index, staff in enumerate(staves)
+                  if staff['number'] == width - 2 and clefs[index] == 'G' and low.get(staff['system']) == 'F']
+        if TENORS is not None and tenors:
+            # The staves of a system stand in the order of their voices: a staff whose notes would sound under
+            # the notes of the bass staff is no tenors' staff (the altos have it, and the tenors stand on the
+            # bass staff with the basses).
+            own = [MIDDLE['G8vb'] + head['place'] for head in heads if head['staff'] in tenors]
+            under = [MIDDLE['F'] + head['place'] for head in heads
+                     if staves[head['staff']]['number'] == width - 1 and clefs[head['staff']] == 'F']
+            if own and under and np.median(own) < np.median(under) - TENORS:
+                tenors = []
+        for index in tenors:
+            clefs[index] = 'G8vb'
     parts = [[] for _ in range(width)]
     notes = []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
