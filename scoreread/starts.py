@@ -48,6 +48,7 @@ GAPS = (1.0, 0.25, 0.5) # two signs at the places of the second and third sign o
 TIME = (0.25, 2.5)      # the numbers of a time signature are no key signs, and the notes begin after them: the numbers
 #                         begin at most this far before the clef's end and this far after the key signature, in
 #                         staff spaces (None: off)
+CLEF_BEFORE = 1.0       # the weight of the clefs of the page before in the same hymn, among the witnesses for a clef (None: off)
 TRIM = True             # a short dash beyond a longer gap at an end of an upright stroke is no part of the stroke
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
@@ -483,13 +484,14 @@ def system_keys(rows: list[dict], systems: list[int], key: int) -> list[int]:
     return keys
 
 
-def read_starts(layers: dict, key_before: int | None = None) -> dict:
+def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[str] | None = None) -> dict:
     """The clefs and the key of a page: {'key', 'clefs' (one for each staff: 'G' or 'F'), 'ends' (for each staff, the
     x where its clef and key signature end), 'starts' (what read_start() gave for each staff), 'keys' (the key of
     each staff: the page's key, or the key of its own system, see KEY_SYSTEM)}.
 
     The key signature holds for the whole page, so the staves vote for it: see vote_key(); `key_before` is the key
-    of the page before, for a page that shows no key signature. The same staff of every system has the
+    of the page before, for a page that shows no key signature, and `clefs_before` the clefs of the staves of a
+    system on that page (see CLEF_BEFORE). The same staff of every system has the
     same clef, so those staves vote too: each with the shape of its clef, and with the heights of its key signature
     when it shows the page's key. A staff without a witness is a bass staff when it is the lowest of a system of two
     or more, and a treble staff when it is not."""
@@ -506,6 +508,10 @@ def read_starts(layers: dict, key_before: int | None = None) -> dict:
             tally[staff['number']][start['clef']] += 1.0
         if key and start['key'] == key and start['key_clef']:
             tally[staff['number']][start['key_clef']] += 2.0 if start['miss'] <= 0.6 else 1.0
+    if CLEF_BEFORE and clefs_before and len(clefs_before) == width:
+        # The hymn teaches the page: the staves keep their clefs from page to page.
+        for number, clef in enumerate(clefs_before):
+            tally[number][clef] += CLEF_BEFORE
     clefs, ends = [], []
     # A clef that the copy lost still takes its room: as much as the clefs that the page shows, from the staff's left end.
     rooms = [(start['x1'] - start['left']) / staff['space'] for start, staff in zip(starts, staves) if start['clef']]

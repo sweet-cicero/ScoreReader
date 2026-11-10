@@ -26,7 +26,8 @@ TIMES = True         # the numbers of a time signature in the middle of a staff 
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
 
 
-def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None) -> dict:
+def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
+              clefs_before: list[str] | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
     ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times') for pictures and checks.
@@ -51,7 +52,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = symbols['heads']
     space = layers['space']
     staves = layers['staves']
-    begin = read_starts(layers, key_before)
+    begin = read_starts(layers, key_before, clefs_before)
+    system_clefs = {staff['number']: clef for staff, clef in zip(staves, begin['clefs'])}
     key, clefs, ends, keys = begin['key'], list(begin['clefs']), begin['ends'], begin['keys']
     # Notes begin after the clef and the key signature.
     heads = [head for head in heads if head['cx'] > ends[head['staff']] + 0.3 * space]
@@ -135,6 +137,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                                  'marks': stem.get('marks', [])} if stem else None}))
     return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'staves': len(staves),
             'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
+            'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words,
             'times': [([start['time']] if start.get('time') else []) + times.get(index, [])

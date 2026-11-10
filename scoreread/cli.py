@@ -15,7 +15,8 @@ read    finds the staves and the systems, builds the clean page, reads it, and w
 hymn    reads the pages of a hymn in order (all pages of a PDF, or those of --pages; or some images) and joins
         them: <name>.musicxml holds the whole hymn, each staff of the systems as one part, and <name>.hymn.json says
         what was read on each page. Each page is also written as `read` writes it (<name>-p1..., counted from the
-        first page that was read). A page that shows no key signature has the key of the page before.
+        first page that was read). A page that shows no key signature has the key of the page before, and the
+        staves keep their clefs from page to page unless a page shows others.
 layers  does the first steps and writes the picture of the layers (no reading), to check a hard page at a glance.
 layout  does only the first steps (no reading), to check a page fast.
 
@@ -73,7 +74,7 @@ def load(path: Path, page: int) -> tuple:
 
 
 def read_one(command: str, source: Path, page: int, out: Path, name: str | None = None, drawing: str = 'auto',
-             key_before: int | None = None) -> tuple[int, dict, dict | None]:
+             key_before: int | None = None, clefs_before: list[str] | None = None) -> tuple[int, dict, dict | None]:
     """Does `command` ('read', 'layers' or 'layout') on one page and writes its files to `out`. Returns the exit
     code, the summary that the command prints, and what the reader gave (None when nothing was read)."""
     start = time.time()
@@ -121,7 +122,7 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
         if command == 'layers':
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(read_layers(clean, places)))
         else:
-            result = read_page(clean, places, title=name, key_before=key_before)
+            result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before)
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
             (out / f'{name}.musicxml').write_text(result['musicxml'])
             (out / f'{name}.notes.json').write_text(json.dumps(
@@ -150,22 +151,25 @@ def page_numbers(source: Path, wanted: str | None) -> list[int]:
 def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: str | None = None, drawing: str = 'auto',
               key_before: int | None = None) -> tuple[int, dict]:
     """Reads the pages of a hymn in order and joins them: <name>.musicxml holds the whole hymn. Each page is also
-    written as `read` writes it. A page without a key signature has the key of the page before."""
+    written as `read` writes it. A page without a key signature has the key of the page before, and the clefs of the
+    page before are a witness for the clefs of a page."""
     from .hymn import join_pages  # noqa: PLC0415
     from .music import musicxml  # noqa: PLC0415
     start = time.time()
     name = name or sources[0].stem
     read, told = [], []
+    clefs_before = None
     for source in sources:
         for page in page_numbers(source, pages):
             stem = f'{name}-p{len(told) + 1}'
-            code, summary, result = read_one('read', source, page, out, stem, drawing, key_before)
+            code, summary, result = read_one('read', source, page, out, stem, drawing, key_before, clefs_before)
             told.append(dict(summary, source=str(source), page=page, read=result is not None))
             if code == 2:
                 return 2, {}
             if result is not None:
                 read.append(result)
                 key_before = result['key']
+                clefs_before = result.get('system_clefs') or clefs_before
     if not read:
         return 1, {'name': name, 'pages': told}
     parts, names = join_pages(read)
