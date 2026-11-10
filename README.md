@@ -27,7 +27,7 @@ see the results and the limits below.
 
 | Step | File | Model used? | What it does |
 |---|---|---|---|
-| 1. Staves | `scoreread/staves.py` | No | Finds each staff and follows its five lines along the page, also where the page bends, tilts or the lines are weak. Drops blank staves. |
+| 1. Staves | `scoreread/staves.py` | No | Finds each staff and follows its five lines along the page, also where the page bends, tilts or the lines are weak. Looks twice, with the dark ink alone and with pale level lines too (some copies print the staff in grey hair lines), and keeps the better staff at each place. Drops blank staves. |
 | 2. Systems | `scoreread/systems.py` | No | Puts the staves into systems from the page's ink: the opening line, bar lines through the gap, and bar lines at the same places. Ink in the margin does not count. Finds a staff whose lines the copy lost. |
 | 3. Clean page | `scoreread/page.py` | No | Makes each system level and puts the systems on a white page. The shadow of the binding and the page number stay behind. |
 | 4. Layers | `scoreread/layers.py` | No | Splits the ink into staff lines, upright strokes (stems and bar lines), thick marks (note heads, beams, flags), the holes of hollow heads, and the rest. `layers` draws them in colours. |
@@ -76,7 +76,8 @@ flowchart LR
         s4["Link the bands along the staff's own slope. A page that tilts or bends is no problem."]
         s5["Follow each staff past its ends where the lines are weak. Four of the five lines are enough."]
         s6["Drop a staff that was found twice, and a blank staff."]
-        s1 --> s2 --> s3 --> s4 --> s5 --> s6
+        s7["Look twice: with the dark ink alone, and with pale level lines too. Where both looks find a staff, keep the one whose weakest line has the most ink. The dark look wins unless the other is clearly better."]
+        s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7
     end
     subgraph two["Step 2: systems"]
         direction TB
