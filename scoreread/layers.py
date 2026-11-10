@@ -35,6 +35,7 @@ ROUND = 0.85         # the inside of a head fills at least this share of its hul
 HOLE_LINE = 0.5      # two pieces of an inside that a staff line cut stand over each other for this share of the
                      # smaller one's width (0: off)
 LINE_ROUND = 0.6     # and with the line between them they fill this share of their hull
+LINE_WIDE = 1.2      # such a piece may be this many times as wide and as large as HOLE allows
 CROSS = 0.2          # a mark goes through a staff line when its ink over and under the line is this near, sideways
 WEAK = (0.05, 0.2)   # the share of long strokes with gaps: a whole copy has at most the first, a weak copy the second
 WHOLE_GAP = 0.3      # on a whole copy, the gaps that are bridged are this share of the gaps bridged on a weak copy
@@ -92,7 +93,8 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0) -> np.ndarray:
     dented = []
     for index in range(1, count):
         x, y, width, height, area = stats[index]
-        if area < 6 or area > HOLE[0] * space * space or height > HOLE[1] * space or width > HOLE[2] * space:
+        more = LINE_WIDE if line and HOLE_LINE else 1.0
+        if area < 6 or area > more * HOLE[0] * space * space or height > HOLE[1] * space or width > more * HOLE[2] * space:
             continue
         part = (labels[y:y + height, x:x + width] == index).astype(np.uint8)
         if height >= 0.6 * space and area >= 0.7 * width * height:
@@ -101,6 +103,8 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0) -> np.ndarray:
             if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5:
                 continue
         dented.append(index)
+        if area > HOLE[0] * space * space or width > HOLE[2] * space:
+            continue
         if area >= 0.06 * space * space and not _round(part, area):
             continue
         keep[index] = True
@@ -113,7 +117,8 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0) -> np.ndarray:
                 if lower == upper or (keep[upper] and keep[lower]) or not 1 <= gap <= line + 3:
                     continue
                 x0, x1 = max(ux, lx), min(ux + uw, lx + lw)
-                if x1 - x0 < HOLE_LINE * min(uw, lw) or ly + lh - uy > HOLE[1] * space:
+                if x1 - x0 < HOLE_LINE * min(uw, lw) or ly + lh - uy > HOLE[1] * space \
+                        or ua + la > LINE_WIDE * HOLE[0] * space * space:
                     continue
                 if ink[uy + uh:ly, x0:x1].mean() < 0.9:
                     continue

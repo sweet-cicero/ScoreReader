@@ -1220,6 +1220,12 @@ DOT_HIGH = 0.9       # a dot is at most this high, in staff spaces
 DOT_SLIM = 0.38      # and at least this wide for its height: a hand draws a dot as a short stroke
 SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
 TAIL_START = 0.4     # the hook of a flag begins this near to the end of its stem, in staff spaces
+THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from the end of a stem to the end of the next:
+                                # ink at most this far (staff spaces) from the straight line, on this share of the way
+                                # with the staff lines it crosses, and on this share without them (None: off)
+THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
+THIN_BEAM_PAST = (0.4, 1.0, 0.45)   # a slur goes on past the last stem: ink from this far to this far past it, at most
+                                    # this far from the line (staff spaces; None: off)
 
 
 def tail_marks(layers: dict, head: dict, stem: dict) -> list[dict]:
@@ -1353,10 +1359,96 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             hooks = [piece['row'] for piece in thin if piece['right'] and piece['from_end'] <= TAIL_START and piece['back'] >= 0.12]
             hook = any(all(abs(row - other) > 0.25 * space for other in thin_left) for row in hooks)
             head['tails'][stem['direction']] = 1 if hook else 0
+    if THIN_BEAM:
+        # A hand draws a beam as one thin line. A slur is thin too, but it bends over the notes: only a beam runs
+        # straight from the end of one stem to the end of the next.
+        for (staff, direction), group in groups.items():
+            places = {}
+            for head in heads:
+                for stem in head['stems']:
+                    if head['staff'] == staff and stem['direction'] == direction:
+                        places.setdefault(int(round(stem['x'] / (0.3 * space))), []).append((head, stem))
+            ordered = [places[key] for key in sorted(places)]
+            joined = []
+            for left, right in zip(ordered, ordered[1:]):
+                one, two = left[0][1], right[0][1]
+                joined.append(0.8 * space <= two['x'] - one['x'] <= BEAM_NEXT * space
+                              and abs(two['end'] - one['end']) <= 2.5 * space and _thin_beam(layers, one, two))
+            # A run of stems that are joined one to the next is one beam, when the line ends at its first and its
+            # last stem. A slur goes on past the stems.
+            first = 0
+            while first < len(joined):
+                if not joined[first]:
+                    first += 1
+                    continue
+                last = first
+                while last + 1 < len(joined) and joined[last + 1]:
+                    last += 1
+                run = ordered[first:last + 2]
+                if not THIN_BEAM_PAST or not (_goes_on(layers, run[1][0][1], run[0][0][1])
+                                              or _goes_on(layers, run[-2][0][1], run[-1][0][1])):
+                    for entry in run:
+                        for head, stem in entry:
+                            head['tails'][direction] = max(1, head['tails'].get(direction, 0))
+                            stem['thin_beam'] = True
+                first = last + 1
+    for head in heads:
         if SHARED_TAILS and len(head['tails']) == 2:
             # One head with two stems is one note that two voices sing: a hand draws its flag at one stem only.
             most = max(head['tails'].values())
             head['tails'] = {direction: most for direction in head['tails']}
+
+
+def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
+    """True when the ink that runs from the end of the stem `inner` to the end of the stem `outer` goes on past
+    `outer`, along the same line or bending away from it a little."""
+    space = layers['space']
+    ink = layers['bare']
+    height, width = ink.shape
+    side = 1 if outer['x'] > inner['x'] else -1
+    slope = (outer['end'] - inner['end']) / (outer['x'] - inner['x'])
+    reach = int(round(THIN_BEAM_PAST[2] * space))
+    seen = count = 0
+    for step in range(int(round(THIN_BEAM_PAST[0] * space)), int(round(THIN_BEAM_PAST[1] * space)) + 1):
+        x = int(round(outer['x'])) + side * step
+        y = int(round(outer['end'] + slope * side * step))
+        top, bottom = max(0, y - reach), min(height, y + reach + 1)
+        if not 0 <= x < width or bottom <= top:
+            continue
+        count += 1
+        seen += bool(ink[top:bottom, x].any())
+    return count > 0 and seen >= 0.6 * count
+
+
+def _thin_beam(layers: dict, one: dict, two: dict) -> bool:
+    """True when ink runs straight from the far end of one stem to the far end of the next stem."""
+    space = layers['space']
+    ink, lines = layers['bare'], layers['lines']
+    height, width = ink.shape
+    reach = max(2, int(round(THIN_BEAM[0] * space)))
+    edge = int(round(0.2 * space))
+    x1, x2 = int(round(one['x'])) + edge, int(round(two['x'])) - edge
+    if x2 - x1 < 0.4 * space:
+        return False
+    seen = hidden = 0
+    shown = []
+    for x in range(x1, x2 + 1):
+        y = int(round(one['end'] + (two['end'] - one['end']) * (x - one['x']) / (two['x'] - one['x'])))
+        top, bottom = max(0, y - reach), min(height, y + reach + 1)
+        if not 0 <= x < width or bottom <= top:
+            shown.append(False)
+            continue
+        shown.append(bool(ink[top:bottom, x].any()))
+        if shown[-1]:
+            seen += 1
+        elif lines[top:bottom, x].any():
+            hidden += 1
+    count = x2 - x1 + 1
+    # The line hangs on both stems: a short slur between two stems does not reach them.
+    near = max(2, int(round(THIN_BEAM_ENDS * space)))
+    if THIN_BEAM_ENDS and (2 * sum(shown[:near]) < near or 2 * sum(shown[-near:]) < near):
+        return False
+    return seen + hidden >= THIN_BEAM[1] * count and seen >= THIN_BEAM[2] * count
 
 
 def without_flag_loops(heads: list[dict], space: float) -> list[dict]:
