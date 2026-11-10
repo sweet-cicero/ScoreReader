@@ -1340,6 +1340,8 @@ THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from 
                                 # with the staff lines it crosses, and on this share without them (None: off)
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
+THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
+THIN_BEAM_END = 0.0             # the beam may meet a stem this many staff spaces past the end that was found for it (0: off)
 THIN_BEAM_PAST = (0.4, 1.0, 0.45)   # a slur goes on past the last stem: ink from this far to this far past it, at most
                                     # this far from the line (staff spaces; None: off)
 
@@ -1539,24 +1541,49 @@ def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
 def _thin_beam(layers: dict, one: dict, two: dict) -> bool:
     """True when ink runs straight from the far end of one stem to the far end of the next stem."""
     space = layers['space']
-    ink, lines = layers['bare'], layers['lines']
+    if not THIN_BEAM_END:
+        return _beam_line(layers, one['x'], one['end'], two['x'], two['end'])
+    # A weak copy breaks a stem just before its beam: the stem that was found ends too early. The beam may meet
+    # the stem a little past that end.
+    def ends(stem: dict) -> list[float]:
+        away = -1 if stem['direction'] == 'up' else 1
+        return [stem['end'] + away * step for step in range(0, int(round(THIN_BEAM_END * space)) + 1, 2)]
+    return any(_beam_line(layers, one['x'], first, two['x'], last) for first in ends(one) for last in ends(two))
+
+
+def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end: float) -> bool:
+    """True when ink runs along the straight line from (one_x, one_end) to (two_x, two_end)."""
+    space = layers['space']
+    ink, lines, full = layers['bare'], layers['lines'], layers['ink']
     height, width = ink.shape
     reach = max(2, int(round(THIN_BEAM[0] * space)))
     edge = int(round(0.2 * space))
-    x1, x2 = int(round(one['x'])) + edge, int(round(two['x'])) - edge
+    x1, x2 = int(round(one_x)) + edge, int(round(two_x)) - edge
     if x2 - x1 < 0.4 * space:
         return False
+    thick = max(staff['thick'] for staff in layers['staves'])
+    fat = (thick + max(1.5, THIN_BEAM_FAT * thick), thick + 0.45 * space) if THIN_BEAM_FAT else None
     seen = hidden = 0
     shown, under = [], []
     for x in range(x1, x2 + 1):
-        y = int(round(one['end'] + (two['end'] - one['end']) * (x - one['x']) / (two['x'] - one['x'])))
+        y = int(round(one_end + (two_end - one_end) * (x - one_x) / (two_x - one_x)))
         top, bottom = max(0, y - reach), min(height, y + reach + 1)
         if not 0 <= x < width or bottom <= top:
             shown.append(False)
             under.append(False)
             continue
         shown.append(bool(ink[top:bottom, x].any()))
-        under.append(not shown[-1] and bool(lines[top:bottom, x].any()))
+        rows = np.nonzero(lines[top:bottom, x])[0] if not shown[-1] else []
+        under.append(len(rows) > 0)
+        if under[-1] and fat:
+            # A beam that lies in a staff line makes the line thicker there.
+            first = last = top + int(rows[len(rows) // 2])
+            while first > 0 and full[first - 1, x]:
+                first -= 1
+            while last + 1 < height and full[last + 1, x]:
+                last += 1
+            if fat[0] <= last - first + 1 <= fat[1]:
+                shown[-1], under[-1] = True, False
         if shown[-1]:
             seen += 1
         elif under[-1]:
