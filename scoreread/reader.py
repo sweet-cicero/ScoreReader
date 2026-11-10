@@ -11,7 +11,7 @@ from .layers import read_layers
 from .music import build_staff, musicxml
 from .signs import note_signs
 from .starts import read_starts
-from .symbols import bar_lines, dots, read_symbols, tails, thin_heads
+from .symbols import bar_lines, count_tails, dots, read_symbols, thin_heads, without_flag_loops
 
 SIGNS = 'strokes'
 
@@ -36,7 +36,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     heads += thin_heads(layers, heads, bars, ends)
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
-        head['tails'] = {stem['direction']: tails(layers, head, stem) for stem in head['stems']}
+    count_tails(layers, heads)
+    heads = without_flag_loops(heads, space)
     dots(layers, heads)
     # A sharp, a flat or a natural before a head changes that note. Two readers look for it: the strokes of the sign
     # (a thin sign of a hand), and its thick mark (a printed sign).
@@ -73,7 +74,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
                 notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
                                   mark={'wide': int(head['x1'] - head['x0'] + 1), 'high': int(head['y1'] - head['y0'] + 1),
                                         'y': float(head['cy']), 'at': float(head['place']), 'hollow': bool(head['hollow']),
-                                        'hole': float(head.get('hole', 0)), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')),
+                                        'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')),
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))

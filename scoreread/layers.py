@@ -205,7 +205,7 @@ def read_layers(grey: np.ndarray, places: list[dict]) -> dict:
     thick = cv2.morphologyEx(marks, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (brush, brush)))
     # The ink without the staff lines and without the filling of the holes, with thin strokes going through the lines.
     bare = (ink & (1 - lines)) | through
-    return {'ink': ink, 'holes': holes, 'solid': solid, 'lines': lines, 'free': free, 'joined': joined, 'up': up,
+    return {'grey': grey, 'ink': ink, 'holes': holes, 'solid': solid, 'lines': lines, 'free': free, 'joined': joined, 'up': up,
             'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
             'bare': bare, 'weak': weak, 'bridge': bridge}
 
