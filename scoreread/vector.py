@@ -15,6 +15,7 @@ The step needs pdfplumber (pure Python). read_pdf_page() gives the same kind of 
 from __future__ import annotations
 
 from collections import Counter
+from fractions import Fraction
 
 from .music import build_staff, musicxml, staff_columns
 
@@ -53,8 +54,12 @@ BEAM_REACH = 2.6      # the beams of a stem lie within this many gaps of its fre
 DOT_AT = (0.1, 2.2, 0.7)  # a dot stands this far right of its head (from, to), and at most this far over or under it
 SIGN_AT = (3.2, 0.3)  # a sharp, flat or natural stands at most this far left of its head, and this far off its height
 KEY_STEP = 1.6        # the signs of a key signature follow the clef, each at most this many gaps after the last
-TIE_END = 1.3         # a tie begins and ends at most this many gaps from the middle of its heads, sideways
+TIE_END = 1.9         # a tie begins and ends at most this many gaps from the middle of its heads, sideways
+TIE_LEVEL = 0.25      # the two ends of a tie are at one height: at most this many gaps apart
 TIE_OFF = 1.2         # and passes at most this many gaps over or under them
+DRONE_REST = (2.6, 0.6)  # gaps: an open head without a stem at most this far after a rest, or before it, is the ison
+TWICE = 0.1             # gaps: two heads at one height this near to each other are one head, drawn twice
+DRONE_AHEAD = 3.0       # gaps: or one that stands this near before the next note
 WORDS_UNDER = 9.0     # a row of words belongs to a staff at most this many gaps under its last line
 WORD_NEAR = 1.6       # a syllable stands under its note: its middle or its start at most this many gaps from the head
 
@@ -331,6 +336,11 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
                       'cx': sign['x'] + sign['wide'] / 2, 'cy': sign['y'], 'y0': sign['y'] - gap / 2, 'y1': sign['y'] + gap / 2,
                       'hollow': sign['kind'] != 'head black', 'whole': sign['kind'] in ('head whole', 'head breve'),
                       'breve': sign['kind'] == 'head breve', 'stems': [], 'tails': {}, 'small': sign['size'], 'gap': gap})
+    # Two voices on one note with one stem are drawn as one head twice: the head counts once.
+    heads.sort(key=lambda head: (head['staff'], head['place'], head['cx']))
+    heads = [head for number, head in enumerate(heads)
+             if not (number and heads[number - 1]['staff'] == head['staff'] and heads[number - 1]['place'] == head['place']
+                     and heads[number - 1]['hollow'] == head['hollow'] and head['cx'] - heads[number - 1]['cx'] <= TWICE * head['gap'])]
     # Stems of Encore: the pieces that stand at a head's origin.
     pieces = [sign for sign in signs if sign['kind'] in ('stem up', 'stem down')]
     for head in heads:
@@ -352,7 +362,15 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
             gap = head['gap']
             if head['whole'] or stem['bottom'] - stem['top'] < STEM_LEAST * gap:
                 continue
-            side = min(abs(stem['x'] - head['x0']), abs(stem['x'] - head['x1']))
+            # A stem that passes a head holds it on either side. A stem that ends at a head stands at the head's
+            # right edge and goes up, or at its left edge and goes down.
+            left, right = abs(stem['x'] - head['x0']), abs(stem['x'] - head['x1'])
+            if head['cy'] > stem['bottom']:
+                side = right
+            elif head['cy'] < stem['top']:
+                side = left
+            else:
+                side = min(left, right)
             if side <= STEM_SIDE * gap and stem['top'] - STEM_END * gap <= head['cy'] <= stem['bottom'] + STEM_END * gap:
                 own.append(head)
         if not own:
@@ -446,13 +464,19 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
             if staff['number'] == width - 2 and clefs[staff['index']] == 'G' and low.get(staff['system']) == 'F':
                 clefs[staff['index']] = 'G8vb'
     parts = [[] for _ in range(width + 1)]      # the last part is the ison of a chant page, where there is one
+    rests = {}
+    for sign in signs:
+        if sign['kind'].startswith('rest'):
+            for staff in staves:
+                if staff['top'] - staff['gap'] <= sign['y'] <= staff['bottom'] + staff['gap'] and staff['x0'] <= sign['x'] <= staff['x1']:
+                    rests.setdefault(staff['index'], []).append(sign['x'] + sign['wide'] / 2)
     notes = []
     for staff in staves:
         index, gap = staff['index'], staff['gap']
         own = [head for head in heads if head['staff'] == index]
         clef = clefs[index] if clefs[index] in ('G', 'G8vb', 'F') else 'G'
         plan = staff_columns(staff, own, bars[index], gap)
-        drones = _drones(plan) if width == 1 else []
+        drones = _drones(plan, rests.get(index, []), gap) if width == 1 else []
         for part, measures in ((staff['number'], plan), (width, drones)):
             for number, bar in enumerate(build_staff(staff, [], bars[index], clef, keys[index], gap, measures)):
                 parts[part].append({'notes': bar, 'clef': clef, 'key': keys[index]})
@@ -490,6 +514,8 @@ def _ties(staves: list[dict], heads: list[dict], shapes: list[dict]) -> None:
             x0, x1, top, bottom = min(xs), max(xs), min(ys), max(ys)
             if not (staff['top'] - 6 * gap <= (top + bottom) / 2 <= staff['bottom'] + 6 * gap) or x1 - x0 < 0.8 * gap:
                 continue
+            if abs(min(shape['points'])[1] - max(shape['points'])[1]) > TIE_LEVEL * gap:
+                continue        # its two ends are at two heights: a slur
             left = [head for head in own if abs(head['cx'] - x0) <= TIE_END * gap and top - TIE_OFF * gap <= head['cy'] <= bottom + TIE_OFF * gap]
             right = [head for head in own if abs(head['cx'] - x1) <= TIE_END * gap and top - TIE_OFF * gap <= head['cy'] <= bottom + TIE_OFF * gap]
             done = False
@@ -538,12 +564,12 @@ def _close_open_ties(staves: list[dict], heads: list[dict], shapes: list[dict]) 
                     head['tie_start'] = True
 
 
-def _drones(plan: list[list[list[dict]]]) -> list[list[list[dict]]]:
+def _drones(plan: list[list[list[dict]]], rests: list[float], gap: float) -> list[list[list[dict]]]:
     """Takes the ison out of the notes of a chant staff, and gives it as bars of its own.
 
-    A chant staff holds one voice, so a column holds one note. The ison is drawn under the melody as a whole note
-    where it begins or moves: a column of two notes whose lower note is a whole note. It holds until the next one,
-    so its length is not drawn; the whole note is written as it stands."""
+    A chant staff holds one voice, so a column holds one note. The ison is drawn where it begins or moves, as an
+    open head without a stem and without a syllable: under the melody's note, just before it, or under or after a
+    rest of the melody. It holds until the next one, so its length is not drawn; it is written as a whole note."""
     columns = [column for bar in plan for column in bar]
     single = sum(1 for column in columns if len(column) == 1)
     if not columns or single < 0.7 * len(columns):
@@ -551,13 +577,18 @@ def _drones(plan: list[list[list[dict]]]) -> list[list[list[dict]]]:
     out = []
     for bar in plan:
         found = []
-        for column in bar:
-            if len(column) < 2:
+        for place, column in enumerate(bar):
+            bare = [event for event in column if event['stem_x'] is None and event['head'].get('hollow')]
+            if not bare:
                 continue
-            low = min(column, key=lambda event: event['place'])
-            if low['head'].get('whole') and low['stem_x'] is None and sum(1 for event in column if event['place'] == low['place']) == 1:
+            low = min(bare, key=lambda event: event['place'])
+            after = bar[place + 1][0]['x'] if place + 1 < len(bar) else None
+            alone = len(column) == 1 and not low['head'].get('lyric') and (
+                any(-DRONE_REST[1] * gap <= low['x'] - x <= DRONE_REST[0] * gap for x in rests)
+                or (after is not None and after - low['x'] <= DRONE_AHEAD * gap))
+            if len(column) > 1 or alone:
                 column.remove(low)
-                found.append([dict(low, voice=1)])
+                found.append([dict(low, voice=1, length=Fraction(4))])
         if found:
             out.append(found)
         bar[:] = [column for column in bar if column]
