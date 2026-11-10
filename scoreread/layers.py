@@ -28,6 +28,8 @@ UPRIGHT = 1.3        # the least height of an upright stroke, in staff spaces
 LEAN = (0.0, 0.06, -0.06, 0.12, -0.12)   # the leans (dx/dy) an upright stroke may have
 DASH_GAP = 0.5       # a gap of this many staff spaces in a thin upright stroke is bridged
 SLIM = 0.62          # an upright stroke at most this wide (in staff spaces) is a stem or a bar line
+STEM_USUAL = (2.2, 1.8)   # a stroke under this height (staff spaces) is no stem when it is this many times as wide as
+                          # the page's long strokes (None: off)
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
 HOLE_GAP = 0.2       # a break of up to this many staff spaces in the rim of a hollow head is closed for the open holes
@@ -294,10 +296,22 @@ def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float)
         own = float(np.median(seen)) if len(seen) else float(np.median(part.sum(axis=1)))
         slim = own <= SLIM * space
         strokes.append({'x': float(np.median(xs)), 'y0': int(y), 'y1': int(y + high - 1), 'width': own, 'slim': bool(slim),
-                        'xs': xs, 'left': left, 'right': right})
-        if slim:
-            limit = 1.6 * own + 2
-            for step in range(high):
+                        'xs': xs, 'left': left, 'right': right, 'runs': runs})
+    if STEM_USUAL:
+        # The page shows how wide its stems are: the long strokes. A short stroke that is much wider is no stem; it
+        # is the ink of two slanted heads, one over the other.
+        long = [stroke['width'] for stroke in strokes if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 >= 2.5 * space]
+        if len(long) >= 8:
+            usual = float(np.median(long))
+            for stroke in strokes:
+                if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 < STEM_USUAL[0] * space \
+                        and stroke['width'] > STEM_USUAL[1] * usual + 1:
+                    stroke['slim'] = False
+    for stroke in strokes:
+        runs, xs, left, right, y = stroke.pop('runs'), stroke['xs'], stroke['left'], stroke['right'], stroke['y0']
+        if stroke['slim']:
+            limit = 1.6 * stroke['width'] + 2
+            for step in range(len(runs)):
                 if 0 < runs[step] <= limit:
                     stems[y + step, xs[step] - left[step] + 1:xs[step] + right[step]] = 1
                 elif runs[step] == 0:

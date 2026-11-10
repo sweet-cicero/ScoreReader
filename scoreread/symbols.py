@@ -941,6 +941,61 @@ OPEN_RIM = 0.5             # an open hole has the head's own ink at this share o
 LOOP_STEM = True           # an open oval may have its stem as one of its sides
 LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
+LOST_STEM = (0.3, 0.45)    # a stem that the copy cut from its thick head stands at most this far past the head's edge
+                           # (staff spaces, sideways) and ends at most this far from the head (None: off)
+THROUGH_SIDE = 0.05        # a thin head that crosses a staff line is one piece: its ink over and under the line is joined
+                           # through the line, up to this many staff spaces sideways
+THIN_PAIR = 1.3            # two thin heads, one over the other: the stem of the one runs on into the other, so its own
+                           # head lies up to this many staff spaces before the stroke's end (0: off)
+
+
+def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float]) -> int:
+    """Gives a thick head the stem that the copy cut from it: an upright stroke that no head has, and that ends
+    close over the head at its right edge (a stem up) or close under it at its left edge (a stem down). A head that
+    already has a stem to the other side becomes the head of both voices; thin_heads() then looks along its stems
+    for the other voice's own head. Returns how many stems were given."""
+    if not LOST_STEM:
+        return 0
+    space = layers['space']
+    used = [(stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end'])) for head in heads for stem in head['stems']]
+    strokes = [stroke for stroke in layers['strokes'] if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 >= THIN_STEM * space]
+    given = 0
+    for stroke in strokes:
+        x, top, bottom = stroke['x'], stroke['y0'], stroke['y1']
+        staff = _staff_of(layers, x, (top + bottom) / 2)
+        if staff is None or x <= ends[staff] + 0.3 * space:
+            continue
+        if any(abs(x - bar) <= 0.4 * space for bar in bars.get(staff, [])):
+            continue
+        if any(abs(x - other) <= 0.35 * space and first - 0.5 * space <= bottom and top <= last + 0.5 * space
+               for other, first, last in used):
+            continue
+        # A sharp and a natural have two upright strokes side by side.
+        if any(other is not stroke and abs(other['x'] - x) <= 0.9 * space
+               and min(other['y1'], bottom) - max(other['y0'], top) >= 0.5 * min(other['y1'] - other['y0'], bottom - top)
+               for other in strokes):
+            continue
+        best = None
+        for head in heads:
+            if head['staff'] != staff or head.get('thin'):
+                continue
+            ways = []
+            if not any(stem['direction'] == 'up' for stem in head['stems']) and bottom <= head['cy']:
+                ways.append(('up', x - head['x1'], head['y0'] - bottom, top))
+            if not any(stem['direction'] == 'down' for stem in head['stems']) and top >= head['cy']:
+                ways.append(('down', head['x0'] - x, top - head['y1'], bottom))
+            for direction, aside, apart, end in ways:
+                if -0.25 * space <= aside <= LOST_STEM[0] * space and apart <= LOST_STEM[1] * space:
+                    far = abs(aside) + max(0.0, apart)
+                    if best is None or far < best[0]:
+                        best = (far, head, direction, end)
+        if best:
+            _, head, direction, end = best
+            head['stems'].append({'direction': direction, 'x': int(round(x)), 'end': int(end), 'length': abs(head['cy'] - end),
+                                  'lost': True})
+            used.append((x, min(head['cy'], end), max(head['cy'], end)))
+            given += 1
+    return given
 
 
 def _loop(part: np.ndarray, space: float) -> float:
@@ -982,6 +1037,11 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         size = 2 * int(round(0.3 * space)) + 1
         beside = cv2.dilate(taken, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
     ink = marks | (layers['lines'] & cv2.dilate(marks, np.ones((2 * near + 1, 1), np.uint8)))
+    if THROUGH_SIDE:
+        # A slanted stroke that crosses a staff line: slivers of the line stay between its parts. A sliver that has
+        # the stroke's ink close at its left and at its right in the same row is ink of the stroke.
+        aside = np.ones((1, 2 * int(round(THROUGH_SIDE * space)) + 1), np.uint8)
+        ink |= layers['lines'] & cv2.morphologyEx(ink, cv2.MORPH_CLOSE, aside)
     count, labels, stats, centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
     pieces = []
     for index in range(1, count):
@@ -1112,6 +1172,45 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                                   and piece['from_end'] <= FLAG_END for piece in hung)
         return flags[id(stem)]
 
+    def make_head(piece: dict, direction: str, x: float, end: float, staff: int) -> dict | None:
+        place = pitch_place(staves[staff], piece['cy'])
+        head = {'x0': piece['x0'], 'y0': piece['y0'], 'x1': piece['x1'], 'y1': piece['y1'], 'cx': piece['cx'], 'cy': piece['cy'],
+                'staff': staff, 'place': place, 'hollow': piece['hole'] >= THIN_HOLLOW, 'hole': piece['hole'], 'thin': True,
+                'stems': [{'direction': direction, 'x': int(round(x)), 'end': int(end), 'length': abs(piece['cy'] - end)}]}
+        if abs(place) > 4 + 2 * REACH:
+            return None
+        if abs(place) > 4.6:
+            head['ledgers'] = ledger_lines(layers, staves[staff], head)
+            place = ledger_place(layers, staves[staff], head)
+            if place is None or (not head['ledgers'] and abs(head['place']) > max(5.6, NO_LEDGER)):
+                return None
+            head['place'] = place
+        return head
+
+    def other_piece(x: float, top: float, bottom: float, direction: str, held: dict) -> dict | None:
+        """Another piece that hangs on a stem before the stroke's end: over the held piece for a stem up, under it
+        for a stem down. It reaches the stem."""
+        best = None
+        for piece in pieces:
+            if piece is held or piece.get('open'):
+                continue
+            if direction == 'up':
+                past, side, reach, apart = piece['cy'] - bottom, x - piece['cx'], x - piece['x1'], held['cy'] - piece['cy']
+            else:
+                past, side, reach, apart = top - piece['cy'], piece['cx'] - x, piece['x0'] - x, piece['cy'] - held['cy']
+            if apart < 0.3 * space or not (-0.15 * space <= side <= 1.6 * space and reach <= 0.2 * space):
+                continue
+            if not -THIN_PAIR * space <= past <= THIN_NEAR * space:
+                continue
+            if any(abs(head['cx'] - piece['cx']) <= 0.7 * space and abs(head['cy'] - piece['cy']) <= 0.45 * space
+                   for head in heads + found):
+                continue
+            far = abs(past) + max(0.0, reach)
+            if best is None or far < best[0]:
+                best = (far, piece)
+        return best[1] if best else None
+
+    asked = {}       # the stroke of each thin head that was found from a stroke of its own: (x, top, bottom, direction)
     for x, top, bottom, staff, owners, whole in asks:
         best = None
         for piece in pieces:
@@ -1167,7 +1266,31 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                    and other['y0'] <= piece['cy'] <= other['y1']]
             if rim:
                 piece = dict(min(rim, key=lambda other: other['area']), hole=1.0, cy=piece['cy'])
-        if any(abs(head['cx'] - piece['cx']) <= 0.7 * space and abs(head['cy'] - piece['cy']) <= 0.45 * space for head in heads + found):
+        if any(abs(head['cx'] - piece['cx']) <= 0.7 * space and abs(head['cy'] - piece['cy']) <= 0.45 * space for head in heads):
+            continue
+        holder = next((head for head in found if abs(head['cx'] - piece['cx']) <= 0.7 * space
+                       and abs(head['cy'] - piece['cy']) <= 0.45 * space), None)
+        if holder is not None:
+            # Another stem has this piece as its head. Two voices, each a thin stroke, one right over the other: the
+            # stem up of the upper head runs on into the lower head (or the stem down into the upper one), so the
+            # stroke seems to end at the wrong head. The stem up has the upper piece, the stem down the lower one.
+            theirs = asked.get(id(holder))
+            if THIN_PAIR and not owners and theirs is not None and theirs[3] != direction:
+                moved = other_piece(theirs[0], theirs[1], theirs[2], theirs[3], piece)
+                if moved is not None:
+                    first = make_head(moved, theirs[3], theirs[0], theirs[1] if theirs[3] == 'up' else theirs[2], holder['staff'])
+                    second = make_head(piece, direction, x, top if direction == 'up' else bottom, staff)
+                    if first is not None and second is not None:
+                        found[next(number for number, head in enumerate(found) if head is holder)] = first
+                        found.append(second)
+                        asked[id(first)] = theirs
+                        asked[id(second)] = (x, top, bottom, direction)
+                else:
+                    own = other_piece(x, top, bottom, direction, piece)
+                    head = make_head(own, direction, x, top if direction == 'up' else bottom, staff) if own is not None else None
+                    if head is not None:
+                        found.append(head)
+                        asked[id(head)] = (x, top, bottom, direction)
             continue
         end = top if direction == 'up' else bottom
         if owners:
@@ -1187,19 +1310,11 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                             and piece['x0'] - 0.2 * space <= stem['x'] <= piece['x1'] + 0.2 * space \
                             and piece['y0'] - 0.3 * space <= stem['end'] <= piece['y1'] + 0.3 * space:
                         owner['stems'].remove(stem)
-        place = pitch_place(staves[staff], piece['cy'])
-        head = {'x0': piece['x0'], 'y0': piece['y0'], 'x1': piece['x1'], 'y1': piece['y1'], 'cx': piece['cx'], 'cy': piece['cy'],
-                'staff': staff, 'place': place, 'hollow': piece['hole'] >= THIN_HOLLOW, 'hole': piece['hole'], 'thin': True,
-                'stems': [{'direction': direction, 'x': int(round(x)), 'end': int(end), 'length': abs(piece['cy'] - end)}]}
-        if abs(place) > 4 + 2 * REACH:
-            continue
-        if abs(place) > 4.6:
-            head['ledgers'] = ledger_lines(layers, staves[staff], head)
-            place = ledger_place(layers, staves[staff], head)
-            if place is None or (not head['ledgers'] and abs(head['place']) > max(5.6, NO_LEDGER)):
-                continue
-            head['place'] = place
-        found.append(head)
+        head = make_head(piece, direction, x, end, staff)
+        if head is not None:
+            found.append(head)
+            if not owners:
+                asked[id(head)] = (x, top, bottom, direction)
     return found
 
 

@@ -15,7 +15,7 @@ from .layers import read_layers
 from .music import agree_lengths, build_staff, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_starts
-from .symbols import bar_lines, count_tails, dots, read_symbols, thin_heads, without_flag_loops
+from .symbols import bar_lines, count_tails, dots, lost_stems, read_symbols, thin_heads, without_flag_loops
 
 SIGNS = 'strokes'
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
@@ -44,6 +44,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '') -> dict:
     for index in bars:
         stems = [stem['x'] for head in heads if head['staff'] == index for stem in head['stems']]
         bars[index] = [x for x in bars[index] if all(abs(x - stem) > 0.4 * space for stem in stems)]
+    lost_stems(layers, heads, bars, ends)
     heads += thin_heads(layers, heads, bars, ends)
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
