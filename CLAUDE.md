@@ -11,8 +11,8 @@ under 99 % of the notes that its pages show. The words under the notes belong to
 words is of no use. Recited syllables that no page prints are counted apart, and the reader must mark a reciting
 note. The work does not stop at a partial result. Report each result with its limits.
 
-Not reached yet: 80.1 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 74.6 % on scans; 59
-scores at 99 % or more), 19 % of the syllables (none from scans), and 88.9 % on the kit (6132 of 6901).
+Not reached yet: 80.9 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 75.7 % on scans; 59
+scores at 99 % or more), 19 % of the syllables (none from scans), and 88.9 % on the kit (6137 of 6901).
 
 ## Direction
 

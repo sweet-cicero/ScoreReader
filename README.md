@@ -7,6 +7,7 @@ the page, written in this repository, with OpenCV and NumPy. No other reader is 
 ```
 python -m scoreread read "path/to/score.pdf" --page 1 --out out/my-hymn
 python -m scoreread read page.png --out out/my-hymn
+python -m scoreread hymn "path/to/score.pdf" --out out/my-hymn    # all pages of a hymn, joined into one file
 python -m scoreread layers page.png --out out/check       # the page with each layer of ink in its own colour
 python -m scoreread layout page.png --out out/check       # only staves and systems, 2 seconds
 ```
@@ -34,6 +35,7 @@ see the results and the limits below.
 | 5. Symbols | `scoreread/symbols.py`, `starts.py`, `meter.py`, `signs.py`, `ties.py`, `words.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, the sharps, flats and naturals before a note, and the ties. The key of a page is a vote of its staves (a copy loses signs more easily than it gains them), and a page without a key signature has the key of the page before. Finds the time signatures, so that their numbers are no notes and no sharps. Finds the rows of the words, so that a stem ends where they begin and a letter is no note. |
 | 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
 | Drawing | `scoreread/vector.py` | No | A PDF that notation software wrote holds each sign as a character of a music font at its exact place, and its words as text. Such a page is read from that drawing, with its words; no image is read. |
+| Hymn | `scoreread/hymn.py`, `cli.py` | No | Reads the pages of a hymn in order and joins them into one score: the same staff of every system of every page is one part. The key and the clefs of a page go on to the next page. |
 
 Steps 4 to 6 are the own symbol step. They replaced copisteria's network of version 0.4, which is only a yardstick
 now: it lives in `bench/yardstick`, outside the reader (see "Tests").
@@ -60,6 +62,7 @@ flowchart TD
     symbols --> music["<b>Step 6: music rules</b><br/>music.py"]
     drawing -------> music
     music --> notes["<b>The notes</b><br/>name.musicxml and name.notes.json"]
+    notes --> hymn["<b>The whole hymn</b><br/>hymn.py<br/>The command hymn reads the pages in order and joins them, staff by staff. The key and the clefs of a page go on to the next page."]
     clean -.-> layout["name.layout.json, name.clean.png and name.staves.png. The command layout stops here."]
     layers -.-> picture["name.layers.png. The command layers stops here."]
 ```
@@ -176,12 +179,12 @@ flowchart TD
     start["The first columns of each staff (starts.py)"]
     start --> shape["<b>The clef from its shape</b><br/>A treble clef begins far over the top line and ends under the bottom line. A bass clef stays inside the staff."]
     start --> signs["<b>The signs after the clef</b><br/>From their upright strokes: a sharp has two strokes side by side, a flat has one stroke with a bowl. The strokes of a time signature are no signs."]
-    signs --> chain["<b>Chain</b><br/>Each next sign must stand where the fixed order of a key signature puts it, under a treble or a bass clef. A rest or the first note ends the chain. On a thick copy, where the first signs ran together, two later signs stand for the whole signature."]
+    signs --> chain["<b>Chain</b><br/>Each next sign must stand where the fixed order of a key signature puts it, under a treble or a bass clef. A rest or the first note ends the chain. On a thick copy, where the first signs ran together, two later signs stand for the whole signature: a guess that counts only where more staves show it than show fewer signs clearly."]
     chain --> key["<b>Key of the page</b><br/>The staves vote. A copy loses signs more easily than it gains them: a key that some staves show well wins over the staves that show none, and more signs win over fewer signs of their sort."]
     key --> before["A page that shows no key has the key of the page before (--key-before). A system whose staves all show another key has that key."]
     chain --> witness["The heights of the chain show the clef too: a second witness."]
     shape --> clef
-    witness --> clef["<b>Clef</b><br/>The same staff of every system votes for its clef. Without a witness, the lowest staff of a system of two or more is a bass staff, and the others are treble staves."]
+    witness --> clef["<b>Clef</b><br/>The same staff of every system votes for its clef. The clefs of the page before in the same hymn are one more witness. Without a witness, the lowest staff of a system of two or more is a bass staff, and the others are treble staves."]
     before --> ends["Where the notes begin on each staff: after its clef, its key signature and its time signature."]
     clef --> ends
 ```
@@ -276,19 +279,19 @@ and the numbers of a time signature (see "Limits").
 ## Results on every score of LitChoir (the wide test)
 
 The wide test reads every score of the app that has a typed hymn to compare with: 366 scores on 657 pages, 516 of
-them scans. Notes right means pitch and length both right. The count is of the notes that the pages show: 5,836
+them scans. Notes right means pitch and length both right. The count is of the notes that the pages show: 5,752
 typed notes that no page prints (mostly recited syllables) are listed apart.
 
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.1 % (19,916 of 20,104) | 51 | 68 | 0 |
-| Scans | 296 | 74.6 % (52,194 of 69,934) | 8 | 67 | 34 |
-| All | 366 | 80.1 % (72,110 of 90,038) | 59 | 135 | 34 |
+| Scans | 296 | 75.7 % (52,999 of 70,018) | 8 | 67 | 31 |
+| All | 366 | 80.9 % (72,915 of 90,122) | 59 | 135 | 31 |
 
 - Words: 5,586 of 28,976 syllables are right (19 %). All of them come from the software-made PDFs, where 92 % of
   the syllables are right. No word is read from a scan yet.
-- The last rounds on the scans: new rules for the systems brought 1,511 notes, and the rules for keys and time
-  signatures 713 (4 lost).
+- The last rounds on the scans: new rules for the systems brought 1,511 notes, the rules for keys and time
+  signatures 713 (4 lost), staves in pale lines 695 (6 lost), and a flat that a staff line cut off 105 (27 lost).
 - 4 more scans are not counted: their page holds another version than the typed hymn.
 
 ## Results on the reader test (31 typed hymns, 38 pages, 6901 notes)
@@ -303,7 +306,7 @@ typed hymns, of all typed notes.
 | By hand | 5 | 65 % | 70 % | 79 % | 86 % |
 | Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 79 % |
 | Digital PDF | 3 | 81 % | 72 % | 81 % | 99 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 88.9 % (6132 notes) |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 88.9 % (6137 notes) |
 
 - Over all hymns the own rules read more notes right than the network they replaced: 88.9 % against 81 %.
 - They are behind the network on two kinds: old copies (86 % against 88 %) and the two poor pages (79 % against 95 %).
@@ -312,13 +315,13 @@ typed hymns, of all typed notes.
 ## Limits
 
 - The reader is not accurate enough yet to put a scanned hymn into the app without a check. Only 8 of the 296
-  scanned scores are at 99 %, and 34 are under 50 %: thick copies where signs and heads ran together, pages with
-  pale staff lines, and pages where a clef is hidden.
+  scanned scores are at 99 %, and 31 are under 50 %: thick copies where signs and heads ran together, pages
+  where a clef is hidden, and pages of a service book with a few lines of music among the text.
 - The rules and their limits were set on the same pages that test them. The figures above are therefore the best
   case. New pages will read worse until they are measured too.
 - The wide test compares with typed hymns that were made for singing, not for testing. Some differ from the page
   (another key, an octave, a repeat written out). Known cases are told to the scorer; others count as wrong.
-- About 17,700 drawn notes of the scans are wrong. Counted one round earlier (of about 18,700 then; a note can be
+- About 17,000 drawn notes of the scans are wrong. Counted some rounds earlier (of about 18,700 then; a note can be
   wrong in two ways): about 7,300 are not read at all, about 6,900 have a wrong pitch (a wrong key or clef, or one
   place off), and about 6,100 a wrong length (a half note read as a quarter because the copy filled its hole, an
   eighth read as a quarter because its flag or beam was not seen, dots).
@@ -329,13 +332,14 @@ typed hymns, of all typed notes.
   head on one line of the page.
 - The reader also writes notes that are not there (about 260 on the kit), from rests, letters of the words,
   ornaments and slurs. They are counted apart and do not lower notes right, but a singer would see them.
-- The output is MusicXML for one page. The reader does not join pages or write the app's hymn format yet (the wide
-  test joins the pages with a script of its own).
+- `hymn` joins the pages of a score into one MusicXML file, staff by staff. It does not know repeats, it is not
+  scored as a whole yet (the wide test scores the pages and joins them itself), and the reader does not write the
+  app's hymn format yet.
 
 ## Next steps
 
-1. One command for a whole hymn: all pages, the key carried from page to page, the pages joined.
-2. Pale staff lines, clefs hidden behind a bracket, and the pages where almost nothing is read.
+1. Clefs hidden behind a bracket, and the pages where almost nothing is read.
+2. Score the joined hymn of the `hymn` command, and let the hymn teach the page more (parts, time).
 3. Half notes whose hole the copy filled, by the notes that sound with them. Flags and beams that are not seen.
 4. The words on scans, with no model.
 5. Rests, with a check of each bar's length.
@@ -385,4 +389,5 @@ Version 0.5 replaced copisteria's network with the own symbol step (layers, symb
 on alone and scored on all 38 pages, and a rule that did not gain notes was dropped.
 
 Version 0.6 (in work) reads software-made PDFs from their drawing with their words, groups the staves of scans by
-three more checks, votes for the key of a page, finds time signatures, and moved the yardstick out of the reader.
+three more checks, votes for the key of a page, finds time signatures and staves in pale lines, joins the pages of
+a hymn (`hymn`), and moved the yardstick out of the reader.
