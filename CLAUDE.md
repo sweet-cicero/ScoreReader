@@ -20,8 +20,10 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 82.6 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 77.9 % on scans; 61
 scores at 99 % or more), 88.8 % of the notes on the clean copies (9 of 81 scores at 99 %), and of their syllables
-50.1 % with the own letter reader and 81.0 % with Tesseract; 77.4 % of all syllables with Tesseract (73.2 % on
-scans), and 89.1 % on the kit (6149 of 6901).
+49.9 % with the own letter reader and 80.8 % with Tesseract (76.3 % of the whole words); 77.3 % of all syllables
+with Tesseract (73.2 % on scans), and 89.1 % on the kit (6149 of 6901). On the fresh test set, which no rule was
+set on: 91.9 % of the notes (37,612 of 40,906; 65 of 214 pieces at 99 %), 54.6 % of the syllables and 64.7 % of the
+whole words.
 
 ## Direction
 
@@ -77,4 +79,5 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   (`bench/staves_check.py`, `bench/systems_check.py`).
 - A written score wins over a recording.
 - The fresh test set (228 choir pieces with exact answers, in the project's files, outside git) is for measuring
-  only. Do not set a rule or a limit on its pages, and do not add it to this repository.
+  only. Do not set a rule or a limit on its pages, and do not add it to this repository. A cause that it shows is
+  worked on with LitChoir's pages and then measured on it. Report its figures beside the clean copies.
