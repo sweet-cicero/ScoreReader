@@ -266,7 +266,8 @@ def _note_xml(note: dict, chord: bool) -> str:
     if ties:
         parts.append('<notations>' + ''.join(f'<tied type="{name}"/>' for name in ties) + '</notations>')
     if note.get('lyric'):
-        parts.append(f'<lyric number="1"><text>{escape(note["lyric"])}</text></lyric>')
+        syllabic = f'<syllabic>{note["syllabic"]}</syllabic>' if note.get('syllabic') else ''
+        parts.append(f'<lyric number="1">{syllabic}<text>{escape(note["lyric"])}</text></lyric>')
     parts.append('</note>')
     return ''.join(parts)
 

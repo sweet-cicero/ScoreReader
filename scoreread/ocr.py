@@ -26,6 +26,7 @@ SURE = 20                # a word that Tesseract is less sure of than this (of 1
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
 #                          ink under a staff: a slur, a hairpin, the ends of stems). None: every row is kept
 JOINS = '-‐‑‒–—~='     # what a hyphen between two syllables can be read as
+STOPS = '.,;:!?'         # a dash after a syllable that ends with one of these is the line of a held syllable, no hyphen
 LINES = '_'              # the line after a syllable that is held
 
 
@@ -58,14 +59,14 @@ def _line(crop: np.ndarray, folder: str, name: str) -> list[tuple[str, int, int,
 def _syllables(words: list[tuple[str, float, float, float]]) -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows)} each. A hyphen
     stands alone between two syllables, or inside a word that the reader took for one; the line after a held
-    syllable is no letter."""
+    syllable is no letter, and a dash after a comma or a full stop is such a line too."""
     found: list[dict] = []
     for text, left, right, sure in words:
         text = text.replace('|', '').strip(LINES)
         if not text:
             continue
         if all(sign in JOINS + LINES + '.,' for sign in text):
-            if found and any(sign in JOINS for sign in text):
+            if found and any(sign in JOINS for sign in text) and found[-1]['text'][-1] not in STOPS:
                 found[-1]['join'] = True
             continue
         letters = sum(sign.isalpha() for sign in text)
@@ -76,7 +77,7 @@ def _syllables(words: list[tuple[str, float, float, float]]) -> list[dict]:
         at = 0
         for piece in re.split('([' + re.escape(JOINS) + ']+|[' + re.escape(LINES) + ']+)', text):
             if piece and piece[0] in JOINS:
-                if found:
+                if found and found[-1]['text'][-1] not in STOPS:
                     found[-1]['join'] = True
             elif piece and piece[0] not in LINES and any(sign.isalpha() for sign in piece):
                 found.append({'text': piece, 'x0': left + wide * at, 'x1': left + wide * (at + len(piece)), 'join': False})
