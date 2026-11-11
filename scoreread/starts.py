@@ -57,6 +57,14 @@ EIGHT = (0.7, 1.7, 4.6, 0.008, 0.3, 0.2, 0.9, 1.4, 0.13)    # the small 8 under 
 #   hole of it has from this to this many square staff spaces; its two holes stand from this to this many staff
 #   spaces one over the other; the figure is at most this many staff spaces wide; and the two holes have at least
 #   this share of the ink around them. None: the 8 is not looked for
+FLAT_GLUED = (0.25, 0.2, 0.8, 0.25, 1.0, 0.4)   # a flat whose bowl touches a ledger line or its head: the paper inside the
+#                     bowl begins at most this far right of the stroke, is from this to this wide and from this to this
+#                     high (staff spaces), and begins under this share of the stroke's height (None: off)
+JOINING = 2.5       # an upright line that crosses a staff and goes on this many staff spaces towards the next staff of its
+#                     system is the line that opens the system or a bar line, also where a clef touches it (0: off)
+JOINED = (3.1, -0.5)   # the reading without such a line counts where the plain reading shows no clef or a mark that
+#                     reaches this far over the top line, and the new one a bass clef that ends this far from the
+#                     bottom line (negative: over it)
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
 #                         staff's left end, in staff spaces: a bass clef ends over the bottom line (None: off)
@@ -172,6 +180,26 @@ def stroke_sides(layers: dict, stroke: dict, space: float) -> dict | None:
             'foot': (float(np.median([span[0] for span in foot])) - edge0) / space}
 
 
+def _bowl_hole(layers: dict, stroke: dict, space: float) -> tuple[int, int, float] | None:
+    """The paper that the bowl of a flat closes in, beside the lower part of its stroke: (its first column, its last
+    column, its middle row), or None. FLAT_GLUED: how far from the stroke it may begin, its least and greatest width
+    and its least and greatest height, in staff spaces, and the share of the stroke's height over which it begins."""
+    near, narrow, wide, low, high, down = FLAT_GLUED
+    holes = layers['holes']
+    y0 = int(stroke['top'] + down * (stroke['bottom'] - stroke['top']))
+    y1 = min(holes.shape[0], int(stroke['bottom']) + 1)
+    x0, x1 = max(0, int(stroke['x0'])), min(holes.shape[1], int(stroke['x1'] + (near + wide) * space) + 1)
+    if y1 - y0 < 3 or x1 - x0 < 3:
+        return None
+    count, _, stats, _ = cv2.connectedComponentsWithStats(holes[y0:y1, x0:x1].astype(np.uint8), connectivity=4)
+    for index in range(1, count):
+        x, y, width, height, _ = stats[index]
+        if x0 + x <= stroke['x1'] + near * space and narrow * space <= width <= wide * space and low * space <= height <= high * space \
+                and y > 0 and x + width < x1 - x0:
+            return int(x0 + x), int(x0 + x + width - 1), float(y0 + y + (height - 1) / 2)
+    return None
+
+
 def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
     """The marks that can be a sharp or a flat, from the upright strokes: each {'kind', 'x0', 'x1', 'place'}."""
     space = staff['space']
@@ -212,6 +240,13 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict
                           'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
                           'bowl_place': pitch_place(staff, sides['bowl']) if sides['bowl'] is not None else None,
                           'top': stroke['top'], 'bottom': stroke['bottom']})
+        elif FLAT_GLUED and sides and sides['top'] <= 0.65 and sides['bulge'] > 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
+                and sides['foot'] <= 0.3 and stroke['wide'] <= 0.45 and (hole := _bowl_hole(layers, stroke, space)):
+            # A flat whose bowl touches the ledger line or the head of its note: the ink goes on to the right, but the
+            # bowl still closes in its small piece of paper beside the lower part of the stroke.
+            signs.append({'kind': 'flat', 'x0': float(stroke['x0']), 'x1': float(hole[1]), 'glued': True,
+                          'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
+                          'bowl_place': pitch_place(staff, hole[2]), 'top': stroke['top'], 'bottom': stroke['bottom']})
         elif 0.45 < stroke['wide'] and stroke['high'] <= 3.4:
             # Two strokes that the ink of a small hand joined.
             signs.append({'kind': 'sharp', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'place': stroke['place'],
@@ -317,7 +352,41 @@ def bare_lines(layers: dict, staff: dict, first: float, last: float) -> list[tup
     return found
 
 
-def clef_shape(layers: dict, staff: dict) -> dict:
+def joining_lines(layers: dict, staff: dict, first: float, last: float) -> list[tuple[float, int, int]]:
+    """The upright lines that cross a staff and go on to the next staff of its system (the line that opens the
+    system, a bar line through the gap), in the columns first..last, as bare_lines() gives them. A clef that touches
+    the opening line makes it no bare line; but no stroke of a clef and no stem goes on for JOINING staff spaces
+    past the staff."""
+    ink, space = layers['ink'], staff['space']
+    others = [other['number'] for other in layers['staves'] if other['system'] == staff['system']]
+    top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
+    x0, x1 = max(0, int(first)), min(ink.shape[1], int(last))
+    reach = int(JOINING * space)
+    spans = []
+    if staff['number'] > min(others):
+        spans.append((max(0, top - reach), top))
+    if staff['number'] < max(others):
+        spans.append((bottom + 1, min(ink.shape[0], bottom + 1 + reach)))
+    if x1 - x0 < 3 or not spans:
+        return []
+    full = ink[top:bottom + 1, x0:x1].mean(axis=0) >= 0.9
+    groups = []
+    for column in np.nonzero(full)[0]:
+        if groups and column - groups[-1][1] <= 2:
+            groups[-1][1] = int(column)
+        else:
+            groups.append([int(column), int(column)])
+    found = []
+    for begin, end in groups:
+        if end - begin + 1 > 0.7 * space:
+            continue
+        columns = ink[:, x0 + begin:x0 + end + 1]
+        if any(y1 - y0 >= 0.8 * reach and columns[y0:y1].any(axis=1).mean() >= 0.95 for y0, y1 in spans):
+            found.append(((begin + end) / 2 + x0, begin + x0, end + x0))
+    return found
+
+
+def clef_shape(layers: dict, staff: dict, joining: list | None = None) -> dict:
     """The clef of a staff from its shape: {'clef': 'G', 'F' or None, 'x0', 'x1', 'over', 'under', 'wide'}. The clef
     is the first high mark that touches the staff, after the line that opens the system; `over` and `under` say how
     far it reaches past the top line and the bottom line, in staff spaces."""
@@ -328,6 +397,21 @@ def clef_shape(layers: dict, staff: dict) -> dict:
     x0, x1 = max(0, int(staff['x0'] - 0.3 * space)), min(free.shape[1], int(staff['x0'] + 12 * space))
     region = free[y0:y1, x0:x1].copy()
     opening = bare_lines(layers, staff, x0, x1)
+    if JOINING and joining is None:
+        # A bass clef that touches the line that opens its system: with the line it is one mark that reaches far over
+        # the staff, or no mark at all. The staff is read again with the line taken away, and that reading counts
+        # only when it shows a bass clef that ends well over the bottom line: the rest of a treble clef that a hand
+        # drew across the line, and the hook of a bracket under a thick copy's staff, are no such shape.
+        more = sorted(set(opening) | set(joining_lines(layers, staff, x0, x1)))
+        if more != opening:
+            plain = clef_shape(layers, staff, opening)
+            if plain['clef'] is None or plain['over'] >= JOINED[0]:
+                shape = clef_shape(layers, staff, more)
+                if shape['clef'] == 'F' and shape['under'] <= JOINED[1]:
+                    return shape
+            return plain
+    elif joining is not None:
+        opening = joining
     for _, begin, end in opening:
         region[:, max(0, begin - x0 - 2):max(0, end - x0 + 3)] = 0
     # The staff lines were taken away: a thin mark is joined again over the rows of the lines.
