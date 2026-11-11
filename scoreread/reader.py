@@ -53,10 +53,13 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     'alter', 'octave', 'midi', 'x', 'place' (0 is the middle line, +1 a step up), 'agreed' (the music check changed
     its length), 'votes' (how the voices voted on its steps), 'tie_start' and 'tie_stop' (a tie begins or ends at
     the note; the tied notes stay two notes, as in MusicXML) and 'mark': what the note was read from (the size and
-    place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams)."""
+    place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams).
+
+    The words are read after the notes, for the whole hymn at once (scoreread.lyrics): 'part_notes' holds, for each
+    note of 'notes', the same note in 'parts', so that a syllable can be set under both."""
     if not places:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
-        return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
+        return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'part_notes': [], 'title': title, 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
                 'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'times': []}
     layers = read_layers(grey, places)
@@ -136,7 +139,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         for index in tenors:
             clefs[index] = 'G8vb'
     parts = [[] for _ in range(width)]
-    notes = []
+    notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
              for index, staff in enumerate(staves)}
     # Music check: the voices of a system agree on the length of each step from column to column.
@@ -150,6 +153,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
             for note in bar:
                 head = note.pop('head')
+                part_notes.append(note)
                 stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (note['voice'] == 1)), None)
                 notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
                                   agreed=note.get('agreed', False), votes=note.get('votes'),
@@ -159,8 +163,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))
-    return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'staves': len(staves),
-            'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
+    return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'part_notes': part_notes, 'title': title,
+            'staves': len(staves), 'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words,
