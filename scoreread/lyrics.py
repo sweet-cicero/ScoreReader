@@ -64,6 +64,9 @@ SURE = (0.6, 0.8, 3)    # a hymn teaches its shapes when this share of its words
 #                         such words and has this many glyphs
 DOUBLE = 1.4            # a letter with no name that is this many times as wide as the usual letter can be two letters
 UNDER = 3.0             # a syllable stands at most this many staff spaces beside its note
+RECITED = True          # a syllable that has no note of its own is sung on the note before it (a reciting note holds
+#                         many syllables, and a note that was not read must not cost its syllable): it is written
+#                         after that note's syllable. False: such a syllable is left out
 
 
 def load_words(path: str | Path) -> collections.Counter:
@@ -752,8 +755,9 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
     """Sets the syllables of a page under its notes: note['lyric'] in the notes and in the parts of what
     read_page() gave. A row of words belongs to the staff over it (the first row under a staff holds the first
     verse; only that one is set), and its syllables stand under the notes of that staff in their order, each under
-    the note that it is nearest to. A letter that has no name is written as '?', so that a person sees where to
-    mend the word. Returns how many syllables were set."""
+    the note that it is nearest to. A syllable with no note of its own is written after the syllable of the note
+    before it: 'Glo-ry to the Fa-ther' under one reciting note. A letter that has no name is written as '?', so
+    that a person sees where to mend the word. Returns how many notes got words."""
     layers = result.get('layers')
     if not layers or not syllables:
         return 0
@@ -795,19 +799,37 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
                 cost[i, j] = min(cost[i, j - 1], cost[i - 1, j] + skip,
                                  cost[i - 1, j - 1] + apart if apart <= skip else np.inf)
         i, j = len(row), len(places)
+        under: dict[int, int] = {}
         while i and j:
             apart = abs(wants[i - 1] - places[j - 1])
             if apart <= skip and cost[i, j] == cost[i - 1, j - 1] + apart:
-                text = row[i - 1]['text'].strip(".,'")
-                if text:
-                    column = columns[j - 1]
-                    top = min(column, key=lambda at: (result['notes'][at]['voice'], -result['notes'][at]['midi']))
-                    result['notes'][top]['lyric'] = text
-                    result['part_notes'][top]['lyric'] = text
-                    count += 1
+                under[i - 1] = j - 1
                 i, j = i - 1, j - 1
             elif cost[i, j] == cost[i, j - 1]:
                 j -= 1
             else:
                 i -= 1
+        texts: dict[int, str] = {}
+        last, before = None, ''
+        for at, syllable in enumerate(row):
+            text = syllable['text'].strip(".,'")
+            if not text:
+                continue
+            link = '-' if at and row[at - 1].get('join') else ' '
+            if at in under:
+                last = under[at]
+                texts[last] = (before + link + text) if before else text
+                before = ''
+            elif not RECITED:
+                continue
+            elif last is None:
+                before = (before + link + text) if before else text
+            else:
+                texts[last] += link + text
+        for j, text in texts.items():
+            column = columns[j]
+            top = min(column, key=lambda at: (result['notes'][at]['voice'], -result['notes'][at]['midi']))
+            result['notes'][top]['lyric'] = text
+            result['part_notes'][top]['lyric'] = text
+            count += 1
     return count

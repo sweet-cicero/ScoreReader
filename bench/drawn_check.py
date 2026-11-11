@@ -101,7 +101,15 @@ def main() -> int:
     print(f"{'ok ' if len(ties) == want else 'BAD'} ties: read {ties} (drawn {want})")
     systems_ok = [len(system) for system in systems] == [2]
     print(f"{'ok ' if systems_ok else 'BAD'} systems: {[len(system) for system in systems]} (drawn [2]), clefs {result['clefs']}")
-    return 1 if wrong or not systems_ok else 0
+    # The words: a line of text as Tesseract gives it is cut into syllables (no Tesseract is needed for this check).
+    from scoreread.ocr import _syllables, _words_row
+    line = [('Glo', 0, 30, 92), ('-', 32, 40, 90), ('ry', 42, 60, 88), ('to', 70, 90, 95), ('Thee,', 100, 150, 92),
+            ('our-', 160, 200, 90), ('God__', 210, 280, 80), ('|', 290, 292, 90), ('mer-cy', 300, 360, 91), ('>', 370, 380, 64)]
+    cut = [(syllable['text'], syllable['join']) for syllable in _syllables(line)]
+    want = [('Glo', True), ('ry', False), ('to', False), ('Thee,', False), ('our', True), ('God', False), ('mer', True), ('cy', False)]
+    words_ok = cut == want and _words_row(line) and not _words_row([('lL', 0, 9, 0), ('te', 10, 20, 21), ('J!', 30, 40, 52)])
+    print(f"{'ok ' if words_ok else 'BAD'} words: a line of text cut into {len(cut)} syllables (wanted {len(want)})")
+    return 1 if wrong or not systems_ok or not words_ok else 0
 
 
 if __name__ == '__main__':
