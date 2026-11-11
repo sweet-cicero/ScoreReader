@@ -27,6 +27,8 @@ BESIDE = 1.8         # a whole note beside a note with a stem, on its pitch or a
 BESIDE_DOT = 2.6     # or this far, at the right of a note with a dot
 ACROSS = 0.9         # the columns of two staves of a system are one column when they stand at most this far apart
 AGREE = 2            # this many voices must agree on the length of a step before another voice's note is changed
+AGREE_HOLLOW = True  # where as many voices say a half note as say a quarter note (AGREE or more each), the step is a
+#                      half note: a copy fills the hole of a half note, and it opens no hole in a quarter note
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -237,6 +239,9 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                 best = max(votes[number], key=votes[number].get)
                 if votes[number][best] >= AGREE and votes[number][best] > sum(votes[number].values()) - votes[number][best]:
                     sure[number] = best
+                elif AGREE_HOLLOW and len(votes[number]) == 2 and votes[number].get(Fraction(1), 0) >= AGREE \
+                        and votes[number].get(Fraction(1)) == votes[number].get(Fraction(2)):
+                    sure[number] = Fraction(2)
         for number, following, events, length in spans:
             for event in events:      # for the record: how the voices voted on this note's steps
                 event['votes'] = [{str(value): votes[step][value] for value in votes[step]} for step in range(number, following)]
