@@ -21,7 +21,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .letters import differ, group_glyphs, normal
+from .letters import STRICT, differ, group_glyphs, normal
 
 ASC = set('bdfhklt')    # the small letters that rise over the others
 LETTERS = 'abcdefghijklmnopqrstuvwxyz'
@@ -54,6 +54,15 @@ ALIKE = (0.4, 12)       # a lone shape has the name of a named shape that it dif
 MEND = (1, 2, 3.0)      # a word that is no word of the list is mended when a word of the list fits it but for this
 #                         many letters (a word of up to five letters, a longer word), and that word is this many
 #                         times as usual as the next one that fits as well
+KNOWN = (0.2, 3.0)      # a shape that an earlier hymn named: a group that differs from it by under this share of the ink,
+#                         and by no piece of ink, gets up to this much for that name at each place
+KNOWN_LOOK = 24         # this many of the nearest known shapes are looked at for a group
+KNOWN_SURE = (0.12, 0.05)   # a group has the name of a known shape at once when it differs from it by under this share
+#                         of the ink, and from every known shape with another name by this share more (None: off)
+SURE = (0.6, 0.8, 3)    # a hymn teaches its shapes when this share of its words are words of the list; a shape, when
+#                         this share of the words of four letters or more that hold it are, and it stands in this many
+#                         such words and has this many glyphs
+DOUBLE = 1.4            # a letter with no name that is this many times as wide as the usual letter can be two letters
 UNDER = 3.0             # a syllable stands at most this many staff spaces beside its note
 
 
@@ -495,10 +504,41 @@ def name_rest(groups: list[dict], members: dict[int, list[dict]], named: dict[in
     return more
 
 
+def _fit(plain: str, double: list[bool], other: str, most: int) -> tuple[int, list[str]] | None:
+    """How a word of the list fits a word of the page: (how many named letters are wrong, the letters of the word
+    of the list for each sign of the page), or None when more than `most` are wrong. A letter with no name fits
+    every letter, and a wide one fits two (letters that touch, as Th)."""
+    best: list = [None]
+
+    def walk(at: int, into: int, wrong: int, parts: list[str]) -> None:
+        if wrong > most or (best[0] is not None and wrong >= best[0][0]):
+            return
+        if at == len(plain):
+            if into == len(other):
+                best[0] = (wrong, list(parts))
+            return
+        if into >= len(other) or len(other) - into < len(plain) - at:
+            return
+        sign, letter = plain[at], other[into]
+        if sign == '?':
+            if letter != "'":
+                walk(at + 1, into + 1, wrong, parts + [letter])
+                if double[at] and into + 1 < len(other) and other[into + 1] != "'":
+                    walk(at + 1, into + 2, wrong, parts + [other[into:into + 2]])
+        elif sign == letter:
+            walk(at + 1, into + 1, wrong, parts + [letter])
+        elif "'" not in (sign, letter):
+            walk(at + 1, into + 1, wrong + 1, parts + [letter])
+
+    walk(0, 0, 0, [])
+    return best[0]
+
+
 def mend_words(words: list[list[dict]], lex: collections.Counter) -> int:
     """Mends the words of the page that are no words of the list: a word that one word of the list fits, but for
-    a letter or two (a letter with no name fits every letter), becomes that word. The mend must be clear: the word
-    of the list is much more usual than the next one that fits as well. Returns how many words were mended."""
+    a letter or two (a letter with no name fits every letter, and a wide one fits two), becomes that word. The
+    mend must be clear: the word of the list is much more usual than the next one that fits as well. Returns how
+    many words were mended."""
     by_length = collections.defaultdict(list)
     for word, count in lex.items():
         by_length[len(word)].append((word, count))
@@ -511,37 +551,127 @@ def mend_words(words: list[list[dict]], lex: collections.Counter) -> int:
         unnamed = plain.count('?')
         if not plain or (not unnamed and plain in lex) or 2 * unnamed > len(plain):
             continue
+        double = [at in syllable.get('double', ()) for syllable, at in places]
         most = MEND[0] if len(plain) <= 5 else MEND[1]
         fits = []
-        for other, count in by_length.get(len(plain), []):
-            wrong = 0
-            for sign, letter in zip(plain, other):
-                if sign == letter or sign == '?' and letter != "'":
-                    continue
-                wrong += 1
-                if wrong > most or "'" in (sign, letter):
-                    wrong = 99
-                    break
-            if wrong <= most:
-                fits.append((wrong, -count, other))
+        for length in range(len(plain), len(plain) + min(2, sum(double)) + 1):
+            for other, count in by_length.get(length, []):
+                fit = _fit(plain, double, other, most)
+                if fit is not None:
+                    fits.append((fit[0], -count, other, fit[1]))
         if not fits:
             continue
         fits.sort()
-        wrong, count, best = fits[0]
+        wrong, count, _, parts = fits[0]
         if len(fits) > 1 and fits[1][0] == wrong and -count < MEND[2] * -fits[1][1]:
             continue
-        for (syllable, at), sign, letter in zip(places, plain, best):
-            if sign != letter:
+        for (syllable, at), sign, part in reversed(list(zip(places, plain, parts))):
+            if sign != part:
                 text = syllable['text']
-                syllable['text'] = text[:at] + (letter.upper() if text[at].isupper() else letter) + text[at + 1:]
+                syllable['text'] = text[:at] + (part.upper() if text[at].isupper() else part) + text[at + 1:]
         mended += 1
     return mended
 
 
-def read_words(glyphs: list[dict], lex: collections.Counter) -> list[dict]:
+SHAPE_KEYS = ('wide', 'size', 'glyphs', 'words', 'right', 'hymn')
+
+
+def load_shapes(path: str | Path) -> list[dict]:
+    """The shapes that earlier hymns named, from the file that save_shapes() wrote (see named_shapes()). An empty
+    list when there is no such file."""
+    path = Path(path)
+    if not path.exists():
+        return []
+    with np.load(path, allow_pickle=False) as held:
+        return [dict({key: float(held[key][at]) for key in SHAPE_KEYS}, letter=str(held['letters'][at]),
+                     source=str(held['sources'][at]), mean=held['means'][at].astype(np.float32) / 255.0)
+                for at in range(len(held['letters']))]
+
+
+def save_shapes(path: str | Path, shapes: list[dict]) -> None:
+    """Writes the named shapes to a file (NumPy's own format: the letters, their shapes on the canvas as pictures,
+    the hymn that each came from, and the numbers of named_shapes())."""
+    with open(path, 'wb') as file:      # (NumPy adds '.npz' to a name, but not to an open file)
+        np.savez_compressed(file, letters=np.array([shape['letter'] for shape in shapes]),
+                            means=np.array([np.clip(shape['mean'] * 255.0, 0, 255) for shape in shapes]).astype(np.uint8),
+                            sources=np.array([shape['source'] for shape in shapes]),
+                            **{key: np.array([shape[key] for shape in shapes], np.float32) for key in SHAPE_KEYS})
+
+
+def _coarse(mean: np.ndarray) -> np.ndarray:
+    """A shape at a quarter of its size, for a first fast look."""
+    rows, columns = mean.shape[0] // 4, mean.shape[1] // 4
+    return mean[:rows * 4, :columns * 4].reshape(rows, 4, columns, 4).mean(axis=(1, 3)).ravel()
+
+
+def known_bias(groups: list[dict], wanted, shapes: list[dict], size: float) -> tuple[dict, dict]:
+    """What the shapes that earlier hymns named say about the groups of this hymn: ({group: {letter: gain}},
+    {group: letter} for the groups whose shape is known for sure). The scores of one choir come from few hands and
+    few types, so a shape that one hymn has named can name the same shape in the next hymn, where the text is too
+    short for the puzzle alone, or the letter too rare (a capital stands once or twice in a hymn)."""
+    held = [shape for shape in shapes if shape['size'] == size and shape['hymn'] >= SURE[0]
+            and shape['glyphs'] >= SURE[2] and shape['words'] >= SURE[2] and shape['right'] >= SURE[1] * shape['words']]
+    if not held:
+        return {}, {}
+    coarse = np.array([_coarse(shape['mean']) for shape in held])
+    widths = np.array([shape['wide'] for shape in held])
+    bias: dict[int, dict[str, float]] = {}
+    sure: dict[int, str] = {}
+    for group in wanted:
+        mean, wide = groups[group]['mean'], groups[group]['wide']
+        near = np.nonzero(np.abs(widths - wide) <= 0.25 * np.maximum(widths, wide) + 1)[0]
+        if not len(near):
+            continue
+        apart = np.abs(coarse[near] - _coarse(mean)).sum(axis=1)
+        gains: dict[str, float] = {}
+        best: dict[str, float] = {}
+        for at in near[np.argsort(apart)[:KNOWN_LOOK]]:
+            share, lacks = differ(held[at]['mean'], mean)
+            letter = held[at]['letter'].lower()      # (a capital and its small letter have one name)
+            if lacks < STRICT[1]:
+                best[letter] = min(best.get(letter, 1.0), share)
+            if share < KNOWN[0] and lacks < STRICT[1]:
+                gains[letter] = max(gains.get(letter, 0.0), KNOWN[1] * (1.0 - share / KNOWN[0]))
+        if gains:
+            bias[group] = gains
+        if KNOWN_SURE and best:
+            first = min(best, key=best.get)
+            if best[first] < KNOWN_SURE[0] and all(share >= best[first] + KNOWN_SURE[1] for letter, share in best.items() if letter != first):
+                sure[group] = first
+    return bias, sure
+
+
+def named_shapes(groups: list[dict], members: dict[int, list[dict]], named: dict[int, str], words: list[list[dict]],
+                 lex: collections.Counter, size: float, source: str = '') -> list[dict]:
+    """The shapes that this hymn named, for the hymns after it: {'letter', 'mean', 'wide', 'size' (the size the
+    shapes were compared at), 'source' (the hymn), and how sure the name is: 'glyphs' (how many glyphs have the
+    shape), 'words' (how many words of four letters or more hold it), 'right' (how many of those are words of the
+    list), 'hymn' (the share of the hymn's words of three letters or more that are words of the list)} each.
+    A later hymn takes only the sure ones (SURE)."""
+    codes = [code for code in _codes(words) if code and all(sign == "'" or sign in named for sign in code)]
+    texts = [(code, ''.join(sign if sign == "'" else named[sign] for sign in code)) for code in codes]
+    texts = [(code, text) for code, text in texts if len(text) >= 3]
+    if not texts:
+        return []
+    hymn = sum(1 for _, text in texts if text in lex) / len(texts)
+    found = []
+    for group, letter in named.items():
+        if len(letter) != 1 or len(members[group]) < 2:
+            continue
+        held = [text in lex for code, text in texts if group in code and len(text) >= 4]
+        found.append({'letter': letter, 'mean': groups[group]['mean'], 'wide': groups[group]['wide'], 'size': size,
+                      'source': source, 'glyphs': len(members[group]), 'words': len(held), 'right': sum(held), 'hymn': hymn})
+    return found
+
+
+def read_words(glyphs: list[dict], lex: collections.Counter, shapes: list[dict] | None = None,
+               learned: list[dict] | None = None, source: str = '') -> list[dict]:
     """The syllables of the words of a hymn, from the glyphs of its pages (scoreread.letters.page_glyphs) and a
     list of words: {'band' (the page and the number of the row), 'x0', 'x1', 'text' ('?' for a letter with no
-    name), 'join' (a hyphen follows), 'glyphs'} each, in the order of the rows."""
+    name), 'join' (a hyphen follows), 'glyphs'} each, in the order of the rows.
+
+    `shapes` are the shapes that earlier hymns named (load_shapes): they help to name the groups of this hymn.
+    The shapes that this hymn names are added to the list `learned`, with `source` as their hymn."""
     if not glyphs or not lex:
         return []
     for glyph in glyphs:
@@ -565,9 +695,22 @@ def read_words(glyphs: list[dict], lex: collections.Counter) -> list[dict]:
     classes = {group: set(LETTERS) if capitals else shape_class(own) for group, own in members.items()
                if np.median([glyph['wide'] for glyph in own]) <= TOUCH * usual}
     bias = {group: hole_bias(members[group], capitals) for group in classes} if HOLE else {}
+    size = float(CAPITALS[2]) if capitals else 1.0
+    if shapes and KNOWN:
+        gains, sure = known_bias(groups, classes, shapes, size)
+        for group, held in gains.items():
+            own = bias.setdefault(group, {})
+            for letter, gain in held.items():
+                if letter in classes[group]:
+                    own[letter] = own.get(letter, 0.0) + gain
+        for group, letter in sure.items():
+            if letter in classes[group]:
+                classes[group] = {letter}
     syllables = syllables_of(glyphs)
     words = words_of(syllables)
     named, logp = name_groups(words, classes, lex, bias)
+    if learned is not None:
+        learned += named_shapes(groups, members, named, words, lex, size, source)
     signs = _codes(words)
 
     def score(group: int, text: str, more: dict[int, str]) -> float:
@@ -584,11 +727,13 @@ def read_words(glyphs: list[dict], lex: collections.Counter) -> list[dict]:
 
     named.update(name_rest(groups, members, named, classes, score))
     for syllable in syllables:
-        text = ''
+        text, double = '', set()
         for glyph in syllable['glyphs']:
             if glyph['kind'] == 'letter':
                 letter = named.get(glyph['group'])
                 if letter is None:
+                    if glyph['wide'] > DOUBLE * usual:
+                        double.add(len(text))
                     text += '?'
                 elif len(letter) == 1 and _rise(glyph) >= TALL and letter not in ASC and letter not in 'ij':
                     text += letter.upper()
@@ -596,7 +741,7 @@ def read_words(glyphs: list[dict], lex: collections.Counter) -> list[dict]:
                     text += letter
             else:
                 text += {'dot': '.', 'comma': ',', 'high': "'"}[glyph['kind']]
-        syllable['text'] = text
+        syllable['text'], syllable['double'] = text, double
         syllable['x0'], syllable['x1'] = syllable['glyphs'][0]['x0'], syllable['glyphs'][-1]['x1']
     if MEND:
         mend_words(words, lex)
