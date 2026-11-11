@@ -109,7 +109,21 @@ def main() -> int:
     want = [('Glo', True), ('ry', False), ('to', False), ('Thee,', False), ('our', True), ('God', False), ('mer', True), ('cy', False)]
     words_ok = cut == want and _words_row(line) and not _words_row([('lL', 0, 9, 0), ('te', 10, 20, 21), ('J!', 30, 40, 52)])
     print(f"{'ok ' if words_ok else 'BAD'} words: a line of text cut into {len(cut)} syllables (wanted {len(want)})")
-    return 1 if wrong or not systems_ok or not words_ok else 0
+    # The systems: verses on single staves around a refrain that is drawn as a system of two (measured links).
+    from scoreread.systems import group_staves, weigh
+
+    def links(rows):
+        out = [{'opening': opening, 'bars': bars, 'aligned': aligned, 'step': step} for opening, bars, aligned, step in rows]
+        for link in out:
+            link['weight'] = weigh(link)
+            link['same'] = link['weight'] > 0
+        return out
+    verses = links([(0.01, 0, 0.67, 0.72), (0.12, 0, 0.0, 0.01), (1.0, 6, None, 0.68), (0.16, 0, None, 0.12), (0.0, 0, 0.0, -0.2), (0.18, 0, 0.2, -0.1)])
+    cut_off = links([(0.1, 0, None, 0.85), (0.17, 0, None, 0.04), (1.0, 0, None, 0.76), (0.12, 0, None, 0.16), (0.9, 0, None, 0.78), (0.12, 0, None, 0.21), (1.0, 3, None, 0.83)])
+    sizes = [[len(system) for system in group_staves(verses, 7)], [len(system) for system in group_staves(cut_off, 8)]]
+    lone_ok = sizes == [[1, 1, 2, 1, 1, 1], [2, 2, 2, 2]]
+    print(f"{'ok ' if lone_ok else 'BAD'} systems from links: {sizes} (wanted [[1, 1, 2, 1, 1, 1], [2, 2, 2, 2]])")
+    return 1 if wrong or not systems_ok or not words_ok or not lone_ok else 0
 
 
 if __name__ == '__main__':

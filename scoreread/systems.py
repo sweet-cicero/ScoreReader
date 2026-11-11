@@ -7,10 +7,12 @@ Two staves that follow each other belong to one system when one of these is true
 3. Their bar lines stand at the same places along the page. A copyist who rules each staff by hand often draws no
    opening line, but the bars of the voices of one system still begin together.
 
-Three checks on the whole page follow. A line at the left end that goes on over the first staff or under the last
+Four checks on the whole page follow. A line at the left end that goes on over the first staff or under the last
 staff is no opening line (SHADOW). Where the opening lines of a page all join the same number of staves, they say
 what a system is, and a staff that no line joins stands alone (BLOCKS). On a page without opening lines, the notes
-of the staves of one system stand in the same columns, and the notes of two systems do not (CONTRAST).
+of the staves of one system stand in the same columns, and the notes of two systems do not (CONTRAST). On a page
+that draws its systems with bar lines through the gap, two staves with no such bar line and no opening line are two
+systems, also where their bars begin together: two lines of a verse on single staves (LONE).
 
 Ink in the margin does not count: the shadow of a binding or the edge of a book stands more than one staff space
 outside the staves.
@@ -37,6 +39,9 @@ BLOCKS = True           # where every opening line of the page joins the same nu
 CONTRAST = (0.3, 0.5)   # on a page without opening lines, the systems have the number of staves at which the staves
 #                         of a system stand in the same columns (in_step) this much more than two systems do, and at
 #                         least this much (None: off)
+LONE = 0.45             # on a page that draws its systems with bar lines through the gap (under more than half of its
+#                         opening lines), two staves with no bar line through their gap and an opening line under this
+#                         cover are two systems: a verse on single staves over a refrain for the choir (None: off)
 STEP_START = 8.0        # the marks of two staves are compared from this many staff spaces after their left end
 STEP_LEAST = 12.0       # along at least this many staff spaces
 STEP_REACH = 2.5        # and up to this many staff spaces over and under each staff (at most to the middle of the gap)
@@ -299,6 +304,18 @@ def group_staves(links: list[dict], count: int) -> list[list[int]]:
                 else:
                     alone.append(block[0])
             close()
+    drawn = [link['bars'] >= 2 for link in links if link['opening'] >= COVER]
+    if LONE is not None and 2 * sum(drawn) > len(drawn):
+        apart = []
+        for system in systems:
+            apart.append([system[0]])
+            for index in system[1:]:
+                link = links[index - 1]
+                if link['opening'] < LONE and link['bars'] == 0:
+                    apart.append([index])
+                else:
+                    apart[-1].append(index)
+        systems = apart
     return systems
 
 
