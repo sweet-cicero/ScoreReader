@@ -1691,6 +1691,9 @@ BEAM_NEXT = 7.0      # the next stem of a beam stands at most this many staff sp
 BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least this share as thick as the page's beams
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
 FLAG_BACK = 0.08     # a printed flag comes back toward the head by this many staff spaces while it leaves the stem
+FLAG_NARROW = (0.6, 0.2)   # a narrow printed flag hugs its stem: it reaches under 0.6 staff spaces from it, but it is
+#                            this many staff spaces high and leans this much toward the head (None: off). A limit on
+#                            how long it touches the stem was measured too: it lost 11 notes for 4.
 DOT_REACH = 1.3      # a dot stands at most this many staff spaces right of its head
 DOT_NEAR = 0.3       # and at least this many
 DOT_UNDER = 0.6      # its middle lies at most this many staff spaces under the middle of the head (and 0.7 over it)
@@ -1868,6 +1871,11 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             short = [piece for piece in pieces if not piece['beam'] and piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6]
             # A printed flag; and beside a beam, the short second beam of a sixteenth.
             rows += [piece['row'] for piece in short if (piece['right'] and piece['back'] >= FLAG_BACK) or rows]
+            if FLAG_NARROW and not rows:
+                rows += [piece['row'] for piece in pieces
+                         if piece['right'] and not piece['beam'] and piece['thick'] >= TAIL_THICK and piece['far'] < 0.6
+                         and piece['high'] >= FLAG_NARROW[0] and piece['lean'] >= FLAG_NARROW[1]
+                         and piece['from_end'] <= FLAG_END]
             levels = []
             for row in sorted(rows):
                 if not levels or row - levels[-1] > 0.35 * space:

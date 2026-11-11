@@ -30,6 +30,9 @@ DASH_GAP = 0.5       # a gap of this many staff spaces in a thin upright stroke 
 SLIM = 0.62          # an upright stroke at most this wide (in staff spaces) is a stem or a bar line
 STEM_USUAL = (2.2, 1.8)   # a stroke under this height (staff spaces) is no stem when it is this many times as wide as
                           # the page's long strokes (None: off)
+STEM_OWN = 0.25      # a slim stroke that is much wider than the page's stems, but has this share of rows as thin as
+#                      they are: its thin rows are the stem, and its wide rows are heads that stand one over the other
+#                      on it (two voices a third apart, each with a short stem to its own beam). None: off
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
 WHOLE_INSIDE = (0.3, 0.3, 0.8, 2.4, 1.5)
@@ -354,6 +357,13 @@ def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float)
                 if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 < STEM_USUAL[0] * space \
                         and stroke['width'] > STEM_USUAL[1] * usual + 1:
                     stroke['slim'] = False
+            if STEM_OWN:
+                thin = 1.6 * usual + 2
+                for stroke in strokes:
+                    seen = stroke['runs'][stroke['runs'] > 0]
+                    if stroke['slim'] and stroke['width'] > STEM_USUAL[1] * usual + 1 and len(seen) \
+                            and (seen <= thin).mean() >= STEM_OWN:
+                        stroke['width'] = float(np.median(seen[seen <= thin]))
     for stroke in strokes:
         runs, xs, left, right, y = stroke.pop('runs'), stroke['xs'], stroke['left'], stroke['right'], stroke['y0']
         if stroke['slim']:

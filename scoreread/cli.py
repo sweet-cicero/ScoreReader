@@ -1,7 +1,7 @@
 """The command: a page of a score in, its notes out. Everything runs on this computer.
 
-usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE]
-       python -m scoreread hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE]
+usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng]]
+       python -m scoreread hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng]]
        python -m scoreread layers <page.png | score.pdf> --out <folder> [--page N]
        python -m scoreread layout <page.png | score.pdf> --out <folder> [--page N]
 
@@ -32,6 +32,10 @@ key of the page before in the same hymn (sharps +, flats -), for a page that sho
 too). With it the words of a scan are read: the letter shapes of the hymn are grouped, and the groups are named so
 that the page reads like the words of the list (scoreread.letters, scoreread.lyrics). `hymn` reads the words of all
 pages together, which names the letters better than one page alone. Without a list a scan gives its notes only.
+
+--tesseract reads the words of a scan with Tesseract in place of the reader's own letters (scoreread.ocr). Tesseract
+is a small text reader that must be installed on this computer; it is the only model the reader can use, it reads
+the rows of words alone, and the reader works without it.
 
 A PDF page is made into an image at 300 dpi with pdftoppm. A page that is a photo kept with no size of its own (a
 phone picture at 72 dpi makes a page of 42 by 56 inches) is made as long as an A4 page at 300 dpi.
@@ -117,7 +121,7 @@ def word_list(path: str | None):
     return load_words(path)
 
 
-def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '') -> int:
+def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '', ocr: bool = False) -> int:
     """Reads the words of the pages of a hymn that were read as images, all pages together (one copyist draws a
     letter the same way on each page), and sets each syllable under its note. Returns how many were set.
 
@@ -128,6 +132,14 @@ def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '') 
     from .lyrics import load_shapes, read_words, save_shapes, set_under  # noqa: PLC0415
     from .music import musicxml  # noqa: PLC0415
     images = [(number, result) for number, result in enumerate(read) if result.get('layers')]
+    if ocr:
+        # Tesseract reads each row of words as a line of text (scoreread.ocr); it needs no list of words.
+        from .ocr import read_rows  # noqa: PLC0415
+        count = 0
+        for number, result in images:
+            count += set_under(result, read_rows(result['layers'], number), number)
+            result['musicxml'] = musicxml(result['parts'], result.get('title', ''))
+        return count
     glyphs = [glyph for number, result in images for glyph in page_glyphs(result['layers'], number)]
     if shapes:
         known = [shape for shape in load_shapes(shapes) if shape['source'] != name]
@@ -154,7 +166,7 @@ def write_page(out: Path, name: str, result: dict) -> None:
 
 def read_one(command: str, source: Path, page: int, out: Path, name: str | None = None, drawing: str = 'auto',
              key_before: int | None = None, clefs_before: list[str] | None = None, key_hymn: int | None = None,
-             looked: tuple | None = None, lex=None, shapes: str | None = None) -> tuple[int, dict, dict | None]:
+             looked: tuple | None = None, lex=None, shapes: str | None = None, ocr: bool = False) -> tuple[int, dict, dict | None]:
     """Does `command` ('read', 'layers' or 'layout') on one page and writes its files to `out`. Returns the exit
     code, the summary that the command prints, and what the reader gave (None when nothing was read). `looked` is
     what a first look at the page gave already: (the drawing's result or None, what prepare() gave or None). With
@@ -200,8 +212,8 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
         else:
             result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before, key_hymn=key_hymn)
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
-            if lex:
-                summary['syllables'] = set_words([result], lex, shapes, name)
+            if lex or ocr:
+                summary['syllables'] = set_words([result], lex, shapes, name, ocr)
             write_page(out, name, result)
             summary.update(symbols='own', notes=len(result['notes']), key=result['key'], clefs=result['clefs'])
     summary['seconds'] = round(time.time() - start, 1)
@@ -224,7 +236,7 @@ def page_numbers(source: Path, wanted: str | None) -> list[int]:
 
 
 def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: str | None = None, drawing: str = 'auto',
-              key_before: int | None = None, lex=None, shapes: str | None = None) -> tuple[int, dict]:
+              key_before: int | None = None, lex=None, shapes: str | None = None, ocr: bool = False) -> tuple[int, dict]:
     """Reads the pages of a hymn in order and joins them: <name>.musicxml holds the whole hymn. Each page is also
     written as `read` writes it. The key signature holds for the whole hymn: a first look at every page lets the
     staves of all pages vote for it together. A page without a key signature has the key of the page before, and
@@ -262,7 +274,7 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
             clefs_before = result.get('system_clefs') or clefs_before
     if not read:
         return 1, {'name': name, 'pages': told}
-    if lex and set_words(read, lex, shapes, name):
+    if (lex or ocr) and set_words(read, lex, shapes, name, ocr):
         for stem, result in zip(stems, read):
             if result.get('layers'):
                 write_page(out, stem, result)
@@ -291,18 +303,30 @@ def main(argv=None) -> int:
                         help='a text file with a list of words (or SCOREREAD_WORDS): the words of a scan are read with it')
     parser.add_argument('--shapes', default=None,
                         help='a file of letter shapes that the reader keeps (or SCOREREAD_SHAPES): what one hymn named helps the next')
+    parser.add_argument('--tesseract', action='store_true',
+                        help='read the words of a scan with Tesseract (or SCOREREAD_OCR=tesseract); it must be installed')
+    parser.add_argument('--language', default=None,
+                        help="the language file of Tesseract (or SCOREREAD_OCR_LANGUAGE): 'eng' when not given, 'ron', 'eng+ell'")
     parser.add_argument('--key-before', type=int, default=None,
                         help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
     args = parser.parse_args(argv)
     shapes = args.shapes or os.environ.get('SCOREREAD_SHAPES')
+    ocr = args.tesseract or os.environ.get('SCOREREAD_OCR') == 'tesseract'
+    if args.language:
+        os.environ['SCOREREAD_OCR_LANGUAGE'] = args.language
+    if ocr:
+        from .ocr import available  # noqa: PLC0415
+        if not available():
+            parser.error('Tesseract is not installed on this computer; without --tesseract the reader needs no model')
     if args.command == 'hymn':
         code, summary = read_hymn([Path(source) for source in args.source], Path(args.out), args.name, args.pages,
-                                  args.drawing, args.key_before, word_list(args.words), shapes)
+                                  args.drawing, args.key_before, word_list(args.words), shapes, ocr)
     else:
         if len(args.source) > 1:
             parser.error(f'{args.command} takes one page; `hymn` reads several')
         code, summary, _ = read_one(args.command, Path(args.source[0]), args.page, Path(args.out), args.name, args.drawing,
-                                    args.key_before, lex=word_list(args.words) if args.command == 'read' else None, shapes=shapes)
+                                    args.key_before, lex=word_list(args.words) if args.command == 'read' else None, shapes=shapes,
+                                    ocr=ocr and args.command == 'read')
     if summary:
         print(json.dumps(summary))
     return code

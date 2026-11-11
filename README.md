@@ -1,14 +1,17 @@
 # scoreread: a local reader for choir scores
 
-Version 0.6 (in work), 10 November 2026. One command reads a page of a score and writes its notes. Everything runs
-on this computer: no network, no assistant, no cloud model and no neural network. Every step is rules on the ink of
-the page, written in this repository, with OpenCV and NumPy. No other reader is a part of it.
+Version 0.6 (in work), 11 November 2026. One command reads a page of a score and writes its notes. Everything runs
+on this computer: no network, no assistant and no cloud model. The notes are read by rules on the ink of the page
+alone, written in this repository, with OpenCV and NumPy: no neural network and no other music reader is a part of
+it. The words of a scan are read by rules too, or, when you ask for it, by Tesseract: a small text reader that runs
+on this computer and that holds a small neural network for letters. It is the one optional step that is not our own.
 
 ```
 python -m scoreread read "path/to/score.pdf" --page 1 --out out/my-hymn
 python -m scoreread read page.png --out out/my-hymn
 python -m scoreread hymn "path/to/score.pdf" --out out/my-hymn    # all pages of a hymn, joined into one file
 python -m scoreread hymn "path/to/scan.pdf" --out out/my-hymn --words words.txt    # with the words of a scan
+python -m scoreread hymn "path/to/scan.pdf" --out out/my-hymn --tesseract          # the words read by Tesseract
 python -m scoreread layers page.png --out out/check       # the page with each layer of ink in its own colour
 python -m scoreread layout page.png --out out/check       # only staves and systems, 2 seconds
 ```
@@ -23,6 +26,13 @@ The words of a scan are read with a list of words that you give (`--words`, or `
 with the words of other hymns, as plain text or as lines of a word and its count. The reader has no letters of its
 own: it groups the letter shapes of the hymn and names the groups so that the page reads like the words of the
 list. `bench/wordlist.py` makes the list from typed hymns. Without a list, a scan gives its notes only.
+
+With `--tesseract` (or `SCOREREAD_OCR=tesseract`) the rows of the words are read by Tesseract instead, when it is
+installed (`apt install tesseract-ocr`, version 5; Apache-2.0 licence). It reads far more of the words right than
+the own letter reader does today (see the results), and it needs no list of words. The reader finds the rows of the
+words itself and gives Tesseract one row at a time: Tesseract never sees the notes. `SCOREREAD_TESSERACT` names the
+program when it is not on the path, and `--language` (or `SCOREREAD_OCR_LANGUAGE`) its language file: `eng` when
+nothing is given, `ron` for Romanian (`apt install tesseract-ocr-ron`).
 
 ## The goal
 
@@ -42,6 +52,7 @@ ink); the thick copies and the copies by hand come after it.
 | 5. Symbols | `scoreread/symbols.py`, `starts.py`, `meter.py`, `signs.py`, `ties.py`, `words.py`, `triplets.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, the sharps, flats and naturals before a note, and the ties. The key of a page is a vote of its staves (a copy loses signs more easily than it gains them), and a page without a key signature has the key of the page before. Finds the time signatures, so that their numbers are no notes and no sharps. Finds the rows of the words, so that a stem ends where they begin and a letter is no note. Finds the brackets of triplets: two flat arms with a hook at each outer end and a number in the break between them. |
 | 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed. A note under the bracket of a triplet has two thirds of its drawn length. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
 | Words of a scan | `scoreread/letters.py`, `lyrics.py` | No | Cuts the rows of the words into letters and groups the letters of the whole hymn by shape (one copyist or one type draws a letter the same way each time). Names the groups with the list of words: the same shape is the same letter in every word, and the names under which the page reads most like the words of the list stay. The height of a letter, its dot and its holes say what a shape can be. Sets each syllable under its note. |
+| Words of a scan, by choice | `scoreread/ocr.py` | Yes: Tesseract, when `--tesseract` is given | Cuts each row of the words out of the scan and gives it to Tesseract as one line of text. Cuts the line into syllables at its hyphens, drops a row that Tesseract is not sure of (stray ink under a staff), and sets the syllables under the notes as the own letter reader does. |
 | Drawing | `scoreread/vector.py` | No | A PDF that notation software wrote holds each sign as a character of a music font at its exact place, and its words as text. Such a page is read from that drawing, with its words; no image is read. |
 | Hymn | `scoreread/hymn.py`, `cli.py` | No | Reads the pages of a hymn in order and joins them into one score: the same staff of every system of every page is one part. The key and the clefs of a page go on to the next page. |
 
@@ -50,9 +61,9 @@ now: it lives in `bench/yardstick`, outside the reader (see "Tests").
 
 ## How the reader works, in diagrams
 
-The diagrams show the logic of the reader as the code runs it. No box holds a model: each one is a rule on the ink,
-or on the signs of a PDF. The yardstick in `bench/yardstick` is a test tool, not a part of the reader, and is not
-shown. GitHub draws the diagrams from the text below (Mermaid).
+The diagrams show the logic of the reader as the code runs it, without the optional Tesseract step. No box holds
+a model: each one is a rule on the ink, or on the signs of a PDF. The yardstick in `bench/yardstick` is a test
+tool, not a part of the reader, and is not shown. GitHub draws the diagrams from the text below (Mermaid).
 
 ### The whole reader
 
@@ -298,7 +309,7 @@ flowchart TD
     classes --> vote["<b>First names</b><br/>A word of the page can be each word of the list in which the same shape is the same letter. The group that the words agree on best is named, and so on."]
     vote --> shake["<b>The best names</b><br/>The names are shaken, much at first and then less. A word of the list counts, and so does each run of three letters that the words of the list often have. The names under which the hymn reads most like the list stay."]
     shake --> rest["<b>The shapes that come once</b><br/>A broken letter gets the name of the named shape that it is near. Letters that touch are read as a row of named shapes side by side."]
-    rest --> under["<b>Under the notes</b><br/>A row belongs to the staff over it. Its syllables and the notes of that staff keep their order, and each syllable stands under the note that it is nearest to. A letter with no name is written as a question mark."]
+    rest --> under["<b>Under the notes</b><br/>A row belongs to the staff over it. Its syllables and the notes of that staff keep their order, and each syllable stands under the note that it is nearest to. A syllable with no note of its own is written after the syllable of the note before it, as on a reciting note. A letter with no name is written as a question mark."]
 ```
 
 Not in the diagrams: the brackets of triplets (`triplets.py`, after the dots), and what the reader of scans does not
@@ -315,25 +326,36 @@ pages in order, with one vote for its key.
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.1 % (19,916 of 20,104) | 51 | 68 | 0 |
-| Scans | 296 | 77.1 % (53,684 of 69,655) | 8 | 75 | 29 |
-| All | 366 | 82.0 % (73,600 of 89,759) | 59 | 143 | 29 |
+| Scans | 296 | 77.9 % (54,238 of 69,666) | 10 | 80 | 27 |
+| All | 366 | 82.6 % (74,154 of 89,770) | 61 | 148 | 27 |
 
 The first milestone is 99 % on clean copies: the 81 scan scores with printed notes and words and crisp ink. The
 other scans come after it: 26 printed but thick, blurred or grey copies, and 189 with notes or words by hand.
 
-| Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Words right |
-|---|---:|---:|---:|---:|---:|
-| Clean print | 81 | 87.6 % (20,231 of 23,107) | 7 | 51 | 48.1 % (3,153 of 6,559) |
-| Thick or grey print | 26 | 69.9 % (5,826 of 8,329) | 0 | 4 | 32.9 % (658 of 2,000) |
-| By hand | 189 | 72.3 % (27,627 of 38,219) | 1 | 20 | 37.7 % (5,401 of 14,345) |
+| Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Words right, own letter reader | Words right, with Tesseract |
+|---|---:|---:|---:|---:|---:|---:|
+| Clean print | 81 | 88.8 % (20,526 of 23,112) | 9 | 55 | 50.1 % (3,286 of 6,559) | 81.0 % (5,311 of 6,559) |
+| Thick or grey print | 26 | 71.3 % (5,935 of 8,329) | 0 | 4 | 32.9 % (658 of 2,000) | 69.0 % (1,379 of 2,000) |
+| By hand | 189 | 72.7 % (27,777 of 38,225) | 1 | 21 | 37.7 % (5,401 of 14,345) | 70.3 % (10,084 of 14,345) |
 
-- Words: 14,798 of 28,976 syllables are right (51.1 %): 92 % on the software-made PDFs, and 40.2 % on the scans
-  (9,212 of 22,904), read with no model from the letter shapes of each hymn and a list of words.
+- Words with the optional Tesseract step: 22,428 of 28,976 syllables are right (77.4 %): 93 % on the software-made
+  PDFs (their words are text in the PDF; Tesseract is not used there), and 73.2 % on the scans (16,774 of 22,904).
+  With the own letter reader, which uses no model, the scans have about 40 %. A word is right when its syllable
+  stands in the typed order; under which note it stands is not scored yet.
+- A note can hold several syllables since this round (a reciting note, or a syllable whose note was not read), and
+  the words of such a note are counted one by one. This count alone raises a reading by about 0.2 points. The
+  figures of the own letter reader on the thick copies and the copies by hand are from before it.
+- Some typed syllables stand on no page: a refrain that the page prints once and the typed hymn writes out after
+  each verse. The two clean scores that miss the most syllables are of this kind (255 of the 1,248 syllables that
+  the clean copies still miss are theirs). Such syllables are not counted apart yet, as the notes of a repeat are.
 - The sorting into clean, thick and by hand was done by eye from the first system of each score. Of the 81 clean
   scores, 5 cannot reach 99 % as they are counted now: one page holds another version than the typed hymn, one
   typed bass stands an octave over the page, two typed hymns differ from the page in refrains and repeats, and one
   score has hand lettering and was sorted wrongly.
-- The last round, on the clean copies, each rule scored alone: half-note chords on staff lines 11 notes (none
+- The last round, each rule scored alone: a narrow printed flag that hugs its stem 96 notes on the clean copies
+  (7 lost) and 112 on the other scans (43 lost); two heads one over the other on a stem, which were read as a
+  stem, 209 on the clean copies (5 lost) and 207 on the other scans (15 lost).
+- The round before, on the clean copies, each rule scored alone: half-note chords on staff lines 11 notes (none
   lost), the column of a stem that ends in a letter 10 (1 lost), a letter beside a stem's end that was taken for a
   slur 7, a false staff in an ornament 33 (4 lost on a photo page), and the brackets of triplets 98 (none lost).
   A rule for beams inside the rows of the words lost 3 notes to slurs and is off.
@@ -355,18 +377,18 @@ typed hymns, of all typed notes.
 | Printed | 12 | 67 % | 82 % | 76 % | 91 % |
 | Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 86 % |
 | By hand | 5 | 65 % | 70 % | 79 % | 86 % |
-| Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 79 % |
+| Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 80 % |
 | Digital PDF | 3 | 81 % | 72 % | 81 % | 99 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 89.0 % (6140 notes) |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 89.1 % (6149 notes) |
 
-- Over all hymns the own rules read more notes right than the network they replaced: 89.0 % against 81 %.
-- They are behind the network on two kinds: old copies (86 % against 88 %) and the two poor pages (79 % against 95 %).
+- Over all hymns the own rules read more notes right than the network they replaced: 89.1 % against 81 %.
+- They are behind the network on two kinds: old copies (86 % against 88 %) and the two poor pages (80 % against 95 %).
 - 8 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 6 are under 80 %.
 
 ## Limits
 
-- The reader is not accurate enough yet to put a scanned hymn into the app without a check. Only 8 of the 296
-  scanned scores are at 99 % (7 of the 81 clean ones), and 29 are under 50 %: thick copies where signs and heads ran together, pages
+- The reader is not accurate enough yet to put a scanned hymn into the app without a check. Only 10 of the 296
+  scanned scores are at 99 % (9 of the 81 clean ones), and 27 are under 50 %: thick copies where signs and heads ran together, pages
   where a clef is hidden, and pages of a service book with a few lines of music among the text.
 - The rules and their limits were set on the same pages that test them. The figures above are therefore the best
   case. New pages will read worse until they are measured too.
@@ -383,9 +405,13 @@ typed hymns, of all typed notes.
   stem read wrong, or one head of a chord missed, gives the note to the wrong part.
 - Not read yet on scans: rests and slurs. A rest can be read as a note. A triplet is read from its bracket only: a
   3 over a beam without a bracket is not seen, and the number in the bracket is not read (it is taken for a 3).
-- The words of a scan are right for 4 syllables of 10. On clean type the limit is the grouping of the letter shapes
-  (n and u, h and b fall into one group), not the list of words. As a yardstick outside the reader, Tesseract (a
-  small local text model) reads 85 % of the syllables of the clean copies, counted by order alone. Time signatures are
+- The words of a scan are right for 4 syllables of 10 with the own letter reader. On clean type its limit is the
+  grouping of the letter shapes (n and u, h and b fall into one group), not the list of words. With the optional
+  Tesseract step they are right for 7 of 10 (8 of 10 on the clean copies). What it still loses there: words in
+  capitals with long lines after held syllables, a word that the page prints without a hyphen over two notes, two
+  words that it reads as one, and a row of words that the reader does not find. Tesseract is not our own step and
+  it holds a small neural network: the own letter reader must catch up with it before the goal is met.
+- Time signatures are
   found so that they are no notes (the numbers, and the C of common time; not the sign of cut time, and not a small
   C), but they are not read into the result. A tie is read when its bow runs from head to
   head on one line of the page.
@@ -399,7 +425,11 @@ typed hymns, of all typed notes.
 
 1. The clean copies to 99 %, notes and words. Notes: the key signature on faint print, patches of a staff that the
    clean-page step erases, the numbers of a time signature, dynamics and slur ends that are read as notes, a hollow
-   head on a ledger line, long thin flags. Words: letter shapes that are taught by hymns whose text is typed.
+   head on a ledger line, the thin beams of an engraving, long ties over whole notes. Words: count the syllables
+   that no page prints apart, score under which note a syllable stands, and bring the own letter reader up to
+   Tesseract (name each letter by its nearest known shape, taught by hymns whose text is typed).
+   A fresh test set of 228 choir pieces with exact answers (outside git) is read beside the clean copies from now
+   on, and no rule is set on its pages.
 2. Then the thick copies and the copies by hand: clefs hidden behind a bracket, and the pages where almost nothing
    is read.
 3. Score the joined hymn of the `hymn` command, and let the hymn teach the page more (parts, time).
@@ -454,4 +484,5 @@ Version 0.6 (in work) reads software-made PDFs from their drawing with their wor
 three more checks, votes for the key of a page and of a whole hymn, finds time signatures and staves in pale
 lines, tells the altos' staff from the tenors' by its place over the bass staff, joins the pages of a hymn
 (`hymn`), and moved the yardstick out of the reader. It reads the words of a scan with no model, the brackets of
-triplets, and drops false staves; the clean copies are scored apart since then.
+triplets, and drops false staves; the clean copies are scored apart since then. The words of a scan can be read
+by Tesseract instead (`--tesseract`), as an optional step that the owner allowed on 11 November 2026.
