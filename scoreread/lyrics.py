@@ -752,7 +752,8 @@ def read_words(glyphs: list[dict], lex: collections.Counter, shapes: list[dict] 
 
 
 def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
-    """Sets the syllables of a page under its notes: note['lyric'] in the notes and in the parts of what
+    """Sets the syllables of a page under its notes: note['lyric'] and note['syllabic'] ('single', 'begin',
+    'middle' or 'end': where the syllable stands in its word, from the hyphens) in the notes and in the parts of what
     read_page() gave. A row of words belongs to the staff over it (the first row under a staff holds the first
     verse; only that one is set), and its syllables stand under the notes of that staff in their order, each under
     the note that it is nearest to. A syllable with no note of its own is written after the syllable of the note
@@ -810,7 +811,9 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
             else:
                 i -= 1
         texts: dict[int, str] = {}
-        last, before = None, ''
+        first: dict[int, int] = {}       # for each note with words: its first and its last syllable in the row
+        final: dict[int, int] = {}
+        last, before, begun = None, '', 0
         for at, syllable in enumerate(row):
             text = syllable['text'].strip(".,'")
             if not text:
@@ -819,17 +822,26 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
             if at in under:
                 last = under[at]
                 texts[last] = (before + link + text) if before else text
+                first[last], final[last] = (begun if before else at), at
                 before = ''
             elif not RECITED:
                 continue
             elif last is None:
+                if not before:
+                    begun = at
                 before = (before + link + text) if before else text
             else:
                 texts[last] += link + text
+                final[last] = at
         for j, text in texts.items():
             column = columns[j]
             top = min(column, key=lambda at: (result['notes'][at]['voice'], -result['notes'][at]['midi']))
-            result['notes'][top]['lyric'] = text
-            result['part_notes'][top]['lyric'] = text
+            # Where the note's words stand in a word: a hyphen before them, a hyphen after them.
+            inside = first[j] > 0 and bool(row[first[j] - 1].get('join'))
+            goes_on = bool(row[final[j]].get('join'))
+            syllabic = {(False, False): 'single', (False, True): 'begin', (True, True): 'middle', (True, False): 'end'}[(inside, goes_on)]
+            for notes in (result['notes'], result['part_notes']):
+                notes[top]['lyric'] = text
+                notes[top]['syllabic'] = syllabic
             count += 1
     return count

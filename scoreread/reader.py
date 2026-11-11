@@ -25,6 +25,8 @@ from .words import cut_stems, word_bands
 SIGNS = 'strokes'
 TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scoreread.meter)
 CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
+OCTAVE = 0.4         # a treble staff with a small 8 under its clef sounds an octave lower, when this share of the staves at
+                     # its place in the systems show the 8 (scoreread.starts.octave_mark); None: the 8 is not read
 TENORS = 2.5         # a number: a treble staff over the bass staff is the tenors' only when its notes do not sound this many
                      # places under the notes of the bass staff (the middle note of each); None: always the tenors'
 
@@ -141,6 +143,15 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                 tenors = []
         for index in tenors:
             clefs[index] = 'G8vb'
+    # A small 8 under a treble clef says it outright: the staff sounds an octave lower. The same staff of every
+    # system has the same clef, so its staves vote (a copy loses the 8 on one system more easily than it gains one).
+    if OCTAVE is not None:
+        for number in range(width):
+            own = [index for index, staff in enumerate(staves) if staff['number'] == number and clefs[index] in ('G', 'G8vb')]
+            marked = [index for index in own if begin['starts'][index].get('eight')]
+            if marked and len(marked) >= OCTAVE * len(own):
+                for index in own:
+                    clefs[index] = 'G8vb'
     parts = [[] for _ in range(width)]
     notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)

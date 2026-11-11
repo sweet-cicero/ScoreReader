@@ -52,6 +52,11 @@ TIME = (0.25, 2.5)      # the numbers of a time signature are no key signs, and 
 #                         staff spaces (None: off)
 CLEF_BEFORE = 1.0       # the weight of the clefs of the page before in the same hymn, among the witnesses for a clef (None: off)
 TRIM = True             # a short dash beyond a longer gap at an end of an upright stroke is no part of the stroke
+EIGHT = (0.7, 1.7, 4.6, 0.008, 0.3, 0.2, 0.9, 1.4, 0.13)    # the small 8 under a treble clef: looked for from this many
+#   staff spaces under the bottom line to this many under the clef's lowest ink (at most this many under the line); a
+#   hole of it has from this to this many square staff spaces; its two holes stand from this to this many staff
+#   spaces one over the other; the figure is at most this many staff spaces wide; and the two holes have at least
+#   this share of the ink around them. None: the 8 is not looked for
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
 #                         staff's left end, in staff spaces: a bass clef ends over the bottom line (None: off)
@@ -365,6 +370,49 @@ def clef_shape(layers: dict, staff: dict) -> dict:
             'wide': wide / space, 'left': float(max(left)) if left else float(staff['x0'])}
 
 
+def eight_holes(layers: dict, staff: dict, shape: dict) -> float:
+    """How much of a small 8 stands under a treble clef: the share of its two holes in the ink around them (0.0
+    when no two holes stand one over the other there). An 8 is a thin line around two holes; two specks in the
+    thick ink of a bracket or of a binding's shadow are far less of it."""
+    if shape.get('clef') != 'G':
+        return 0.0
+    space, bottom = staff['space'], staff['rows'][4]
+    free = _free(layers)
+    y0 = int(bottom + EIGHT[0] * space)
+    y1 = min(free.shape[0], int(bottom + min(max(shape['under'], 1.0) + EIGHT[1], EIGHT[2]) * space) + 1)
+    x0, x1 = max(0, int(shape['x0'] - 0.3 * space)), min(free.shape[1], int(shape['x1'] + 0.3 * space) + 1)
+    if y1 - y0 < 0.6 * space or x1 - x0 < space:
+        return 0.0
+    crop = free[y0:y1, x0:x1].astype(np.uint8)
+    count, _, stats, middles = cv2.connectedComponentsWithStats(1 - crop, connectivity=4)
+    holes = []
+    for label in range(1, count):
+        x, y, wide, high, area = (int(value) for value in stats[label])
+        if x == 0 or y == 0 or x + wide == crop.shape[1] or y + high == crop.shape[0]:
+            continue        # the paper around the figure
+        if EIGHT[3] * space * space <= area <= EIGHT[4] * space * space and max(wide, high) <= 0.8 * space:
+            holes.append((float(middles[label][0]), float(middles[label][1]), area))
+    best = 0.0
+    for cx, cy, first in holes:
+        for ox, oy, second in holes:
+            if not (EIGHT[5] * space <= oy - cy <= EIGHT[6] * space and abs(ox - cx) <= 0.45 * space):
+                continue
+            # The figure around the two holes is as narrow as a small number.
+            around = crop[max(0, int(cy - 0.3 * space)):int(oy + 0.3 * space) + 1,
+                          max(0, int(min(cx, ox) - space)):int(max(cx, ox) + space) + 1]
+            columns = np.flatnonzero(around.any(axis=0))
+            if len(columns) and columns[-1] - columns[0] + 1 <= EIGHT[7] * space:
+                best = max(best, (first + second) / max(1.0, float(around.sum())))
+    return best
+
+
+def octave_mark(layers: dict, staff: dict, shape: dict) -> bool:
+    """True when a small 8 hangs under a treble clef: the staff sounds an octave lower (the tenors' clef). The 8 is
+    two small holes, one over the other, in a figure about one staff space high, under the clef's tail; it often
+    touches the tail, so it is looked for by its holes and not as a piece of its own."""
+    return bool(EIGHT) and eight_holes(layers, staff, shape) >= EIGHT[8]
+
+
 def read_start(layers: dict, index: int) -> dict:
     """The beginning of a staff: {'clef' (from its shape), 'x0', 'x1' (of the clef), 'key' (sharps (+) or flats (-)),
     'key_clef' (the clef that the heights of the key signature show, or None), 'miss' (how far the signs stand from
@@ -402,7 +450,8 @@ def read_start(layers: dict, index: int) -> dict:
         for clef, (found, miss) in plain.items():
             if found:
                 chains[(clef, kind)] = (found, miss)
-    out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs, time=time, weak=False, gaps=0)
+    out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs, time=time, weak=False, gaps=0,
+               eight=octave_mark(layers, staff, shape))
     if not chains:
         return out
     # The best chain: the most signs; then the clef of the shape; then the nearest to its places.
