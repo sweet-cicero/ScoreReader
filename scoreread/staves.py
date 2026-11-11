@@ -34,6 +34,10 @@ FAINT = (11, 10, 40)    # a pale staff line is a level run of this many px (the 
 FAINT_EDGE = 1.1        # where both looks find a staff, the dark look's staff counts this many times its line ink
 
 
+UNEVEN = (1.4, 0.85)    # no staff: its widest gap is this many times its narrowest, and its weakest line has ink in
+#                         under this share of its columns (None: off)
+
+
 def faint_lines(grey: np.ndarray) -> np.ndarray:
     """1 on thin level lines that are too pale for ink_mask(): some copies print the staff in hair lines of grey,
     under notes of full black. A line is looked for by its shape (thin, level, long), not by how dark it is."""
@@ -163,7 +167,7 @@ def find_staves(grey: np.ndarray) -> list[dict]:
     dark = ink_mask(grey)
     staves = _find(dark, dark)
     if not FAINT:
-        return staves
+        return _without_false(line_ink(dark, 25), staves)
     both = dark | faint_lines(grey)
     flat = line_ink(both, 25)
     # The dark look is the surer one: the look with the pale lines wins a place only by a clear margin.
@@ -173,7 +177,27 @@ def find_staves(grey: np.ndarray) -> list[dict]:
     for _, _, staff in sorted(found, key=lambda item: item[:2], reverse=True):
         if not any(_same_place(staff, other) for other in kept):
             kept.append(staff)
+    kept = _without_false(flat, kept)
     return sorted(kept, key=lambda staff: line_y(staff['lines'][0], (staff['left'] + staff['right']) / 2))
+
+
+def _without_false(flat: np.ndarray, staves: list[dict]) -> list[dict]:
+    """Drops what is no staff: the level strokes of an ornament, of a title in large type or of the edge of a book
+    in a photo. Its five 'lines' stand at uneven gaps, and one of them has ink along a part of its length only.
+    Measured on 3,663 staves of 484 scans: all 22 such finds were false; a real staff that a hand ruled unevenly
+    (gaps up to 1.35 times) stays."""
+    if not UNEVEN:
+        return staves
+    kept = []
+    for staff in staves:
+        middle = (staff['left'] + staff['right']) / 2
+        rows = [line_y(points, middle) for points in staff['lines']]
+        gaps = [low - high for high, low in zip(rows, rows[1:])]
+        columns = max(1.0, (staff['right'] - staff['left']) / 4)
+        if max(gaps) > UNEVEN[0] * max(1e-6, min(gaps)) and _support(flat, staff) < UNEVEN[1] * columns:
+            continue
+        kept.append(staff)
+    return kept
 
 
 def _support(flat: np.ndarray, staff: dict) -> int:
