@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections import Counter
 from fractions import Fraction
 
-from .music import build_staff, musicxml, staff_columns
+from .music import build_staff, held, letter_mark, musicxml, staff_columns
 
 # The signs of the fonts that follow Adobe's Sonata (Maestro, Petrucci, Anastasia), by their code.
 SONATA = {0x26: 'clef G', 0x3F: 'clef F', 0x56: 'clef G8', 0x42: 'clef C',
@@ -60,6 +60,8 @@ TIE_OFF = 1.2         # and passes at most this many gaps over or under them
 DRONE_REST = (2.6, 0.6)  # gaps: an open head without a stem at most this far after a rest, or before it, is the ison
 PILE = 0.2              # pt: the hair lines of one pile are at most this far apart
 TWICE = 0.1             # gaps: two heads at one height this near to each other are one head, drawn twice
+LETTERS = (5.0, 1.0, 10.0)  # gaps: the letter of an ison stands at most this far over the top line of its staff, or this
+#                             far under it, and alone: no word of its row within this distance (None: off)
 DRONE_AHEAD = 3.0       # gaps: or one that stands this near before the next note
 WORDS_UNDER = 9.0     # a row of words belongs to a staff at most this many gaps under its last line
 WORD_NEAR = 1.6       # a syllable stands under its note: its middle or its start at most this many gaps from the head
@@ -522,8 +524,20 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
         clef = clefs[index] if clefs[index] in ('G', 'G8vb', 'F') else 'G'
         plan = staff_columns(staff, own, bars[index], gap)
         marks = _drones(plan, rests.get(index, []), gap) if width == 1 else []
+        if width == 1 and LETTERS:
+            # The ison as a letter over the staff: the name of its note, or "Un." where it sings with the melody.
+            for word in words:
+                mark = letter_mark(word['text'], (word['x0'] + word['x1']) / 2, clef)
+                if mark is None or not staff['x0'] - gap <= mark['x'] <= staff['x1'] \
+                        or not -LETTERS[1] * gap <= staff['top'] - word['bottom'] <= LETTERS[0] * gap or not plan:
+                    continue
+                if any(letter_mark(other['text'], 0, clef) is None and abs(other['top'] + other['bottom'] - word['top'] - word['bottom']) <= gap
+                       and other['x0'] - word['x1'] <= LETTERS[2] * gap and word['x0'] - other['x1'] <= LETTERS[2] * gap for other in words):
+                    continue      # a syllable of the words ("A - men")
+                later = [number for number, bar in enumerate(plan) if any(column[0]['x'] >= mark['x'] - 0.6 * gap for column in bar)]
+                marks[later[0] if later else len(plan) - 1].append(mark)
         melody = build_staff(staff, [], bars[index], clef, keys[index], gap, plan)
-        ison = _held(melody, marks, lambda event: build_staff(staff, [], [], clef, keys[index], gap, [[[dict(event, voice=1)]]])[0][0],
+        ison = held(melody, marks, lambda event: build_staff(staff, [], [], clef, keys[index], gap, [[[dict(event, voice=1)]]])[0][0],
                      gap, holding) if width == 1 else []
         for part, built in ((staff['number'], melody), (width, ison)):
             for number, bar in enumerate(built):
@@ -645,34 +659,6 @@ def _drones(plan: list[list[list[dict]]], rests: list[float], gap: float) -> lis
         for column in bar:
             if len(column) == 1:
                 column[0]['voice'] = 1
-    return out
-
-
-def _held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, state: dict) -> list[list[dict]]:
-    """The ison in time with the melody: for each bar of the melody, the notes that the ison holds in it.
-
-    An ison mark holds from the melody's note that it stands at until the next mark, over the bar lines and the
-    ends of the lines: it is written as one note in each bar, tied to the next. Before the first mark of a page the
-    ison is silent. `state` carries the mark that holds from one line to the next."""
-    out = []
-    for notes, found in zip(melody, marks):
-        length = max((note['onset'] + note['length'] for note in notes), default=Fraction(0))
-        cuts = []
-        for event in sorted(found, key=lambda event: event['x']):
-            later = [note['onset'] for note in notes if note['x'] >= event['x'] - 0.6 * gap]
-            cuts.append((min(later) if later else length, event))
-        bar, at = [], Fraction(0)
-        for onset, event in cuts + [(length, None)]:
-            if onset > at and state.get('note') is not None:
-                piece = dict(state['note'], onset=at, length=onset - at, tie_stop=state.get('last') is not None, tie_start=False)
-                if state.get('last') is not None:
-                    state['last']['tie_start'] = True
-                bar.append(piece)
-                state['last'] = piece
-            at = max(at, onset)
-            if event is not None:
-                state['note'], state['last'] = pitch(event), None
-        out.append(bar)
     return out
 
 
