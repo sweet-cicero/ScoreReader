@@ -18,6 +18,7 @@ LETTERS = (0.35, 1.8, 6.0, 5.0)   # a letter (or a word of joined letters) is a 
 LINE = (8, 0.3, 0.6, 2.4)  # a band of words: a row that crosses at least this many letters; the band goes on while its
 #                            rows cross this share of them (and two at least); from this to this many staff spaces high
 WORDS_FAR = 9.0            # the words stand at most this many staff spaces over the first staff or under the last
+STEM_MID = True            # the stem's column is that of its middle when its far end lies in a letter beside it
 WORDS_NEAR = 0.3           # a stem's end this many staff spaces before the band lies in the band (a letter's top)
 
 
@@ -77,7 +78,8 @@ def word_bands(layers: dict) -> list[dict]:
 def cut_stems(layers: dict, heads: list[dict], bands: list[dict]) -> int:
     """Ends each stem that runs into a band of words where the band begins: its 'end' is the last row of its own ink
     before the band, and stem['words'] holds the band's rows, so that nothing in the band counts as its flag.
-    Returns how many stems were cut."""
+    stem['full'] keeps the end that was found first (see scoreread.symbols.WORD_BEAMS). Returns how many stems were
+    cut."""
     if not bands:
         return 0
     bare, space = layers['bare'], layers['space']
@@ -98,13 +100,20 @@ def cut_stems(layers: dict, heads: list[dict], bands: list[dict]) -> int:
                     continue
                 edge = int(band['top'] - 1) if down else int(band['bottom'] + 1)
                 # The stem's own ink ends at the band or before it: the last inked row on the way from the head.
-                column = int(round(stem['x']))
-                strip = bare[:, max(0, column - 2):column + 3].any(axis=1)
-                row = edge
                 limit = int(head['cy'])
-                while (row > limit if down else row < limit) and not strip[row]:
-                    row += -1 if down else 1
+                row = limit
+                for column in ([int(round(stem['x'])), int(stem['mid'])] if STEM_MID and 'mid' in stem else [int(round(stem['x']))]):
+                    strip = bare[:, max(0, column - 2):column + 3].any(axis=1)
+                    reach = edge
+                    while (reach > limit if down else reach < limit) and not strip[reach]:
+                        reach += -1 if down else 1
+                    # The far end of the way can lie in a letter, beside the stem: the stem's own column reaches the band.
+                    if (reach > row) if down else (reach < row) or row == limit:
+                        if column != int(round(stem['x'])) and reach != row:
+                            stem['x'] = column
+                        row = reach
                 # A head that stands right over the words has no stem left; its stem still ends there.
+                stem['full'] = stem['end']
                 stem['end'] = row
                 stem['words'] = (band['top'], band['bottom'])
                 cut += 1
