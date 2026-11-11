@@ -11,8 +11,13 @@ under 99 % of the notes that its pages show. The words under the notes belong to
 words is of no use. Recited syllables that no page prints are counted apart, and the reader must mark a reciting
 note. The work does not stop at a partial result. Report each result with its limits.
 
-Not reached yet: 81.8 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 76.8 % on scans; 59
-scores at 99 % or more), 19 % of the syllables (none from scans), and 88.9 % on the kit (6137 of 6901).
+First milestone (the owner, 11 November 2026): 99 % on clean copies, the 81 scan scores with printed notes and
+words and crisp ink. Work on these first, notes and words. The thick copies (26) and the copies by hand (189) come
+after it. The owner decided against a local language model; a small text model is a yardstick only.
+
+Not reached yet: 82.0 % of the drawn notes over all 366 scores (99.1 % on software-made PDFs, 77.1 % on scans; 59
+scores at 99 % or more), 87.6 % of the notes and 48.1 % of the syllables on the clean copies (7 of 81 scores at
+99 %), 51.1 % of all syllables (40.2 % on scans), and 89.0 % on the kit (6140 of 6901).
 
 ## Direction
 
@@ -40,11 +45,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 
 - `scoreread/` is the reader. `README.md` lists its steps, the results and the next steps.
 - `scoreread/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
-  `signs.py`, `ties.py`, `music.py`). `scoreread/vector.py` reads a software-made PDF from its drawing.
+  `signs.py`, `ties.py`, `triplets.py`, `music.py`). `letters.py` and `lyrics.py` read the words of a scan.
+  `scoreread/vector.py` reads a software-made PDF from its drawing.
 - `bench/` holds the tests. Measure each change with `bash bench/kit.sh <name>` and the kit's `score.py`.
   `bench/yardstick/` is copisteria's step (`bash bench/kit.sh <name> --yardstick`).
 - The wide test (every score of LitChoir) runs with scripts outside git, because it needs the app's scans. It reads
   each score as `hymn` does: the pages in order, the key and the clefs carried, one vote for the hymn's key.
+- The clean copies are a fixed list of 81 scores (outside git, with the wide test). Report them first after each
+  round, and change the list only with a reason.
 - Switch one rule at a time and score it alone on all 38 pages, and on the wide test's pages that it changes.
   Rules scored together hide a rule that costs notes.
 - `experiments/` holds the record of the first tests.

@@ -19,6 +19,7 @@ from .starts import read_start, read_starts
 from .symbols import bar_lines, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
     thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
+from .triplets import mark_triplets
 from .words import cut_stems, word_bands
 
 SIGNS = 'strokes'
@@ -53,12 +54,15 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     'alter', 'octave', 'midi', 'x', 'place' (0 is the middle line, +1 a step up), 'agreed' (the music check changed
     its length), 'votes' (how the voices voted on its steps), 'tie_start' and 'tie_stop' (a tie begins or ends at
     the note; the tied notes stay two notes, as in MusicXML) and 'mark': what the note was read from (the size and
-    place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams)."""
+    place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams).
+
+    The words are read after the notes, for the whole hymn at once (scoreread.lyrics): 'part_notes' holds, for each
+    note of 'notes', the same note in 'parts', so that a syllable can be set under both."""
     if not places:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
-        return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
+        return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'part_notes': [], 'title': title, 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
-                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'times': []}
+                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'triplets': [], 'times': []}
     layers = read_layers(grey, places)
     # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
     words = layers['words'] = word_bands(layers)
@@ -97,6 +101,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     loops_have_flags(layers, heads)
     heads = without_flag_loops(heads, space)
     dots(layers, heads)
+    # The notes under the bracket of a triplet are two thirds as long as they are drawn.
+    triplets = mark_triplets(layers, heads)
     # A sharp, a flat or a natural before a head changes that note. Two readers look for it: the strokes of the sign
     # (a thin sign of a hand), and its thick mark (a printed sign).
     found = []
@@ -136,7 +142,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         for index in tenors:
             clefs[index] = 'G8vb'
     parts = [[] for _ in range(width)]
-    notes = []
+    notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
              for index, staff in enumerate(staves)}
     # Music check: the voices of a system agree on the length of each step from column to column.
@@ -150,19 +156,20 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
             for note in bar:
                 head = note.pop('head')
+                part_notes.append(note)
                 stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (note['voice'] == 1)), None)
                 notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
                                   agreed=note.get('agreed', False), votes=note.get('votes'),
                                   mark={'wide': int(head['x1'] - head['x0'] + 1), 'high': int(head['y1'] - head['y0'] + 1),
                                         'y': float(head['cy']), 'at': float(head['place']), 'hollow': bool(head['hollow']),
-                                        'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'alt': head.get('alt'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')),
+                                        'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'alt': head.get('alt'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')), 'triplet': bool(head.get('triplet')),
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))
-    return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'staves': len(staves),
-            'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
+    return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'part_notes': part_notes, 'title': title,
+            'staves': len(staves), 'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
-            'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words,
+            'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words, 'triplets': triplets,
             'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
                       for index, start in enumerate(begin['starts'])]}

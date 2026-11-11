@@ -8,6 +8,7 @@ the page, written in this repository, with OpenCV and NumPy. No other reader is 
 python -m scoreread read "path/to/score.pdf" --page 1 --out out/my-hymn
 python -m scoreread read page.png --out out/my-hymn
 python -m scoreread hymn "path/to/score.pdf" --out out/my-hymn    # all pages of a hymn, joined into one file
+python -m scoreread hymn "path/to/scan.pdf" --out out/my-hymn --words words.txt    # with the words of a scan
 python -m scoreread layers page.png --out out/check       # the page with each layer of ink in its own colour
 python -m scoreread layout page.png --out out/check       # only staves and systems, 2 seconds
 ```
@@ -18,22 +19,29 @@ scan with the staves drawn on it, as a check) and `<name>.layers.png` (the layer
 seconds on one processor core. Python needs `opencv-python` and `numpy`; a PDF also needs `pdftoppm` (poppler), and
 a PDF that notation software wrote is read from its own drawing with `pdfplumber`.
 
+The words of a scan are read with a list of words that you give (`--words`, or `SCOREREAD_WORDS`): a text file
+with the words of other hymns, as plain text or as lines of a word and its count. The reader has no letters of its
+own: it groups the letter shapes of the hymn and names the groups so that the page reads like the words of the
+list. `bench/wordlist.py` makes the list from typed hymns. Without a list, a scan gives its notes only.
+
 ## The goal
 
 Every score of the choir's app (LitChoir) must be read on this computer, with no AI in the reader, and none of them
 under 99 % of the notes that its pages show. The words under the notes belong to the result. This is not reached:
-see the results and the limits below.
+see the results and the limits below. The first milestone is 99 % on clean copies (printed notes and words, crisp
+ink); the thick copies and the copies by hand come after it.
 
 ## What the reader does
 
 | Step | File | Model used? | What it does |
 |---|---|---|---|
-| 1. Staves | `scoreread/staves.py` | No | Finds each staff and follows its five lines along the page, also where the page bends, tilts or the lines are weak. Looks twice, with the dark ink alone and with pale level lines too (some copies print the staff in grey hair lines), and keeps the better staff at each place. Drops blank staves. |
+| 1. Staves | `scoreread/staves.py` | No | Finds each staff and follows its five lines along the page, also where the page bends, tilts or the lines are weak. Looks twice, with the dark ink alone and with pale level lines too (some copies print the staff in grey hair lines), and keeps the better staff at each place. Drops blank staves, and a find in an ornament, a title or a photo: its five lines are uneven and one of them is mostly missing. |
 | 2. Systems | `scoreread/systems.py` | No | Puts the staves into systems from the page's ink: the opening line, bar lines through the gap, and bar lines at the same places. Ink in the margin does not count. Finds a staff whose lines the copy lost. |
 | 3. Clean page | `scoreread/page.py` | No | Makes each system level and puts the systems on a white page. The shadow of the binding and the page number stay behind. |
 | 4. Layers | `scoreread/layers.py` | No | Splits the ink into staff lines, upright strokes (stems and bar lines), thick marks (note heads, beams, flags), the holes of hollow heads, and the rest. `layers` draws them in colours. |
-| 5. Symbols | `scoreread/symbols.py`, `starts.py`, `meter.py`, `signs.py`, `ties.py`, `words.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, the sharps, flats and naturals before a note, and the ties. The key of a page is a vote of its staves (a copy loses signs more easily than it gains them), and a page without a key signature has the key of the page before. Finds the time signatures, so that their numbers are no notes and no sharps. Finds the rows of the words, so that a stem ends where they begin and a letter is no note. |
-| 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
+| 5. Symbols | `scoreread/symbols.py`, `starts.py`, `meter.py`, `signs.py`, `ties.py`, `words.py`, `triplets.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, the sharps, flats and naturals before a note, and the ties. The key of a page is a vote of its staves (a copy loses signs more easily than it gains them), and a page without a key signature has the key of the page before. Finds the time signatures, so that their numbers are no notes and no sharps. Finds the rows of the words, so that a stem ends where they begin and a letter is no note. Finds the brackets of triplets: two flat arms with a hook at each outer end and a number in the break between them. |
+| 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed. A note under the bracket of a triplet has two thirds of its drawn length. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
+| Words of a scan | `scoreread/letters.py`, `lyrics.py` | No | Cuts the rows of the words into letters and groups the letters of the whole hymn by shape (one copyist or one type draws a letter the same way each time). Names the groups with the list of words: the same shape is the same letter in every word, and the names under which the page reads most like the words of the list stay. The height of a letter, its dot and its holes say what a shape can be. Sets each syllable under its note. |
 | Drawing | `scoreread/vector.py` | No | A PDF that notation software wrote holds each sign as a character of a music font at its exact place, and its words as text. Such a page is read from that drawing, with its words; no image is read. |
 | Hymn | `scoreread/hymn.py`, `cli.py` | No | Reads the pages of a hymn in order and joins them into one score: the same staff of every system of every page is one part. The key and the clefs of a page go on to the next page. |
 
@@ -61,7 +69,8 @@ flowchart TD
     layers --> symbols["<b>Step 5: symbols</b><br/>words.py, symbols.py, starts.py, meter.py, signs.py, ties.py"]
     symbols --> music["<b>Step 6: music rules</b><br/>music.py"]
     drawing -------> music
-    music --> notes["<b>The notes</b><br/>name.musicxml and name.notes.json"]
+    music --> words["<b>The words of a scan</b><br/>letters.py, lyrics.py<br/>Only with a list of words. The letters of all pages of a hymn are grouped and named together."]
+    words --> notes["<b>The notes and the words</b><br/>name.musicxml and name.notes.json"]
     notes --> hymn["<b>The whole hymn</b><br/>hymn.py<br/>The command hymn looks at every page first: the staves of all pages vote for the key of the hymn. Then it reads the pages in order and joins them, staff by staff. The key and the clefs of a page go on to the next page."]
     clean -.-> layout["name.layout.json, name.clean.png and name.staves.png. The command layout stops here."]
     layers -.-> picture["name.layers.png. The command layers stops here."]
@@ -275,8 +284,25 @@ flowchart LR
     lay --> signs --> write
 ```
 
-Not in the diagrams, because the reader of scans does not do it yet: the words of a scan, rests, slurs, triplets,
-and the numbers of a time signature (see "Limits").
+### The words of a scan
+
+```mermaid
+flowchart TD
+    rows["The rows of the words of every page of the hymn (words.py)"] --> cut["<b>Letters</b> (letters.py)<br/>Each free piece of ink of a row. The dot of an i joins its stroke."]
+    cut --> line["The line that the letters stand on, and the height of the small letters, for each row"]
+    line --> canvas["Each letter on one canvas: scaled by the height of the small letters, set on the line"]
+    canvas --> groups["<b>Groups of one shape</b><br/>A letter joins the group that it differs from by no piece of ink (the bar of an e is such a piece: a c lacks it). The groups have no names yet."]
+    groups --> kinds["<b>What each piece is by size and place</b> (lyrics.py)<br/>Letter, hyphen, comma, dot, apostrophe, or a stem that reaches into the words"]
+    kinds --> syllables["<b>Syllables and words</b><br/>A gap or a hyphen ends a syllable. Syllables that hyphens join are one word."]
+    syllables --> classes["<b>What a group can be</b><br/>It rises over the small letters (b, d, h, a capital), goes under the line (g, p, y), has a dot (i, j), or none of these (a, c, e, n, o). Its holes cost a little: an o has one, a c has none."]
+    classes --> vote["<b>First names</b><br/>A word of the page can be each word of the list in which the same shape is the same letter. The group that the words agree on best is named, and so on."]
+    vote --> shake["<b>The best names</b><br/>The names are shaken, much at first and then less. A word of the list counts, and so does each run of three letters that the words of the list often have. The names under which the hymn reads most like the list stay."]
+    shake --> rest["<b>The shapes that come once</b><br/>A broken letter gets the name of the named shape that it is near. Letters that touch are read as a row of named shapes side by side."]
+    rest --> under["<b>Under the notes</b><br/>A row belongs to the staff over it. Its syllables and the notes of that staff keep their order, and each syllable stands under the note that it is nearest to. A letter with no name is written as a question mark."]
+```
+
+Not in the diagrams: the brackets of triplets (`triplets.py`, after the dots), and what the reader of scans does not
+do yet: rests, slurs, and the numbers of a time signature (see "Limits").
 
 ## Results on every score of LitChoir (the wide test)
 
@@ -289,11 +315,28 @@ pages in order, with one vote for its key.
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.1 % (19,916 of 20,104) | 51 | 68 | 0 |
-| Scans | 296 | 76.8 % (53,531 of 69,676) | 8 | 74 | 30 |
-| All | 366 | 81.8 % (73,447 of 89,780) | 59 | 142 | 30 |
+| Scans | 296 | 77.1 % (53,684 of 69,655) | 8 | 75 | 29 |
+| All | 366 | 82.0 % (73,600 of 89,759) | 59 | 143 | 29 |
 
-- Words: 5,586 of 28,976 syllables are right (19 %). All of them come from the software-made PDFs, where 92 % of
-  the syllables are right. No word is read from a scan yet.
+The first milestone is 99 % on clean copies: the 81 scan scores with printed notes and words and crisp ink. The
+other scans come after it: 26 printed but thick, blurred or grey copies, and 189 with notes or words by hand.
+
+| Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Words right |
+|---|---:|---:|---:|---:|---:|
+| Clean print | 81 | 87.6 % (20,231 of 23,107) | 7 | 51 | 48.1 % (3,153 of 6,559) |
+| Thick or grey print | 26 | 69.9 % (5,826 of 8,329) | 0 | 4 | 32.9 % (658 of 2,000) |
+| By hand | 189 | 72.3 % (27,627 of 38,219) | 1 | 20 | 37.7 % (5,401 of 14,345) |
+
+- Words: 14,798 of 28,976 syllables are right (51.1 %): 92 % on the software-made PDFs, and 40.2 % on the scans
+  (9,212 of 22,904), read with no model from the letter shapes of each hymn and a list of words.
+- The sorting into clean, thick and by hand was done by eye from the first system of each score. Of the 81 clean
+  scores, 5 cannot reach 99 % as they are counted now: one page holds another version than the typed hymn, one
+  typed bass stands an octave over the page, two typed hymns differ from the page in refrains and repeats, and one
+  score has hand lettering and was sorted wrongly.
+- The last round, on the clean copies, each rule scored alone: half-note chords on staff lines 11 notes (none
+  lost), the column of a stem that ends in a letter 10 (1 lost), a letter beside a stem's end that was taken for a
+  slur 7, a false staff in an ornament 33 (4 lost on a photo page), and the brackets of triplets 98 (none lost).
+  A rule for beams inside the rows of the words lost 3 notes to slurs and is off.
 - The last rounds on the scans: new rules for the systems brought 1,511 notes, the rules for keys and time
   signatures 713 (4 lost), staves in pale lines 695 (6 lost), and a flat that a staff line cut off 105 (27 lost).
   Then, with none lost: the rule for the tenors' staff 402, and one key for the whole hymn 121. The sign of common
@@ -314,16 +357,16 @@ typed hymns, of all typed notes.
 | By hand | 5 | 65 % | 70 % | 79 % | 86 % |
 | Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 79 % |
 | Digital PDF | 3 | 81 % | 72 % | 81 % | 99 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 88.9 % (6137 notes) |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 89.0 % (6140 notes) |
 
-- Over all hymns the own rules read more notes right than the network they replaced: 88.9 % against 81 %.
+- Over all hymns the own rules read more notes right than the network they replaced: 89.0 % against 81 %.
 - They are behind the network on two kinds: old copies (86 % against 88 %) and the two poor pages (79 % against 95 %).
 - 8 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 6 are under 80 %.
 
 ## Limits
 
 - The reader is not accurate enough yet to put a scanned hymn into the app without a check. Only 8 of the 296
-  scanned scores are at 99 %, and 30 are under 50 %: thick copies where signs and heads ran together, pages
+  scanned scores are at 99 % (7 of the 81 clean ones), and 29 are under 50 %: thick copies where signs and heads ran together, pages
   where a clef is hidden, and pages of a service book with a few lines of music among the text.
 - The rules and their limits were set on the same pages that test them. The figures above are therefore the best
   case. New pages will read worse until they are measured too.
@@ -338,7 +381,11 @@ typed hymns, of all typed notes.
   by a word ("Men:"), and a typed hymn that sets a part an octave from the page.
 - The score counts each part. A staff of two parts is split by the stem direction (stem up is the upper part). One
   stem read wrong, or one head of a chord missed, gives the note to the wrong part.
-- Not read yet on scans: the words, rests, slurs and triplets. A rest can be read as a note. Time signatures are
+- Not read yet on scans: rests and slurs. A rest can be read as a note. A triplet is read from its bracket only: a
+  3 over a beam without a bracket is not seen, and the number in the bracket is not read (it is taken for a 3).
+- The words of a scan are right for 4 syllables of 10. On clean type the limit is the grouping of the letter shapes
+  (n and u, h and b fall into one group), not the list of words. As a yardstick outside the reader, Tesseract (a
+  small local text model) reads 85 % of the syllables of the clean copies, counted by order alone. Time signatures are
   found so that they are no notes (the numbers, and the C of common time; not the sign of cut time, and not a small
   C), but they are not read into the result. A tie is read when its bow runs from head to
   head on one line of the page.
@@ -350,9 +397,11 @@ typed hymns, of all typed notes.
 
 ## Next steps
 
-1. The words on scans, with no model: the letter shapes of the page, grouped, and named with a word list. A first
-   trial outside the package reads 330 of the 445 syllables of a four-page scan.
-2. Clefs hidden behind a bracket, and the pages where almost nothing is read.
+1. The clean copies to 99 %, notes and words. Notes: the key signature on faint print, patches of a staff that the
+   clean-page step erases, the numbers of a time signature, dynamics and slur ends that are read as notes, a hollow
+   head on a ledger line, long thin flags. Words: letter shapes that are taught by hymns whose text is typed.
+2. Then the thick copies and the copies by hand: clefs hidden behind a bracket, and the pages where almost nothing
+   is read.
 3. Score the joined hymn of the `hymn` command, and let the hymn teach the page more (parts, time).
 4. Half notes whose hole the copy filled, by the notes that sound with them. Flags and beams that are not seen.
 5. Rests, with a check of each bar's length.
@@ -404,4 +453,5 @@ on alone and scored on all 38 pages, and a rule that did not gain notes was drop
 Version 0.6 (in work) reads software-made PDFs from their drawing with their words, groups the staves of scans by
 three more checks, votes for the key of a page and of a whole hymn, finds time signatures and staves in pale
 lines, tells the altos' staff from the tenors' by its place over the bass staff, joins the pages of a hymn
-(`hymn`), and moved the yardstick out of the reader.
+(`hymn`), and moved the yardstick out of the reader. It reads the words of a scan with no model, the brackets of
+triplets, and drops false staves; the clean copies are scored apart since then.

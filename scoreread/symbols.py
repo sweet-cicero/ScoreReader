@@ -77,6 +77,8 @@ LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from t
 ORPHANS = (0.7, 1.5) # a thick mark with no stem, from this to this many times as wide and as high as the heads of the
 #                    page, is a head when an upright stroke that no head has ends at its edge (None: off)
 WHOLE_HALF = 0.3     # the same over or under a half note, when the oval is wider than it by this many staff spaces (0: off)
+LINE_CHORD = 0.75    # hollow heads that touch, each on a line: the first and the last cell of their insides lie this
+#                      many staff spaces further apart than as many heads less two in the spaces would (0: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -184,6 +186,20 @@ def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tupl
     staff = layers['staves'][_staff_of(layers, x + inside.shape[1] / 2, y + inside.shape[0] / 2) or 0]
     step = staff['space']
     lines = list(staff['rows']) + [staff['rows'][0] - k * step for k in range(1, 5)] + [staff['rows'][4] + k * step for k in range(1, 5)]
+    if LINE_CHORD and len(found) >= 3:
+        # Hollow heads a third apart, each on a line: the lines cut their insides into cells, one more than the
+        # heads. The first and the last cell are half holes at the rims, so they lie nearer to each other than the
+        # holes of as many heads in the spaces would.
+        ordered = sorted(lines)
+        cells = {}
+        for hole in found:
+            cells.setdefault(sum(1 for line in ordered if line < y + hole['cy']), []).append(hole)
+        largest = max(sum(hole['area'] for hole in cell) for cell in cells.values())
+        gaps = sorted(gap for gap, cell in cells.items() if sum(hole['area'] for hole in cell) >= 0.25 * largest)
+        if len(gaps) >= 3 and gaps[-1] - gaps[0] == len(gaps) - 1 and len(gaps) == len(cells):
+            middle = lambda gap, axis: sum(hole[axis] * hole['area'] for hole in cells[gap]) / sum(hole['area'] for hole in cells[gap])
+            if middle(gaps[-1], 'cy') - middle(gaps[0], 'cy') <= (len(gaps) - 2 + LINE_CHORD) * step:
+                return [((middle(gap, 'cx') + middle(gap + 1, 'cx')) / 2, ordered[gap] - y) for gap in gaps[:-1]]
     merged = []
     for hole in found:
         for other in merged:
@@ -411,8 +427,8 @@ def _run(ink: np.ndarray, row: int, column: int) -> int:
 
 def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
     """The upright ink that leaves a thick mark: up or down, from its right half or its left half. Returns
-    {'direction', 'x', 'end' (the row of its far end), 'length' (px from the mark's middle), 'past' (px past the
-    mark's edge), 'slim' (the rows past the mark's edge where the ink is as slim as a stem), 'inked' (the rows past
+    {'direction', 'x' (the column of its far end), 'mid' (its middle column), 'end' (the row of its far end),
+    'length' (px from the mark's middle), 'past' (px past the mark's edge), 'slim' (the rows past the mark's edge where the ink is as slim as a stem), 'inked' (the rows past
     the edge that have ink)}, or None when no ink leaves the mark there."""
     ink, space = layers['joined'], layers['space']
     y = int(round(mark['cy']))
@@ -441,6 +457,7 @@ def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
     best['past'] = (mark['y0'] - best['end']) if up else (best['end'] - mark['y1'])
     outside = [(row, column) for row, column in best.pop('path') if (row < mark['y0'] if up else row > mark['y1'])]
     best['inked'] = len(outside)
+    best['mid'] = int(np.median([column for row, column in outside])) if outside else best['x']
     best['slim'] = sum(1 for row, column in outside if _run(ink, row, column) <= SLIM_STEM * space)
     return best
 
@@ -1692,6 +1709,10 @@ THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker th
 THIN_BEAM_OVER = 0.6            # a thin beam passes over a stem between its two stems that ends this many staff spaces before it (0: off)
 THIN_BEAM_STAFF = True          # the thickness of a staff line that hides a beam is that of the beam's own staff
 THIN_BEAM_END = 0.0             # the beam may meet a stem this many staff spaces past the end that was found for it (0: off)
+WORD_TAILS = True               # a letter beside the end of a stem that ends at the words is no slur that goes on past a
+#                                 thin beam
+WORD_BEAMS = False              # a beam in the rows of the words counts when the next stem shows it too (measured on the
+#                                 clean copies: a slur over a beam at the words then counts as a second beam; kept off)
 LAST_HEAD = 'words'             # the flags of a stem hang past the last head on it: 'words' (for a stem that ends at the
 #                                 words), 'all' (for every stem), or None (past the stem's own head only)
 THIN_BEAM_PAST = (0.4, 1.0, 0.45)   # a slur goes on past the last stem: ink from this far to this far past it, at most
@@ -1710,12 +1731,13 @@ def _last_head(heads: list[dict], head: dict, stem: dict, space: float) -> float
     return min(rows) if up else max(rows)
 
 
-def tail_marks(layers: dict, head: dict, stem: dict, last: float | None = None) -> list[dict]:
+def tail_marks(layers: dict, head: dict, stem: dict, last: float | None = None, words: bool = True) -> list[dict]:
     """The pieces of ink that hang on the far end of a stem, without the stem itself. Each: {'right' (True at the
     right side of the stem), 'row' (where it leaves the stem), 'far' (how far it reaches from the stem), 'thick' (how
     thick it is where it has left the stem), 'from_end' (how far from the stem's end it begins), 'back' (how far it
     comes back toward the head while it goes away from the stem; all in staff spaces)}. `last` is the middle row of
-    the last head on the stem, when that is not `head` itself: the pieces hang past it."""
+    the last head on the stem, when that is not `head` itself: the pieces hang past it. With `words` False the ink
+    in the rows of the words counts too."""
     ink, space = layers['bare'], layers['space']
     height, width = ink.shape
     up = stem['direction'] == 'up'
@@ -1735,7 +1757,7 @@ def tail_marks(layers: dict, head: dict, stem: dict, last: float | None = None) 
     high = int(np.ceil(head['staff_ref']['thick'])) + 3
     near = cv2.dilate(window, np.ones((1, 5), np.uint8))
     window |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((high, 1), np.uint8)) & lines
-    if stem.get('words'):
+    if stem.get('words') and words:
         # The stem ends at the words (scoreread.words): the ink of the letters is no flag.
         low, high = int(stem['words'][0]) - top, int(stem['words'][1]) + 1 - top
         window[max(0, low):max(0, high)] = 0
@@ -1807,6 +1829,8 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             if LAST_HEAD == 'all' or (LAST_HEAD == 'words' and stem.get('words')):
                 last = _last_head(staffs[head['staff']], head, stem, space)
             stem['marks'] = tail_marks(layers, head, stem, last)
+            if WORD_BEAMS and stem.get('words'):
+                stem['in_words'] = [piece for piece in tail_marks(layers, head, stem, last, False) if _is_beam(piece)]
             groups.setdefault((head['staff'], stem['direction']), []).append(stem)
 
     def witness(group: list[dict], stem: dict, right: bool) -> bool:
@@ -1817,11 +1841,15 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             return False
         near = min(side, key=lambda other: abs(other['x'] - stem['x']))
         return abs(near['end'] - stem['end']) <= 2.5 * space \
-            and any(_is_beam(piece) and piece['right'] != right for piece in near['marks'])
+            and any(_is_beam(piece) and piece['right'] != right for piece in near['marks'] + near.get('in_words', []))
 
     sure = []
     for group in groups.values():
         for stem in group:
+            for piece in stem.get('in_words', []):
+                if witness(group, stem, piece['right']):
+                    stem['marks'] = [other for other in stem['marks'] if other['right'] != piece['right']
+                                     or abs(other['row'] - piece['row']) > 0.5 * space] + [piece]
             for piece in stem['marks']:
                 piece['beam'] = _is_beam(piece)
                 piece['witness'] = bool(piece['beam'] and witness(group, stem, piece['right']))
@@ -1919,6 +1947,12 @@ def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
         x = int(round(outer['x'])) + side * step
         y = int(round(outer['end'] + slope * side * step))
         top, bottom = max(0, y - reach), min(height, y + reach + 1)
+        if WORD_TAILS and outer.get('words'):
+            # The stem ends at the words: a letter beside its end is no ink of a slur.
+            if outer['direction'] == 'down':
+                bottom = min(bottom, int(outer['words'][0]))
+            else:
+                top = max(top, int(outer['words'][1]) + 1)
         if not 0 <= x < width or bottom <= top:
             continue
         count += 1

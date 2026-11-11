@@ -19,7 +19,8 @@ FLATS = [6, 2, 5, 1, 4, 0, 3]       # and the flats: B E A D G C F
 MIDDLE = {'G': 34, 'G8vb': 27, 'F': 22}   # the note on the middle line of each clef, as 7 * octave + name
 TYPES = {Fraction(4): 'whole', Fraction(2): 'half', Fraction(1): 'quarter', Fraction(1, 2): 'eighth',
          Fraction(1, 4): '16th', Fraction(1, 8): '32nd'}
-DIVISIONS = 8
+DIVISIONS = 24       # a quarter note has this many parts: a triplet's notes need thirds
+TRIPLET = Fraction(2, 3)   # a note under a triplet's bracket has this share of its drawn length
 ONE_LINE = 0.6       # the stems of two voices on one pitch, or a second apart, are one line: at most this far apart
 BESIDE = 1.8         # a whole note beside a note with a stem, on its pitch or a second from it, is at most this far from it
 BESIDE_DOT = 2.6     # or this far, at the right of a note with a dot
@@ -61,8 +62,10 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
         voices = sorted({1 if stem['direction'] == 'up' else 2 for stem in head['stems']}) or [1]
         for voice in voices:
             stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (voice == 1)), None)
-            events.append({'x': head['cx'], 'place': place, 'voice': voice, 'head': head,
-                           'length': length_of(head, head['tails'].get(stem['direction'], 0) if stem else 0),
+            length = length_of(head, head['tails'].get(stem['direction'], 0) if stem else 0)
+            if (stem['direction'] if stem else '') in head.get('triplet', ()):
+                length *= TRIPLET
+            events.append({'x': head['cx'], 'place': place, 'voice': voice, 'head': head, 'length': length,
                            'stem_x': stem['x'] if stem else None})
     events.sort(key=lambda event: event['x'])
     # A note without a stem (a whole note) under, over or beside a note with a stem is the other voice's note, and
@@ -181,7 +184,7 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
             if any(sure[step] is None for step in range(number, following)):
                 continue
             total = sum(sure[number:following], Fraction(0))
-            if total == length or not (total in TYPES or total / Fraction(3, 2) in TYPES):
+            if total == length or not (total in TYPES or total / Fraction(3, 2) in TYPES or total / TRIPLET in TYPES):
                 continue
             if following == number + 1 or length > total:
                 for event in events:
@@ -238,8 +241,13 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
 
 def _note_xml(note: dict, chord: bool) -> str:
     length = note['length']
-    dotted = length / Fraction(3, 2)
-    kind, dot = (TYPES[dotted], True) if dotted in TYPES and length not in TYPES else (TYPES.get(length), False)
+    # A note of a triplet is drawn as a note one and a half times as long.
+    drawn = length / TRIPLET
+    triplet = length not in TYPES and length / Fraction(3, 2) not in TYPES and (drawn in TYPES or drawn / Fraction(3, 2) in TYPES)
+    if not triplet:
+        drawn = length
+    dotted = drawn / Fraction(3, 2)
+    kind, dot = (TYPES[dotted], True) if dotted in TYPES and drawn not in TYPES else (TYPES.get(drawn), False)
     parts = ['<note>']
     if chord:
         parts.append('<chord/>')
@@ -253,6 +261,8 @@ def _note_xml(note: dict, chord: bool) -> str:
         parts.append(f'<type>{kind}</type>')
         if dot:
             parts.append('<dot/>')
+        if triplet:
+            parts.append('<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>')
     if ties:
         parts.append('<notations>' + ''.join(f'<tied type="{name}"/>' for name in ties) + '</notations>')
     if note.get('lyric'):

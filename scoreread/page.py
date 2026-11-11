@@ -144,7 +144,8 @@ def _cuts(grey: np.ndarray, staves: list[dict], systems: list[list[int]]) -> lis
         else:
             under, gap = keep_under[number - 1]
             over = gap - under
-        cuts.append((over + 3, keep_under[number][0] + 3))
+        # Two staves that were found side by side at one height lie over each other: no room is kept between them.
+        cuts.append((max(0, over) + 3, max(0, keep_under[number][0]) + 3))
     return cuts
 
 
