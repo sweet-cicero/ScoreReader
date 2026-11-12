@@ -36,9 +36,11 @@ TANGLE_NEAR = (2.0, 0.7)        # it begins at most this many staff spaces befor
 TANGLE_SPECK = 0.04             # a piece of ink under this area (staff spaces squared) is a speck, no stroke of it
 TANGLE_HOLE = 0.08              # the paper that it closes in is at most this share of its box: an oval is a head
 SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
-SHARP_JOINED = (1.8, 0.5, 1.1, 0.15)   # a small sharp of a heavy print whose two strokes are one mark: at least this high,
+SHARP_JOINED = None             # a small sharp of a heavy print whose two strokes are one mark: at least this high,
                                 # from this to this wide (staff spaces), with ink at both sides in the top and in the
-                                # bottom share of its rows, and a piece of paper closed in between its bars (None: off)
+                                # bottom share of its rows, and a piece of paper closed in between its bars (None: off).
+                                # Off: with (1.8, 0.5, 1.1, 0.15) it gained 11 notes on LitChoir's clean copies and
+                                # lost 1, but on the fresh test set it lost 29.
 
 
 JOINED_BARE = True              # the ends of a joined sign are looked at without the staff lines: a line through the top

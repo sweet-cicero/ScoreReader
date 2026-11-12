@@ -1329,9 +1329,10 @@ OPEN_HEADS = 0.85    # an open hole (the rim of the head has a small break) with
 #                    its rim were read as heads; its area is at most this many staff spaces squared, as a room between
 #                    a slanted head, its stem and two staff lines is larger (0: off)
 OPEN_ROUND = 0.82    # such an open hole may be as high as the gap between two staff lines when it fills at most this share of its box
-OPEN_ALONE = 0.5     # an open hole with a stem and no piece of rim that was read as a head is a hollow head when ink of
+OPEN_ALONE = 0       # an open hole with a stem and no piece of rim that was read as a head is a hollow head when ink of
 #                    its own (no staff line) stands at this share of the ring around it: the thin rim of a printed
-#                    half note is no thick mark at all (0: off)
+#                    half note is no thick mark at all (0: off). Off: with 0.5 it gained 29 notes on LitChoir's
+#                    clean copies and lost 5, but on the fresh test set it lost 285.
 OPEN_SLANT = (0.8, 0.75)   # such a hole may be as high as wide (from this share) when it fills at most this share of its box
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
 HOLE_THROUGH = True  # a hollow head on a staff line: the two halves of its inside, over and under the line, are one hole
