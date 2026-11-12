@@ -29,6 +29,10 @@ ACROSS = 0.9         # the columns of two staves of a system are one column when
 AGREE = 2            # this many voices must agree on the length of a step before another voice's note is changed
 AGREE_HOLLOW = True  # where as many voices say a half note as say a quarter note (AGREE or more each), the step is a
 #                      half note: a copy fills the hole of a half note, and it opens no hole in a quarter note
+SECOND_TOUCH = (0.2, 0.95)   # two voices a second apart with the lower voice at the left, the stems at the outer sides
+#                    and heads that touch (at most this many staff spaces of paper between them) begin together. They
+#                    are two whole heads side by side: their middles stand at least the second number apart (the
+#                    slanted stroke of a hand that two voices share is one mark, read as two pieces). (None: off)
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -171,7 +175,14 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                 stemless = event['stem_x'] is None and all(other['stem_x'] is None for other in column) \
                     and abs(column[0]['x'] - event['x']) <= COLUMN * space
                 partner = any(other is event.get('partner') or other.get('partner') is event for other in column)
-                if same_stem or other_voice or one_line or stemless or partner:
+                # ... or the other way round: the lower voice at the left with its stem down at its left side, the
+                # upper voice at the right with its stem up at its right side, and the heads touch.
+                touching = SECOND_TOUCH is not None and event['stem_x'] is not None and event['voice'] == 1 \
+                    and all(other['voice'] == 2 for other in column) \
+                    and any(other['stem_x'] is not None and event['place'] - other['place'] == 1
+                            and event['head']['x0'] - other['head']['x1'] <= SECOND_TOUCH[0] * space
+                            and event['x'] - other['x'] >= SECOND_TOUCH[1] * space for other in column)
+                if same_stem or other_voice or one_line or stemless or partner or touching:
                     column.append(event)
                     break
             else:
