@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from .drone import letter_marks
 from .layers import read_layers
 from .meter import mid_signs
-from .music import MIDDLE, agree_lengths, build_staff, musicxml, staff_columns
+from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
@@ -162,8 +163,24 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         for system in sorted({staff['system'] for staff in staves}):
             own = {index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
             agreed += agree_lengths(own, bars, space)
+    # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scoreread.drone).
+    # It is a part of its own after the melody; its notes are in no list of notes, so no syllable is set under them.
+    drone, holding = [], {}
     for index, staff in enumerate(staves):
-        for number, bar in enumerate(build_staff(staff, [], bars[index], clefs[index], keys[index], space, plans[index])):
+        built = build_staff(staff, [], bars[index], clefs[index], keys[index], space, plans[index])
+        if width == 1 and built:
+            marks = [[] for _ in built]
+            for mark in letter_marks(layers, index, clefs[index]):
+                later = [number for number, bar in enumerate(plans[index]) if any(column[0]['x'] >= mark['x'] - 0.6 * space for column in bar)]
+                marks[later[0] if later else len(built) - 1].append(mark)
+
+            def pitch(event: dict, staff=staff, index=index) -> dict:
+                return build_staff(staff, [], [], clefs[index], keys[index], space, [[[dict(event, voice=1)]]])[0][0]
+
+            for bar in held(built, marks, pitch, space, holding):
+                drone.append({'notes': [{name: value for name, value in note.items() if name != 'head'} for note in bar],
+                              'clef': clefs[index], 'key': keys[index]})
+        for number, bar in enumerate(built):
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
             for note in bar:
                 head = note.pop('head')
@@ -177,7 +194,11 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))
-    return {'musicxml': musicxml(parts, title), 'parts': parts, 'notes': notes, 'part_notes': part_notes, 'title': title,
+    names = {}
+    if any(bar['notes'] for bar in drone):
+        parts.append(drone)
+        names[width] = 'Ison'
+    return {'musicxml': musicxml(parts, title, names), 'parts': parts, 'names': names, 'notes': notes, 'part_notes': part_notes, 'title': title,
             'staves': len(staves), 'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],

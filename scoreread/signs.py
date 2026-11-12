@@ -35,6 +35,20 @@ TANGLE_NEAR = (2.0, 0.7)        # it begins at most this many staff spaces befor
                                 # this many staff spaces over or under the middle of the head
 TANGLE_SPECK = 0.04             # a piece of ink under this area (staff spaces squared) is a speck, no stroke of it
 TANGLE_HOLE = 0.08              # the paper that it closes in is at most this share of its box: an oval is a head
+SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
+SHARP_JOINED = None             # a small sharp of a heavy print whose two strokes are one mark: at least this high,
+                                # from this to this wide (staff spaces), with ink at both sides in the top and in the
+                                # bottom share of its rows, and a piece of paper closed in between its bars (None: off).
+                                # Off: with (1.8, 0.5, 1.1, 0.15) it gained 11 notes on LitChoir's clean copies and
+                                # lost 1, but on the fresh test set it lost 29.
+
+
+JOINED_BARE = True              # the ends of a joined sign are looked at without the staff lines: a line through the top
+                                # of a natural is no second stroke; such a mark with its left stroke alone at the top
+                                # and its right one alone at the bottom is a natural (False: as before)
+SIGN_WORDS = True               # the strokes of a sign are read without the rows of the words (False: with them)
+GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies on all of them and changes the one at
+                                # its place (False: a sign that lies on a head at another place is none)
 
 
 def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
@@ -86,11 +100,11 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     full = [head for head in own if head.get('thin') or head['x1'] - head['x0'] + 1 >= NARROW * wide]
     small = [head for head in own if not any(head is other for other in full)]
 
-    def stem_of_head(stroke: dict) -> bool:
+    def stem_of_head(stroke: dict, beside: float = 0.3) -> bool:
         for head in full:
             for stem in head['stems']:
                 top, bottom = min(head['cy'], stem['end']), max(head['cy'], stem['end'])
-                if stroke['x0'] - 0.3 * space <= stem['x'] <= stroke['x1'] + 0.3 * space \
+                if stroke['x0'] - beside * space <= stem['x'] <= stroke['x1'] + beside * space \
                         and min(bottom, stroke['bottom']) - max(top, stroke['top']) >= 0.5 * (stroke['bottom'] - stroke['top']):
                     return True
         return False
@@ -100,13 +114,32 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 if min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) >= 0.5 * min(sign['x1'] - sign['x0'] + 1, head['x1'] - head['x0'] + 1)
                 and head['y1'] >= sign['top'] and head['y0'] <= sign['bottom']]
 
-    strokes = start_strokes(layers, staff, int(first), int(staff['x1']))
-    strokes = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1] and not stem_of_head(stroke)]
+    strokes = start_strokes(layers, staff, int(first), int(staff['x1']), layers.get('words') if SIGN_WORDS else None)
+    strokes = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1]]
+    kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
+    if SHARP_STEM:
+        # A small sharp right before a note with a stem that goes down: its right stroke stands beside the stem,
+        # but it is the second stroke of a sharp, and the stem is another stroke.
+        for sign in pair_signs(layers, staff, strokes):
+            if sign['kind'] != 'sharp':
+                continue
+            left = next((stroke for stroke in kept if stroke['x0'] == sign['x0']), None)
+            right = next((stroke for stroke in strokes if stroke['x1'] == sign['x1'] and stroke['x0'] > sign['x0']), None)
+            if left is not None and right is not None and not any(right is stroke for stroke in kept) and not stem_of_head(right, 0.0):
+                kept.append(right)
+        kept.sort(key=lambda stroke: stroke['x'])
+    strokes = kept
     signs = pair_signs(layers, staff, strokes)
     taken = [(sign['x0'], sign['x1']) for sign in signs]
     for sign in sign_candidates(layers, staff, strokes):
-        if sign['kind'] == 'flat' and not any(x0 - 2 <= sign['x0'] <= x1 + 2 for x0, x1 in taken):
+        if any(x0 - 2 <= sign['x0'] <= x1 + 2 for x0, x1 in taken):
+            continue
+        if sign['kind'] == 'flat':
             signs.append(sign)
+        elif SHARP_JOINED and sign.get('joined'):
+            kind = _joined_sharp(layers, sign, space)
+            if kind:
+                signs.append(dict(sign, kind=kind))
     out = []
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
@@ -120,7 +153,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             bowls = []
         # A head that the sign touches: one mark, much wider than the sign.
         glued = [head for head in on if head['x1'] - sign['x1'] >= GLUED * wide and abs(head['place'] - place) <= HIGH]
-        if on and len(glued) != len(on):
+        past = [head for head in on if head['x1'] - sign['x1'] >= GLUED * wide]
+        if on and (len(past) != len(on) or not glued if GLUED_CHORD else len(glued) != len(on)):
             continue
         drop = lying(sign, small) + bowls
         best = None
@@ -142,6 +176,32 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 if sign:
                     out.append(dict(sign, head=head, drop=lying(sign, small)))
     return out
+
+
+def _joined_sharp(layers: dict, sign: dict, space: float) -> str | None:
+    """'sharp' when one wide stroke is a sharp whose two strokes a heavy print joined: both strokes stand out over and
+    under the bars, and the strokes and the bars close in a piece of paper. 'natural' when its left stroke stands
+    alone at the top and its right one alone at the bottom. None when it is neither."""
+    x0, x1, top, bottom = int(sign['x0']), int(sign['x1']) + 1, int(sign['top']), int(sign['bottom']) + 1
+    high, wide = bottom - top, x1 - x0
+    if not (SHARP_JOINED[0] * space <= high <= SIGN_STROKE[1] * space and SHARP_JOINED[1] * space <= wide <= SHARP_JOINED[2] * space):
+        return None
+    ink = layers['ink'][top:bottom, x0:x1]
+    ends = layers['bare'][top:bottom, x0:x1] if JOINED_BARE else ink
+    middle, edge = wide // 2, max(2, int(round(SHARP_JOINED[3] * high)))
+    sides = [(bool(part[:, :middle].any()), bool(part[:, middle:].any())) for part in (ends[:edge], ends[-edge:])]
+    if sides == [(True, False), (False, True)] and JOINED_BARE:
+        kind = 'natural'
+    elif sides == [(True, True), (True, True)]:
+        kind = 'sharp'
+    else:
+        return None
+    # The paper between the strokes and the bars, in the middle of the sign: closed in on all sides.
+    box = np.pad(1 - ink, 1, constant_values=1).astype(np.uint8)
+    count, labels, stats, middles = cv2.connectedComponentsWithStats(box, connectivity=4)
+    outside = labels[0, 0]
+    return kind if any(label != outside and stats[label, cv2.CC_STAT_AREA] >= 2 and 0.25 * high <= middles[label][1] - 1 <= 0.75 * high
+                       for label in range(1, count)) else None
 
 
 def _runs(part: np.ndarray) -> np.ndarray:

@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import re
 from fractions import Fraction
 from xml.sax.saxutils import escape
 
@@ -26,6 +27,8 @@ BESIDE = 1.8         # a whole note beside a note with a stem, on its pitch or a
 BESIDE_DOT = 2.6     # or this far, at the right of a note with a dot
 ACROSS = 0.9         # the columns of two staves of a system are one column when they stand at most this far apart
 AGREE = 2            # this many voices must agree on the length of a step before another voice's note is changed
+AGREE_HOLLOW = True  # where as many voices say a half note as say a quarter note (AGREE or more each), the step is a
+#                      half note: a copy fills the hole of a half note, and it opens no hole in a quarter note
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -51,6 +54,64 @@ def length_of(head: dict, tails: int) -> Fraction:
     else:
         base = Fraction(1) / (2 ** tails)
     return base * Fraction(3, 2) if head.get('dot') else base
+
+LETTER = re.compile(r'^([A-G])([b♭#♯]?)([↓↑]?)$')
+UNISON = re.compile(r'^(Un(is)?\.?|un(is)?\.)$')
+
+
+def letter_mark(text: str, x: float, clef: str) -> dict | None:
+    """The ison mark that a word over a chant staff stands for: the name of a note ("E", "Bb", "G↓": an octave
+    lower), or "Un." where the ison sings in unison with the melody. An event as staff_columns() gives it, with
+    'unison' for the second kind; None when the word is no such mark. The note lies in the octave from the C under
+    the middle of a treble staff upward (C4 to B4), where the typed hymns have their ison; under a bass clef or a
+    treble clef with an 8 in the octave under that."""
+    if UNISON.match(text):
+        return {'x': x, 'place': 0, 'voice': 1, 'head': {'hollow': True, 'stems': [], 'cx': x, 'letter': text},
+                'length': Fraction(4), 'stem_x': None, 'unison': True}
+    found = LETTER.match(text)
+    if not found:
+        return None
+    octave = (4 if clef == 'G' else 3) + {'↓': -1, '↑': 1}.get(found.group(3), 0)
+    place = 7 * octave + STEPS.index(found.group(1)) - MIDDLE[clef]
+    head = {'hollow': True, 'stems': [], 'cx': x, 'place': place, 'letter': text}
+    if found.group(2):
+        head['sign'] = -1 if found.group(2) in 'b♭' else 1
+    return {'x': x, 'place': place, 'voice': 1, 'head': head, 'length': Fraction(4), 'stem_x': None}
+
+
+def held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, state: dict) -> list[list[dict]]:
+    """The ison in time with the melody: for each bar of the melody, the notes that the ison holds in it.
+
+    An ison mark holds from the melody's note that it stands at until the next mark, over the bar lines and the
+    ends of the lines: it is written as one note in each bar, tied to the next. Before the first mark of a page the
+    ison is silent. After a mark of unison the ison sings the melody's notes. `pitch` makes the note of a mark;
+    `state` carries the mark that holds from one line to the next."""
+    out = []
+    for notes, found in zip(melody, marks):
+        length = max((note['onset'] + note['length'] for note in notes), default=Fraction(0))
+        cuts = []
+        for event in sorted(found, key=lambda event: event['x']):
+            later = [note['onset'] for note in notes if note['x'] >= event['x'] - 0.6 * gap]
+            cuts.append((min(later) if later else length, event))
+        bar, at = [], Fraction(0)
+        for onset, event in cuts + [(length, None)]:
+            if onset > at and state.get('unison'):
+                for note in notes:
+                    if at <= note['onset'] < onset and note['voice'] == min(other['voice'] for other in notes):
+                        bar.append({key: value for key, value in dict(note, tie_start=False, tie_stop=False).items() if key != 'lyric'})
+            elif onset > at and state.get('note') is not None:
+                piece = dict(state['note'], onset=at, length=onset - at, tie_stop=state.get('last') is not None, tie_start=False)
+                if state.get('last') is not None:
+                    state['last']['tie_start'] = True
+                bar.append(piece)
+                state['last'] = piece
+            at = max(at, onset)
+            if event is not None:
+                state['unison'] = bool(event.get('unison'))
+                state['note'], state['last'] = (None if state['unison'] else pitch(event)), None
+        out.append(bar)
+    return out
+
 
 
 def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: float) -> list[list[list[dict]]]:
@@ -178,6 +239,9 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                 best = max(votes[number], key=votes[number].get)
                 if votes[number][best] >= AGREE and votes[number][best] > sum(votes[number].values()) - votes[number][best]:
                     sure[number] = best
+                elif AGREE_HOLLOW and len(votes[number]) == 2 and votes[number].get(Fraction(1), 0) >= AGREE \
+                        and votes[number].get(Fraction(1)) == votes[number].get(Fraction(2)):
+                    sure[number] = Fraction(2)
         for number, following, events, length in spans:
             for event in events:      # for the record: how the voices voted on this note's steps
                 event['votes'] = [{str(value): votes[step][value] for value in votes[step]} for step in range(number, following)]
