@@ -39,6 +39,8 @@ LINE_SLIT = (0.3, 2, 0.15)   # a filled head with a stem and a staff line or a l
 RIM = 0.8            # a note without a stem has its own ink at this share of the rim of its hole
 FLAG_END = 0.7       # the flag of such a note begins at most this many staff spaces from the end of the stem
 FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
+FLAG_STEM = 0.3      # the stem of a note with such a flag may be slim for this many staff spaces only, when the loop
+#                      was read as a head whose stem comes down to the note (0: off)
 SOLID_LOOP = 0.7     # ink this share of a head's height over or under a hole is a filled head beside a flag's loop (0: off)
 ROOM_HEADS = (0.75, 4.0, 3)   # a mark larger than a head with a room that a large flag or a short beam closes with
 #                     the staff lines: its heads are the pieces that are left when an oval of this share of a head
@@ -1232,6 +1234,21 @@ def read_symbols(layers: dict) -> dict:
                                                                     and _into_words(layers, mark, way, WORD_STEM[4]))):
                         mark['stems'].append(way)
                         mark['word_stem'] = True
+    if FLAG_STEM:
+        # The flag of an eighth note with a short stem covers most of the stem, and little of the stem is slim. The
+        # loop of the flag was then taken for a hollow head, with the piece of stem between the flag and the head as
+        # its own stem down. A stem down that ends in the box of a head with no stem, along that head's own upright
+        # ink, is the stem of that head.
+        for mark in marks:
+            way = mark['ways']['up_right'] if mark['kind'] == 'head' and not mark['stems'] else None
+            if not way or way['length'] < STEM * space or way['past'] < PAST * space \
+                    or way['inked'] < INKED * way['past'] or way['slim'] < FLAG_STEM * space:
+                continue
+            if any(other is not mark and other['kind'] == 'head' and other['hole'] >= HOLLOW and other['y1'] < mark['y0']
+                   and any(stem['direction'] == 'down' and abs(stem['x'] - way['x']) <= 0.35 * space
+                           and mark['y0'] - 0.3 * space <= stem['end'] <= mark['y1'] + 0.3 * space for stem in other['stems'])
+                   for other in marks):
+                mark['stems'].append(way)
     if FLAG_LOOP:
         for mark in marks:
             if mark['kind'] == 'head' and mark['hole'] >= HOLLOW and mark.get('solid_cy') is None \
