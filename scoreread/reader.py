@@ -88,7 +88,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = without_joints(heads, space)
     heads += thin_heads(layers, heads, bars, ends)
     # A hollow head read from its hole; where the copy broke its rim, it replaces the pieces of the rim.
-    from_holes = hole_heads(layers, heads, ends)
+    from_holes = hole_heads(layers, heads, ends, bars, symbols['signs'])
     gone = {id(other) for head in from_holes for other in head.get('replaces', [])}
     heads = [head for head in heads if id(head) not in gone] + from_holes
     # The numbers of a new time signature are no notes.

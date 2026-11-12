@@ -76,6 +76,9 @@ KEY_WORN = (0.8, 0.55, 1.6, 1.4, 3.5, 0.45, 1.5, 1.0, 2)    # key signs that the
 #                     and the next at most this far after the end of the last; marks that ran together count as the
 #                     signs that fit in their width. The last number is the least count of signs. On a page whose
 #                     staves show no key, a key that half of the staves show so is the page's key (None: off)
+FLAT_BEAM = (1.2, 0.65)   # a flat between two beamed notes: its stroke runs up into the beam. The stroke is cut where the
+#                     ink beside it gets slim (at most the second number wide), at most this many staff spaces under
+#                     its top. Only for the signs of notes: a key signature stands under no beam (None: off)
 FLAT_MIDDLE = 0.75    # the middle of the ink of a flat lies this many pitch places over the place of its bowl
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
@@ -196,6 +199,32 @@ def stroke_sides(layers: dict, stroke: dict, space: float) -> dict | None:
             'foot': (float(np.median([span[0] for span in foot])) - edge0) / space}
 
 
+def _under_beam(layers: dict, stroke: dict, space: float) -> dict | None:
+    """The stroke without the wide ink at its top (a beam that it runs into), or None when its top is slim or too
+    little of it is left."""
+    free = _free(layers)
+    x0, x1 = max(0, int(stroke['x0'])), min(free.shape[1] - 1, int(stroke['x1']))
+    top, bottom = max(0, int(stroke['top'])), min(free.shape[0] - 1, int(stroke['bottom']))
+
+    def slim(row: int) -> bool:
+        line = free[row]
+        columns = np.nonzero(line[x0:x1 + 1])[0]
+        if not len(columns):
+            return True
+        left, right = x0 + int(columns[0]), x0 + int(columns[-1])
+        while left > 0 and line[left - 1]:
+            left -= 1
+        while right + 1 < len(line) and line[right + 1]:
+            right += 1
+        return right - left + 1 <= FLAT_BEAM[1] * space
+
+    for row in range(top, min(bottom - 3, top + int(FLAT_BEAM[0] * space))):
+        if slim(row) and slim(row + 1) and slim(row + 2):
+            high = (bottom - row) / space
+            return dict(stroke, top=float(row), high=high) if row > top and high >= 1.3 else None
+    return None
+
+
 def _bowl_hole(layers: dict, stroke: dict, space: float) -> tuple[int, int, float] | None:
     """The paper that the bowl of a flat closes in, beside the lower part of its stroke: (its first column, its last
     column, its middle row), or None. FLAT_GLUED: how far from the stroke it may begin, its least and greatest width
@@ -216,7 +245,7 @@ def _bowl_hole(layers: dict, stroke: dict, space: float) -> tuple[int, int, floa
     return None
 
 
-def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
+def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool = False) -> list[dict]:
     """The marks that can be a sharp or a flat, from the upright strokes: each {'kind', 'x0', 'x1', 'place'}."""
     space = staff['space']
     signs = []
@@ -258,6 +287,9 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict
         # A flat: a bare stroke at the top, a bowl at the right of its lower part, and a left edge that stays in place
         # down to the foot.
         sides = stroke_sides(layers, stroke, space) if stroke['high'] >= 1.3 else None
+        if FLAT_BEAM and beams and sides and sides['top'] > 0.65 and stroke['wide'] <= 0.45 and (cut := _under_beam(layers, stroke, space)):
+            stroke = cut
+            sides = stroke_sides(layers, stroke, space)
         stroke['sides'] = sides
         if sides and sides['top'] <= 0.65 and 0.3 <= sides['bulge'] <= 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
                 and sides['foot'] <= 0.3:

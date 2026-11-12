@@ -36,11 +36,13 @@ TANGLE_NEAR = (2.0, 0.7)        # it begins at most this many staff spaces befor
 TANGLE_SPECK = 0.04             # a piece of ink under this area (staff spaces squared) is a speck, no stroke of it
 TANGLE_HOLE = 0.08              # the paper that it closes in is at most this share of its box: an oval is a head
 SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
-SHARP_JOINED = None             # a small sharp of a heavy print whose two strokes are one mark: at least this high,
-                                # from this to this wide (staff spaces), with ink at both sides in the top and in the
-                                # bottom share of its rows, and a piece of paper closed in between its bars (None: off).
-                                # Off: with (1.8, 0.5, 1.1, 0.15) it gained 11 notes on LitChoir's clean copies and
-                                # lost 1, but on the fresh test set it lost 29.
+SHARP_JOINED = (1.8, 0.5, 1.1, 0.15, 0.5)   # a small sharp of a heavy print whose two strokes are one mark: at least
+                                # this high, from this to this wide (staff spaces), with ink at both sides in the top
+                                # and in the bottom share of its rows, and a piece of paper closed in between its bars.
+                                # It stands before its head: a mark that lies in the box of a head without a stem by
+                                # more than this share of its width is a part of that head (the stroke at the side of
+                                # a breve, the long reciting note). (None: off. Without the last test the rule gained 11 notes on
+                                # LitChoir's clean copies and lost 1, but lost 29 on the fresh test set.)
 
 
 JOINED_BARE = True              # the ends of a joined sign are looked at without the staff lines: a line through the top
@@ -131,7 +133,7 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     strokes = kept
     signs = pair_signs(layers, staff, strokes)
     taken = [(sign['x0'], sign['x1']) for sign in signs]
-    for sign in sign_candidates(layers, staff, strokes):
+    for sign in sign_candidates(layers, staff, strokes, beams=True):
         if any(x0 - 2 <= sign['x0'] <= x1 + 2 for x0, x1 in taken):
             continue
         if sign['kind'] == 'flat':
@@ -166,6 +168,10 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 rank = (not any(head is other for other in glued), abs(head['place'] - place) > 0.8, ahead)
                 if best is None or rank < best[0]:
                     best = (rank, head)
+        if best and sign.get('joined') and SHARP_JOINED and SHARP_JOINED[4]:
+            head = best[1]
+            if not head['stems'] and min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) + 1 > SHARP_JOINED[4] * (sign['x1'] - sign['x0'] + 1):
+                continue      # a part of the head, no sign before it
         if best:
             out.append(dict(sign, head=best[1], drop=drop))
     if TANGLE:
