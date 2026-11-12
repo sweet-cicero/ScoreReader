@@ -18,12 +18,13 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 84.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 80.4 % on
-scans; 66 scores at 99 % or more), 94.2 % of the notes on the clean copies (20,997 of 22,299; 12 of the 78 counted
-scores at 99 %), and of their syllables 49.9 % with the own letter reader and 83.3 % with Tesseract (78.7 % of the
-whole words); 77.8 % of all syllables with Tesseract (73.8 % on scans), and 89.0 % on the kit (6145 of 6901).
+Not reached yet: 84.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 80.5 % on
+scans; 66 scores at 99 % or more), 94.2 % of the notes on the clean copies (21,000 of 22,299; 12 of the 78 counted
+scores at 99 %), and of their syllables 49.9 % with the own letter reader and 90.6 % with Tesseract and a list of
+words (89.6 % of the whole words; 15 scores at 99 % of the syllables); 82.7 % of all syllables with Tesseract
+(80.0 % on scans), and 89.0 % on the kit (6145 of 6901).
 On the fresh test set, which no rule was set on: 93.2 % of the notes (38,127 of 40,906; 73 of 214 pieces at 99 %),
-54.6 % of the syllables and 64.7 % of the whole words.
+67.4 % of the syllables and 86.6 % of the whole words.
 
 ## Direction
 
@@ -52,7 +53,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - `scoreread/` is the reader. `README.md` lists its steps, the results and the next steps.
 - `scoreread/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
   `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `music.py`). `letters.py` and `lyrics.py` read the words of a scan, and
-  `ocr.py` reads them with Tesseract when asked.
+  `ocr.py` reads them with Tesseract when asked, with rules of its own around it; the list of words (`--words`)
+  serves both.
   `scoreread/vector.py` reads a software-made PDF from its drawing.
 - `bench/` holds the tests. Measure each change with `bash bench/kit.sh <name>` and the kit's `score.py`.
   `bench/yardstick/` is copisteria's step (`bash bench/kit.sh <name> --yardstick`).
@@ -66,6 +68,10 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - Before a run is spent on a limit, count it against a census: every read note of the clean copies that the scorer
   lines up with a typed note, with the measures that the rule looks at and the typed length (scripts outside git,
   with the wide test). A limit that only moves a border loses as much as it gains; the census shows what separates.
+- A rule for the words with Tesseract is counted without Tesseract: its raw rows are stored once for a set of
+  pages, at each size, and the words step is read again from them in half a minute with one rule off (scripts
+  outside git, with the wide test). Count each such rule alone on the clean copies, on all scan pages and on the
+  fresh set, and make the full runs at the end of the round.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

@@ -133,11 +133,12 @@ def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '', 
     from .music import musicxml  # noqa: PLC0415
     images = [(number, result) for number, result in enumerate(read) if result.get('layers')]
     if ocr:
-        # Tesseract reads each row of words as a line of text (scoreread.ocr); it needs no list of words.
+        # Tesseract reads each row of words as a line of text (scoreread.ocr); it needs no list of words, and with
+        # one it mends the words that the list does not hold.
         from .ocr import read_rows  # noqa: PLC0415
         count = 0
         for number, result in images:
-            count += set_under(result, read_rows(result['layers'], number), number)
+            count += set_under(result, read_rows(result['layers'], number, lex), number)
             result['musicxml'] = musicxml(result['parts'], result.get('title', ''), result.get('names'))
         return count
     glyphs = [glyph for number, result in images for glyph in page_glyphs(result['layers'], number)]
