@@ -35,6 +35,12 @@ TANGLE_NEAR = (2.0, 0.7)        # it begins at most this many staff spaces befor
                                 # this many staff spaces over or under the middle of the head
 TANGLE_SPECK = 0.04             # a piece of ink under this area (staff spaces squared) is a speck, no stroke of it
 TANGLE_HOLE = 0.08              # the paper that it closes in is at most this share of its box: an oval is a head
+FLAT_LEG = (0.35, 0.1, 0.4, 0.6)   # a flat whose bowl has a second stroke as its right wall is a natural: the stroke stands
+#                    from this far before the sign's right edge to this far past it, begins this far under the sign's
+#                    top or lower, and ends this far under its bottom (staff spaces; None: off)
+SIGN_START = 0.3     # a stroke in the first columns of the notes (this many staff spaces) whose ink goes on to the left
+#                    of them, in this many staff spaces of its rows, is the cut end of the clef or of the key: no sign
+#                    of a note (0: off)
 SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
 SHARP_JOINED = (1.8, 0.5, 1.1, 0.15, 0.5)   # a small sharp of a heavy print whose two strokes are one mark: at least
                                 # this high, from this to this wide (staff spaces), with ink at both sides in the top
@@ -118,6 +124,17 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
 
     strokes = start_strokes(layers, staff, int(first), int(staff['x1']), layers.get('words') if SIGN_WORDS else None)
     strokes = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1]]
+    if SIGN_START:
+        # A stroke in the first columns is ink that was cut there, when its ink goes on to the left: the right bow of
+        # the clef, or the last sign of the key.
+        ink, begin = layers['bare'], int(first)
+        def cut(stroke: dict) -> bool:
+            if stroke['x0'] > begin + SIGN_START * space or begin < 4:
+                return False
+            rows = ink[int(stroke['top']):int(stroke['bottom']) + 1, begin - 4:max(begin - 1, int(stroke['x0']))]
+            return int(rows.any(axis=1).sum()) >= SIGN_START * space
+        strokes = [stroke for stroke in strokes if not cut(stroke)]
+    every = strokes
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     if SHARP_STEM:
         # A small sharp right before a note with a stem that goes down: its right stroke stands beside the stem,
@@ -137,6 +154,13 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         if any(x0 - 2 <= sign['x0'] <= x1 + 2 for x0, x1 in taken):
             continue
         if sign['kind'] == 'flat':
+            if FLAT_LEG and any(sign['x1'] - FLAT_LEG[0] * space <= stroke['x'] <= sign['x1'] + FLAT_LEG[1] * space
+                                and sign['top'] + FLAT_LEG[2] * space <= stroke['top'] <= sign['bottom']
+                                and stroke['bottom'] >= sign['bottom'] + FLAT_LEG[3] * space
+                                and stroke['wide'] <= 0.45 and not stem_of_head(stroke, 0.0) for stroke in every):
+                # A stroke that leaves the bowl at its right and goes on down: the second stroke of a natural. (It
+                # can stand close beside the stem of the note.)
+                sign = dict(sign, kind='natural')
             signs.append(sign)
         elif SHARP_JOINED and sign.get('joined'):
             kind = _joined_sharp(layers, sign, space)
