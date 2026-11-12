@@ -138,7 +138,7 @@ def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '', 
         count = 0
         for number, result in images:
             count += set_under(result, read_rows(result['layers'], number), number)
-            result['musicxml'] = musicxml(result['parts'], result.get('title', ''))
+            result['musicxml'] = musicxml(result['parts'], result.get('title', ''), result.get('names'))
         return count
     glyphs = [glyph for number, result in images for glyph in page_glyphs(result['layers'], number)]
     if shapes:
@@ -152,7 +152,7 @@ def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '', 
     count = 0
     for number, result in images:
         count += set_under(result, syllables, number)
-        result['musicxml'] = musicxml(result['parts'], result.get('title', ''))
+        result['musicxml'] = musicxml(result['parts'], result.get('title', ''), result.get('names'))
     return count
 
 

@@ -22,6 +22,18 @@ TIE_SEEN = (0.6, 0.9)   # its ink shows in this share of the columns; its ink or
 TIE_BOW = (0.2, 3.5)    # the bow is at least and at most this many staff spaces high
 TIE_EVEN = 1.0          # its highest place lies in the middle part: the two ends differ by at most this many bow heights
 TIE_SMOOTH = 0.35       # and it leaves the curve of a bow by at most this share of its height
+TIE_PARTNER = (0.5, 1.8)  # a whole note has the voice that the note in its column has not: a note with a stem at most
+#                         this many staff spaces from it along the staff, or beside it (at most a second away) at most
+#                         this many (None: a whole note has no voice)
+TIE_UNDER = True        # a bow that runs into a staff line and comes out at its other side: while no ink shows, the staff
+#                         line within the reach of the search hides it, not only the line at the bow's last row
+TIE_FROM_LINE = True    # a bow may begin in a staff line beside its head: it is followed from the line (False: off)
+TIE_ROUND = True        # a head between the two heads is of another voice by its place on the staff, not by where its ink lies
+TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff line (None: off): the line is fatter in a
+#                         run of columns that is this share of the way between the two heads; fatter by this many
+#                         staff spaces; at most this share of the columns is crossed by a stem or a bar line; the
+#                         run is this many staff spaces long or more; this share of its columns is fat; the line lies
+#                         at most this many staff spaces from the middle of the heads
 
 
 def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, space: float) -> dict | None:
@@ -50,7 +62,7 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
         if kind is None:
             row = int(round(y))
             blind += 1
-            if lines[max(0, row - 1):row + 2, column].any():
+            if lines[low:high, column].any() if TIE_UNDER else lines[max(0, row - 1):row + 2, column].any():
                 kind = 'hidden'
             else:
                 kind = 'gap'
@@ -100,6 +112,16 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             if before is None or row != before + 1:
                 starts.append(row + top)
             before = row
+        hidden = []
+        if TIE_FROM_LINE and column == first:
+            # A bow that begins in a staff line beside its head: the line hides its first part.
+            before = None
+            for row in np.nonzero(lines[top:bottom, column])[0]:
+                if before is None or row != before + 1:
+                    hidden.append(row + top)
+                before = row
+            hidden = [row for row in hidden if not any(abs(row - other) <= 3 for other in starts)]
+            starts += hidden
         for row in starts:
             # A bow that was followed from an earlier column is not followed again.
             if any(abs(row - other) <= 3 for other in tried):
@@ -107,7 +129,8 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             way = _follow(thin, lines, column, float(row), last, space)
             if way is None:
                 continue
-            tried.add(int(round(way['rows'][min(len(way['rows']) - 1, 2)])))
+            if row not in hidden:       # a way from a staff line may be another bow's: that bow is still followed from its own start
+                tried.add(int(round(way['rows'][min(len(way['rows']) - 1, 2)])))
             count = len(way['rows'])
             if way['end'] < last - side or abs(way['rows'][-1] - two['cy']) > high:
                 continue
@@ -116,6 +139,57 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             if not _is_bow(way, space):
                 continue
             return True
+    return False
+
+
+def _in_line(layers: dict, one: dict, two: dict, space: float) -> bool:
+    """Is there a flat bow from the head `one` to the head `two` that lies in a staff line? An engraver sets a flat
+    tie into the staff line over or under its heads: the line is then fatter between the two heads, like a lens,
+    and as thin as ever beside the lens. The ink in a band around the line is counted in each column; a column where
+    a stem, a bar line or a head crosses the band does not count. The bow of a note with its stem up lies over the
+    head, and the bow of a note with its stem down under it."""
+    first, last = int(one['x1']) + 1, int(two['x0']) - 1
+    if last - first < max(TIE_LEAST, TIE_LINE[3]) * space:
+        return False
+    staff = layers['staves'][one['staff']]
+    ink, thick = layers['ink'], staff['thick']
+    reach = int(round(0.4 * space))
+    least = max(2.0, TIE_LINE[1] * space)
+    ways = {stem['direction'] for head in (one, two) for stem in head['stems']}
+    for line in staff['rows']:
+        if not 0.4 * space <= abs(line - one['cy']) <= TIE_LINE[5] * space \
+                or not 0.4 * space <= abs(line - two['cy']) <= TIE_LINE[5] * space:
+            continue
+        if ways == {'up'} and line > one['cy'] or ways == {'down'} and line < one['cy']:
+            continue
+        row = int(round(line))
+        band = (ink[max(0, row - reach):row + reach + 1, first:last + 1] > 0).sum(axis=0)
+        free = band < 2 * reach
+        if (~free).sum() > TIE_LINE[2] * len(band) or free.sum() < 8:
+            continue
+        more = (band - thick)[free]
+        fat = np.nonzero(more >= least)[0]
+        # The lens: the longest run of fat columns, with breaks of a few columns.
+        best, begin, before = None, None, None
+        for column in list(fat) + [None]:
+            if column is None or (before is not None and column - before > 0.25 * space):
+                if begin is not None and (best is None or before - begin > best[1] - best[0]):
+                    best = (begin, before)
+                begin = column
+            elif begin is None:
+                begin = column
+            before = column
+        if best is None:
+            continue
+        inside = more[best[0]:best[1] + 1]
+        outside = np.concatenate([more[:best[0]], more[best[1] + 1:]])
+        middle = (best[0] + best[1]) / 2 / len(more)
+        if best[1] - best[0] + 1 < max(TIE_LINE[0] * len(more), TIE_LINE[3] * space) or not 0.3 <= middle <= 0.7 \
+                or (inside >= least).mean() < TIE_LINE[4]:
+            continue
+        if len(outside) >= 6 and np.median(outside) >= 0.5 * least:
+            continue      # a line that is fat all the way is no bow
+        return True
     return False
 
 
@@ -131,9 +205,20 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
     found = []
     for staff in sorted({head['staff'] for head in heads}):
         own = sorted((head for head in heads if head['staff'] == staff), key=lambda head: head['cx'])
+        voices = {}
+        for one in own:
+            voices[id(one)] = {stem['direction'] for stem in one['stems']}
+            if TIE_PARTNER and not one['stems']:
+                # The whole note of one voice in the column of the other voice's note: its stem would go the other way.
+                beside = [(abs(other['cx'] - one['cx']), other) for other in own if len({stem['direction'] for stem in other['stems']}) == 1
+                          and (abs(other['cx'] - one['cx']) <= TIE_PARTNER[0] * space
+                               or (abs(round(other['place']) - round(one['place'])) <= 1 and abs(other['cx'] - one['cx']) <= TIE_PARTNER[1] * space))]
+                if beside:
+                    partner = min(beside, key=lambda item: item[0])[1]
+                    voices[id(one)] = {'down' if partner['stems'][0]['direction'] == 'up' else 'up'}
         for number, one in enumerate(own):
             place = round(one['place'])
-            ways = {stem['direction'] for stem in one['stems']}
+            ways = voices[id(one)]
             two = None
             for other in own[number + 1:]:
                 if other['x0'] - one['x1'] > TIE_FAR * space:
@@ -144,12 +229,12 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                     two = other
                     break
                 # Another note of this voice between the two heads: a bow over it is a slur.
-                theirs = {stem['direction'] for stem in other['stems']}
-                if (ways & theirs) or (not ways and not theirs) or ((not ways or not theirs) and abs(other['place'] - place) < 2):
+                theirs = voices[id(other)]
+                if (ways & theirs) or (not ways and not theirs) or ((not ways or not theirs) and abs((round(other['place']) if TIE_ROUND else other['place']) - place) < 2):
                     break
             if two is None:
                 continue
-            tied = _bow(thin, lines, one, two, space)
+            tied = _bow(thin, lines, one, two, space) or bool(TIE_LINE and _in_line(layers, one, two, space))
             if tied:
                 one['tie_start'] = True
                 two['tie_stop'] = True

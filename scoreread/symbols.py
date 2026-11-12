@@ -30,6 +30,8 @@ CORE = 0.6           # the core of a head: an oval of this share of its width an
 HOLLOW = 0.08        # a head is hollow when this share of it was a hole
 HOLLOW_PAGE = (0.3, 0.03)   # on a page whose hollow heads have small holes: from this share of their usual hole, and
                             # never under the second number (None: off)
+HOLLOW_WORN = (0.4, 0.2)    # on a page whose hollow heads have large holes (their usual hole is the second share or
+#                    more): a head is hollow from the first share of that usual hole (None: off)
 LINE_SLIT = (0.3, 2, 0.15)   # a filled head with a stem and a staff line or a ledger line through it (its middle at
 #                     most this many staff spaces from the line) is a half note when a speck of paper of this many
 #                     px or more is closed in over the line and one under it, the upper one this many staff spaces
@@ -42,6 +44,17 @@ ROOM_HEADS = (0.75, 4.0, 3)   # a mark larger than a head with a room that a lar
 #                     the staff lines: its heads are the pieces that are left when an oval of this share of a head
 #                     is pushed through its ink; the mark is at most this many heads wide and high, and holds at
 #                     most this many heads (None: off)
+ROOM_SOLID = (1.6, 1.5, 0.9, 0.55, 0.5, 0.4, 0.4, 0.6, 1.3, 4.5)   # a mark this many heads high or more with the room of a flag:
+#                     the solid ink over or under the room is its head, cut out of the mark (the stem runs along the
+#                     room, inside the mark); solid ink this many heads high or more is two heads of two voices that
+#                     touch; a room higher than this share of a head and at most this share of a head wide is a
+#                     flag's loop and no hole of a hollow head, in a mark that is this share of a head higher than
+#                     the room; a room this share of a head or more beside the head's column is a flag's room; in
+#                     the column, the ink at the two sides of a flag's loop is at most this share of a head wide
+#                     together; a room beside the column that is wider than a head and under this many times as
+#                     high as wide is the hole of a hollow head; a loop in the column is this many times as high as
+#                     wide or more; a mark with two rooms is cut only this many staff spaces or more after the start
+#                     of its staff, where no clef stands (None: off)
 SOLID_ROOMS = True   # also when the mark has two holes or more: a staff line cuts the room of a flag's loop in two
 SOLID_FLAG = True    # a filled head beside a flag's loop has a flag: with no flag found, the mark is a hollow head
 WHOLE = (1.12, 0.98, 0.8, 1.7)   # a whole note: its width over its height, its width over the page's head width, and
@@ -81,10 +94,25 @@ LEDGER_DOT = (2.0, 0.9, 0.6, 0.8)   # the dot of a head on a ledger line stands 
 #                    past its end, the line is at least this long past the head (a shorter one that thickens is the end
 #                    of a pen's stroke), and a dot that touches the line has no ink this far over or under the line (a
 #                    stroke that goes on is a stem or a beam) (None: off)
+LEDGER_THROUGH = 0.25   # a ledger line that crosses a hollow head between this share of its height and one less this share runs
+#                    through it: the head's middle is then the middle of its box, not of its paper (0: off)
+LEDGER_SIT = (0.2, 0.9)  # a filled head whose middle lies this many staff spaces past its last ledger line sits on
+#                    top of the line, when the line stands at most this many staff spaces from the line before it (a
+#                    print that draws its ledger lines near the staff) (None: the wider limit of 0.27)
 LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from the staff
 ORPHANS = (0.7, 1.5) # a thick mark with no stem, from this to this many times as wide and as high as the heads of the
 #                    page, is a head when an upright stroke that no head has ends at its edge (None: off)
 WHOLE_HALF = 0.3     # the same over or under a half note, when the oval is wider than it by this many staff spaces (0: off)
+WHOLE_OVER = 0.4     # the oval may begin this many staff spaces left of the head it touches (it is set in the middle
+#                      under it); 0: only as far as WHOLE_BESIDE says
+WHOLE_STAFF = 0      # in the staff a whole note is at least this many times as wide as it is high (0: as WHOLE says).
+#                    Off: with 1.0 it gained 1 note on the clean copies, lost 1 and wrote 8 notes that are not there.
+WHOLE_FILLED = 0     # a filled oval without a stem, as large as a whole note, that touches a whole note over or under
+#                    it (their middles at most this many staff spaces apart sideways) is a whole note whose hole
+#                    the print filled (0: off). Off: with 0.5 it gained no note on the clean copies and lost 4.
+WHOLE_UNISON = 0.25  # two voices on one note, a half note and a whole note side by side: the oval at the far side of
+#                      the stem, its middle at most this many staff spaces from the height of the stem's own head,
+#                      has no stem (0: off)
 LINE_CHORD = 0.75    # hollow heads that touch, each on a line: the first and the last cell of their insides lie this
 #                      many staff spaces further apart than as many heads less two in the spaces would (0: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
@@ -335,7 +363,10 @@ def thick_marks(layers: dict) -> list[dict]:
                 # what is left over it, under it or beside it is the filled head.
                 cx, cy = centres[0]
                 cut = None
-                if own_high >= 1.6 * high and own_wide < 1.6 * wide:
+                line = int(round(layers["staves"][0]["thick"]))
+                if ROOM_SOLID and _loop_room(mask & holes, line, wide, high) and _flag_room(mask, mask & holes, line, wide, high):
+                    pass      # a room higher than a head's hole is the loop of a flag: see SOLID_LOOP below
+                elif own_high >= 1.6 * high and own_wide < 1.6 * wide:
                     over, under = cy - 0.55 * high, own_high - (cy + 0.55 * high)
                     row = int(round(cy - 0.55 * high)) if over >= 0.6 * high else int(round(cy + 0.55 * high)) if under >= 0.6 * high else None
                     if row is not None:
@@ -379,16 +410,34 @@ def thick_marks(layers: dict) -> list[dict]:
             inside = np.nonzero((mask & holes).any(axis=1))[0]
             over, under = int(inside[0]), own_high - 1 - int(inside[-1])
             named = False
-            if max(over, under) >= SOLID_LOOP * high and min(over, under) <= 0.4 * high:
-                part = mask[:inside[0]] if over > under else mask[inside[-1] + 1:]
+            span = None
+            # The loop of a flag is higher than the hole of a head, and the flag's end may hang under it as a tail.
+            line = int(round(layers["staves"][0]["thick"]))
+            tail = ROOM_SOLID and not by_holes and _loop_room(mask & holes, line, wide, high) \
+                and _flag_room(mask, mask & holes, line, wide, high) and max(over, under) >= 1.5 * min(over, under)
+            if max(over, under) >= SOLID_LOOP * high and (min(over, under) <= 0.4 * high or tail):
+                span = (0, int(inside[0])) if over > under else (int(inside[-1]) + 1, own_high)
+            own_staff = _staff_of(layers, x + own_wide / 2, y + own_high / 2) if ROOM_SOLID and by_holes else None
+            if own_staff is not None and x >= layers['staves'][own_staff]['x0'] + ROOM_SOLID[9] * space:
+                # Two voices, each with its flag: a room at the top and a room at the foot, and the heads between.
+                # A treble clef closes in rooms too: it stands at the start of its staff.
+                free = np.flatnonzero(np.diff(inside) > 1)
+                if len(free):
+                    widest = max(free, key=lambda index: inside[index + 1] - inside[index])
+                    between = (int(inside[widest]) + 1, int(inside[widest + 1]))
+                    if between[1] - between[0] >= max(SOLID_LOOP * high, over, under) and _flag_room(mask, mask & holes, line, wide, high):
+                        span = between
+            if span:
+                part = mask[span[0]:span[1]]
                 # The filled head is solid. A hollow head that a hand drew on a staff line can have one half of its
                 # inside open to the paper: the ink around that half is as high as a head too, but it is a ring.
-                first = 0 if over > under else int(inside[-1]) + 1
+                first = span[0]
                 own = np.ascontiguousarray(layers['ink'][y + first:y + first + part.shape[0], x:x + part.shape[1]])
                 outline, _ = cv2.findContours(own, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 full = cv2.drawContours(np.zeros(own.shape, np.uint8), outline, -1, 1, cv2.FILLED)
                 if part.sum() >= 0.45 * wide * high and own.sum() >= 0.9 * full.sum():
-                    if len(parts) >= 2:
+                    flag = ROOM_SOLID and _flag_room(mask, mask & holes, line, wide, high)
+                    if len(parts) >= 2 and not (flag and part.shape[0] >= ROOM_SOLID[1] * high):
                         # The staff lines cut the room of the loop in two or three: the rooms are no heads. The
                         # mark is the filled head alone, and it knows where its loop lies.
                         solid = _mark(part, np.zeros_like(part), x, y + first, mark['blob'])
@@ -396,8 +445,24 @@ def thick_marks(layers: dict) -> list[dict]:
                             solid['loop'] = (mark['x0'], mark['y0'], mark['x1'], mark['y1'])
                             mark, parts = solid, []
                             named = True
-                    else:
-                        mark['solid_cy'] = float((0 if over > under else inside[-1] + 1) + y + np.nonzero(part)[0].mean())
+                    elif flag and own_high >= ROOM_SOLID[0] * high:
+                        count = 2 if part.shape[0] >= ROOM_SOLID[1] * high else 1
+                        cut = []
+                        for number in range(count):
+                            piece = np.zeros_like(part)
+                            band = slice(int(round(number * part.shape[0] / count)), int(round((number + 1) * part.shape[0] / count)))
+                            piece[band] = part[band]
+                            cut.append(_mark(piece, np.zeros_like(piece), x, y + first, mark['blob']))
+                        if all(cut):
+                            for piece in cut:
+                                piece['loop'] = (mark['x0'], mark['y0'], mark['x1'], mark['y1'])
+                            if count == 1:
+                                mark = cut[0]
+                            else:
+                                parts = cut
+                            named = True
+                    if not named and len(parts) < 2:
+                        mark['solid_cy'] = float(first + y + np.nonzero(part)[0].mean())
                         named = True
             if ROOM_HEADS and not named and len(parts) < 2:
                 found = [_mark(part, np.zeros_like(part), x, y, mark['blob']) for part in _heads_at_room(mask, mask & holes, wide, high)]
@@ -413,6 +478,49 @@ def thick_marks(layers: dict) -> list[dict]:
                 parts = found
         marks += parts if len(parts) >= 2 else [mark]
     return marks
+
+
+def _largest_room(room: np.ndarray, line: int) -> tuple[int, int, float] | None:
+    """(width, height, middle column) of the largest room (closed-in paper) of a mark. A staff line cuts a room in
+    two: rooms that lie at most `line` px over each other are one."""
+    room = cv2.morphologyEx(room.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((line + 2, 1), np.uint8))
+    count, _, stats, middles = cv2.connectedComponentsWithStats(room, connectivity=8)
+    if count < 2:
+        return None
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    return int(stats[largest, cv2.CC_STAT_WIDTH]), int(stats[largest, cv2.CC_STAT_HEIGHT]), float(middles[largest][0])
+
+
+def _loop_room(room: np.ndarray, line: int, wide: float, high: float) -> bool:
+    """True when the largest room of a mark is the loop of a flag: higher than the hole of a head, and narrow. The
+    mark is higher than its loop by half a head or more: a ring as high as its mark is a hollow head that a hand
+    drew upright."""
+    found = _largest_room(room, line)
+    return bool(found) and found[1] > ROOM_SOLID[2] * high and found[0] <= ROOM_SOLID[3] * wide \
+        and room.shape[0] - found[1] >= ROOM_SOLID[4] * high
+
+
+def _flag_room(mask: np.ndarray, room: np.ndarray, line: int, wide: float, high: float) -> bool:
+    """True when the largest room of a mark can be the room of a flag beside its head, and is not the hole of a
+    hollow head that touches a filled head. The head is the solid ink of the mark: its highest band of rows without
+    a room. The mark is higher than the room by half a head. A room beside the head's column is a flag's room,
+    unless it is a lying oval wider than a head. A room in the head's column is the loop of a flag when the ink at
+    its two sides is thin (a stem and the flag's stroke: 0.14 to 0.33 of a head together) and the room is upright;
+    the rim of a hollow head is 0.5 of a head or more, and the hole of a head with a thin rim lies on its side."""
+    found = _largest_room(room, line)
+    if not found or room.shape[0] - found[1] < ROOM_SOLID[4] * high:
+        return False
+    rows = np.flatnonzero(room.any(axis=1))
+    edges = np.concatenate(([-1], rows, [room.shape[0]]))
+    widest = int(np.argmax(np.diff(edges)))
+    part = mask[edges[widest] + 1:edges[widest + 1]]
+    if not part.any():
+        return True
+    if abs(found[2] - np.nonzero(part)[1].mean()) > ROOM_SOLID[5] * wide:
+        return not (found[0] > wide and found[1] < ROOM_SOLID[7] * found[0])
+    spans = [np.flatnonzero(mask[row]) for row in rows if mask[row].any()]
+    reach = float(np.median([span[-1] - span[0] + 1 for span in spans])) if spans else 0.0
+    return reach - found[0] <= ROOM_SOLID[6] * wide and found[1] >= ROOM_SOLID[8] * found[0]
 
 
 def _heads_at_room(mask: np.ndarray, room: np.ndarray, wide: float, high: float) -> list[np.ndarray]:
@@ -724,15 +832,25 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
             merged[-1] = (merged[-1] + row) / 2
         else:
             merged.append(row)
+    last = merged[0] if up else merged[-1]
     if head['hollow']:
         centre = head['cy']
+        high = head['y1'] - head['y0'] + 1
+        if LEDGER_THROUGH and head['y0'] + LEDGER_THROUGH * high <= last <= head['y1'] - LEDGER_THROUGH * high:
+            # The line through a hollow head cuts its inside in two, and a print fills one half: the middle of the
+            # paper that is left lies off the middle of the head.
+            centre = (head['y0'] + head['y1']) / 2
     else:
         # A thick ledger line under a head is a part of its mark: the middle is measured from the head's far edge.
         high = min(layers['head'][1], head['y1'] - head['y0'] + 1)
         centre = head['y0'] + high / 2 if up else head['y1'] - high / 2
-    last = merged[0] if up else merged[-1]
     past = (last - centre) if up else (centre - last)      # how far the head's middle is past its last ledger line
-    steps = 2 * len(merged) + (0 if abs(past) <= 0.27 * space else 1 if past > 0 else -1)
+    limit = 0.27
+    if LEDGER_SIT and not head['hollow']:
+        before = (merged[1] if up else merged[-2]) if len(merged) > 1 else staff['rows'][0 if up else -1]
+        if abs(last - before) <= LEDGER_SIT[1] * space:
+            limit = LEDGER_SIT[0]
+    steps = 2 * len(merged) + (1 if past > limit * space else 0 if past >= -0.27 * space else -1)
     found = float(4 + steps) if up else float(-4 - steps)
     if abs(found) < abs(place) - 2.2:
         return None       # too few ledger lines for a head this far from the staff: a letter over a hyphen
@@ -979,6 +1097,16 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
             continue
         for stem in list(mark['stems']):
             up = stem['direction'] == 'up'
+            # A stem has its head at the left when it goes up, at the right when it goes down, and one head at a
+            # height. A second oval at that height on the other side is the whole note of the other voice.
+            if WHOLE_UNISON and (mark['x0'] >= stem['x'] - edge if up else mark['x1'] <= stem['x'] + edge) \
+                    and any(other is not mark and abs(other['cy'] - mark['cy']) <= WHOLE_UNISON * space
+                            and (other['x1'] <= stem['x'] + near if up else other['x0'] >= stem['x'] - near)
+                            and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
+                                    for own in other['stems']) for other in heads):
+                mark['stems'].remove(stem)
+                count += 1
+                continue
             for other in heads:
                 if other is mark or (other['cy'] > mark['cy']) == up:
                     continue      # the other head stands between the oval and the far end of the stem
@@ -986,7 +1114,7 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
                 if more is None:
                     continue
                 gap = (mark['y0'] - other['y1']) if up else (other['y0'] - mark['y1'])
-                if gap <= apart and abs(mark['x0'] - other['x0']) <= edge \
+                if gap <= apart and -max(edge, WHOLE_OVER * space) <= mark['x0'] - other['x0'] <= edge \
                         and wide - (other['x1'] - other['x0'] + 1) >= more \
                         and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
                                 for own in other['stems']):
@@ -1105,6 +1233,10 @@ def read_symbols(layers: dict) -> dict:
         sure = [mark['hole'] for mark in marks if mark['kind'] == 'head' and mark['stems'] and mark['hole'] >= HOLLOW]
         if len(sure) >= 5:
             limit = min(HOLLOW, max(HOLLOW_PAGE[1], HOLLOW_PAGE[0] * float(np.median(sure))))
+            if HOLLOW_WORN and float(np.median(sure)) >= HOLLOW_WORN[1]:
+                # A print that pressed the ink out of the middle of its filled heads leaves a pale speck there. On a
+                # page whose hollow heads have large holes, such a speck is no hole.
+                limit = max(limit, HOLLOW_WORN[0] * float(np.median(sure)))
     layers['hollow'] = limit
     if WHOLE_BESIDE:
         _whole_beside(layers, marks, limit)
@@ -1139,9 +1271,18 @@ def read_symbols(layers: dict) -> dict:
             # A whole note is an oval that lies on its side, as large as the heads of the page. The letter o of the
             # words is small and round, and a capital O of a title stands upright.
             wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
-            oval = wide >= WHOLE[0] * high and wide >= WHOLE[1] * layers['head'][0] \
-                and WHOLE[2] * layers['head'][1] <= high <= WHOLE[3] * layers['head'][1]
-            if not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM):
+            def lying(other: dict, least: float = WHOLE[0]) -> bool:
+                wide, high = other['x1'] - other['x0'] + 1, other['y1'] - other['y0'] + 1
+                return wide >= least * high and wide >= WHOLE[1] * layers['head'][0] \
+                    and WHOLE[2] * layers['head'][1] <= high <= WHOLE[3] * layers['head'][1]
+            # No word stands in the staff: there a whole note may be as round as the letter o.
+            oval = lying(mark, WHOLE_STAFF if WHOLE_STAFF and abs(place) <= 4.6 else WHOLE[0])
+            if WHOLE_FILLED and not hollow and oval and 'tail_of' not in mark and any(
+                    other is not mark and other['blob'] == mark['blob'] and other['kind'] == 'head' and not other['stems']
+                    and other['hole'] >= limit and lying(other) and abs(other['cx'] - mark['cx']) <= WHOLE_FILLED * space
+                    and min(abs(other['y0'] - mark['y1']), abs(mark['y0'] - other['y1'])) <= 0.3 * space for other in marks):
+                hollow = True       # the print filled the hole of a whole note that touches the whole note of the other voice
+            elif not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM):
                 # A mark as large as a head with no stem: the copy may have cut its stem off (see lost_stems()).
                 if not (ORPHANS and 'tail_of' not in mark
                         and ORPHANS[0] * layers['head'][0] <= wide <= ORPHANS[1] * layers['head'][0]
@@ -1188,6 +1329,10 @@ OPEN_HEADS = 0.85    # an open hole (the rim of the head has a small break) with
 #                    its rim were read as heads; its area is at most this many staff spaces squared, as a room between
 #                    a slanted head, its stem and two staff lines is larger (0: off)
 OPEN_ROUND = 0.82    # such an open hole may be as high as the gap between two staff lines when it fills at most this share of its box
+OPEN_ALONE = 0.5     # an open hole with a stem and no piece of rim that was read as a head is a hollow head when ink of
+#                    its own (no staff line) stands at this share of the ring around it: the thin rim of a printed
+#                    half note is no thick mark at all (0: off)
+OPEN_SLANT = (0.8, 0.75)   # such a hole may be as high as wide (from this share) when it fills at most this share of its box
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
 HOLE_THROUGH = True  # a hollow head on a staff line: the two halves of its inside, over and under the line, are one hole
 HOLE_RIM = 0.2       # the rim of such a head is this thick, in staff spaces
@@ -1247,8 +1392,13 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
                 # A head whose rim broke is often one that a hand drew large: its hole may be larger than the usual
                 # hole of the page.
                 most = OPEN_HEADS * space * space
-            if not HOLE_HEADS[0] * usual <= area <= most or wide < HOLE_HEADS[2] * high:
+            if not HOLE_HEADS[0] * usual <= area <= most:
                 continue
+            if wide < HOLE_HEADS[2] * high:
+                # A printed half note with a thin rim fills the gap between two staff lines: its inside is a slanted
+                # oval that is as high as wide, and fills little of its box.
+                if not (is_open and OPEN_ALONE and wide >= OPEN_SLANT[0] * high and area <= OPEN_SLANT[1] * wide * high):
+                    continue
             if not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
                 continue
             inside = [head for head in heads + out
@@ -1302,8 +1452,16 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
                 head['replaces'] = [other for other in heads
                                     if mark['x0'] <= other['cx'] <= mark['x1'] and mark['y0'] <= other['cy'] <= mark['y1']]
                 head['open'] = True
-                if not stems or not head['replaces']:
+                if not stems:
                     continue
+                if not head['replaces']:
+                    if not OPEN_ALONE:
+                        continue
+                    y0, x0 = max(0, y - 3), max(0, x - 3)
+                    own = (labels[y0:y + high + 3, x0:x + wide + 3] == index).astype(np.uint8)
+                    ring = cv2.dilate(own, np.ones((7, 7), np.uint8)) & (1 - own)
+                    if (ring & layers['bare'][y0:y + high + 3, x0:x + wide + 3]).sum() < OPEN_ALONE * ring.sum():
+                        continue
                 # A piece of rim is lower than a head. A whole head beside the paper is a note of its own: the paper
                 # is closed in between two heads a second apart.
                 if any(other['y1'] - other['y0'] + 1 >= OPEN_PIECE * layers['head'][1] and not other.get('thin')

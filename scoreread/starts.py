@@ -24,6 +24,9 @@ SHARP_PLACES = {'G': [4, 1, 5, 2, -1, 3, 0], 'F': [2, -1, 3, 0, -3, 1, -2]}     
 FLAT_PLACES = {'G': [0, 3, -1, 2, -2, 1, -3], 'F': [-2, 1, -3, 0, -4, -1, -5]}  # and of the bowls of the flats
 SIGN_STROKE = (1.1, 3.6)     # the height of an upright stroke of a sharp or a flat, in staff spaces
 PAIR = (0.28, 0.85)          # the two strokes of a sharp are this far apart, in staff spaces
+PAIR_FLAT = (0.4, 0.45, 0.75, 1.4)   # two strokes are a flat with a high bowl, not a sharp: the right one begins this many
+#                              staff spaces lower, ends at most this far from the foot of the left one, has at most
+#                              this share of its height, and the left one is this high (None: every pair is a sharp)
 FIT = 1.3                    # a sign may stand this many pitch places from its place in the order
 FLAT_DRIFT = (-0.5, 0.3)     # the left edge of a flat's stroke moves at most this far to the left and to the right, in staff spaces
 STEP = (0.45, 1.7)           # the next sign of a key signature begins this far right of the last, in staff spaces
@@ -65,14 +68,24 @@ JOINING = 2.5       # an upright line that crosses a staff and goes on this many
 JOINED = (3.1, -0.5)   # the reading without such a line counts where the plain reading shows no clef or a mark that
 #                     reaches this far over the top line, and the new one a bass clef that ends this far from the
 #                     bottom line (negative: over it)
+KEY_WORN = (0.8, 0.55, 1.6, 1.4, 3.5, 0.45, 1.5, 1.0, 2)    # key signs that the copy wore down to marks without a shape
+#                     are told by their places alone: the middle of a mark lies within this many pitch places of
+#                     its place in the order (a flat's middle lies FLAT_MIDDLE over its bowl); a mark of one sign is
+#                     from this to this many staff spaces wide and from this to this many high, and its ink covers
+#                     this many square staff spaces or more; the first mark begins at most this far after the clef,
+#                     and the next at most this far after the end of the last; marks that ran together count as the
+#                     signs that fit in their width. The last number is the least count of signs. On a page whose
+#                     staves show no key, a key that half of the staves show so is the page's key (None: off)
+FLAT_MIDDLE = 0.75    # the middle of the ink of a flat lies this many pitch places over the place of its bowl
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
 #                         staff's left end, in staff spaces: a bass clef ends over the bottom line (None: off)
 
 
-def start_strokes(layers: dict, staff: dict, first: int, last: int) -> list[dict]:
+def start_strokes(layers: dict, staff: dict, first: int, last: int, without: list[dict] | None = None) -> list[dict]:
     """The short upright strokes in the columns first..last of a staff: each {'x', 'x0', 'x1', 'top', 'bottom' (rows),
-    'wide', 'high' (staff spaces), 'place' (the pitch place of its middle)}."""
+    'wide', 'high' (staff spaces), 'place' (the pitch place of its middle)}. The ink in the bands `without` (the rows
+    of the words) is left out: a letter under a sign is no part of its stroke."""
     ink, space = layers['ink'], staff['space']
     height, width = ink.shape
     first, last = max(0, first), min(width, last)
@@ -80,6 +93,9 @@ def start_strokes(layers: dict, staff: dict, first: int, last: int) -> list[dict
     if last - first < 3 or y1 - y0 < 3:
         return []
     region = np.ascontiguousarray(ink[y0:y1, first:last])
+    for band in without or []:
+        rows = slice(max(0, int(band['top']) - y0), max(0, int(band['bottom']) + 1 - y0))
+        region[rows, max(0, int(band['x0']) - first):max(0, int(band['x1']) + 1 - first)] = 0
     raw = region
     # A weak copy breaks a thin stroke into dashes: thin ink is joined over small gaps in its own column.
     reach = int(max(3, round(0.3 * space)))
@@ -221,9 +237,18 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict]) -> list[dict
             gap = max(1.0, right['x0'] - left['x1'] - 1)
             if between < 0.25 * gap * 0.5 * space:
                 continue
-            signs.append({'kind': 'sharp', 'x0': float(left['x0']), 'x1': float(right['x1']),
-                          'place': (left['place'] + right['place']) / 2, 'top': min(left['top'], right['top']),
-                          'bottom': max(left['bottom'], right['bottom'])})
+            if PAIR_FLAT and (right['top'] - left['top']) / space >= PAIR_FLAT[0] \
+                    and abs(right['bottom'] - left['bottom']) / space <= PAIR_FLAT[1] \
+                    and right['high'] <= PAIR_FLAT[2] * left['high'] and left['high'] >= PAIR_FLAT[3]:
+                # The right side of a flat's high bowl is a short stroke at the foot of the long one.
+                signs.append({'kind': 'flat', 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
+                              'place': pitch_place(staff, left['bottom'] - 0.6 * space),
+                              'bowl_place': pitch_place(staff, (right['top'] + right['bottom']) / 2),
+                              'top': left['top'], 'bottom': left['bottom']})
+            else:
+                signs.append({'kind': 'sharp', 'x0': float(left['x0']), 'x1': float(right['x1']),
+                              'place': (left['place'] + right['place']) / 2, 'top': min(left['top'], right['top']),
+                              'bottom': max(left['bottom'], right['bottom'])})
             used.add(id(left))
             used.add(id(right))
             break
@@ -497,6 +522,50 @@ def octave_mark(layers: dict, staff: dict, shape: dict) -> bool:
     return bool(EIGHT) and eight_holes(layers, staff, shape) >= EIGHT[8]
 
 
+def worn_key(layers: dict, staff: dict, first: float, last: float) -> dict:
+    """The key that the marks after a clef show by their places alone: {'G': key, 'F': key} for a treble and a bass
+    clef (0: none). A mark is a run of columns with ink (without the staff lines) between the columns first and
+    last. See KEY_WORN."""
+    free, space, rows = _free(layers), staff['space'], staff['rows']
+    fit, narrow, wide, low, high, least, begin, step, count = KEY_WORN
+    top, bottom = max(0, int(rows[0] - 2.2 * space)), min(free.shape[0], int(rows[4] + 1.2 * space))
+    first, last = max(0, int(round(first))), min(free.shape[1], int(round(last)))
+    band = free[top:bottom, first:last]
+    inked = np.concatenate(([0], (band.sum(axis=0) > 0).astype(np.int8), [0]))
+    edges = np.flatnonzero(np.diff(inked))
+    marks = []
+    for left, right in zip(edges[::2], edges[1::2]):
+        part = band[:, left:right].sum(axis=1).astype(float)
+        inside = np.flatnonzero(part)
+        mark = {'x0': first + left, 'x1': first + right - 1, 'wide': (right - left) / space, 'mass': part.sum() / space / space,
+                'high': (inside[-1] - inside[0] + 1) / space,
+                'place': pitch_place(staff, top + float((part * np.arange(len(part))).sum() / part.sum()))}
+        # The dots of a bass clef, a speck and a stem are no signs.
+        if mark['wide'] >= narrow:
+            marks.append(mark)
+    out = {}
+    for clef in ('G', 'F'):
+        best = 0
+        for sort, order, lift in ((1, SHARP_PLACES[clef], 0.0), (-1, FLAT_PLACES[clef], FLAT_MIDDLE)):
+            found, edge = 0, first
+            for mark in marks:
+                if mark['x0'] - edge > (step if found else begin) * space:
+                    break
+                signs = max(1, int(round(mark["wide"] / 1.05)))
+                places = order[found:found + signs]
+                if len(places) < signs or signs > 3:
+                    break
+                span = (max(places) - min(places)) / 2
+                if not (narrow * signs <= mark['wide'] <= wide * signs and low + span <= mark['high'] <= high + span
+                        and mark['mass'] >= least * signs and abs(mark['place'] - (sum(places) / signs + lift)) <= fit):
+                    break
+                found, edge = found + signs, mark['x1']
+            if found >= count and found > abs(best):
+                best = sort * found
+        out[clef] = best
+    return out
+
+
 def read_start(layers: dict, index: int) -> dict:
     """The beginning of a staff: {'clef' (from its shape), 'x0', 'x1' (of the clef), 'key' (sharps (+) or flats (-)),
     'key_clef' (the clef that the heights of the key signature show, or None), 'miss' (how far the signs stand from
@@ -536,6 +605,8 @@ def read_start(layers: dict, index: int) -> dict:
                 chains[(clef, kind)] = (found, miss)
     out = dict(shape, key=0, key_clef=None, miss=0.0, end=shape['x1'], chains=chains, signs=signs, time=time, weak=False, gaps=0,
                eight=octave_mark(layers, staff, shape))
+    if KEY_WORN and shape['clef']:
+        out['worn'] = worn_key(layers, staff, shape['x1'] + 1, min(start + 13 * space, time['x0'] - 1 if time else float('inf')))
     if not chains:
         return out
     # The best chain: the most signs; then the clef of the shape; then the nearest to its places.
@@ -595,6 +666,19 @@ def vote_key(rows: list[dict], before: int | None = None) -> int:
             other = KEY_OTHER and any(row['key'] * sort < 0 and row['miss'] <= KEY_OTHER and not row.get('weak') for row in rows)
             if good and not other and key * sort >= 0 and abs(max(good, key=abs)) > abs(key):
                 key = max(good, key=abs)
+    if key == 0 and KEY_WORN:
+        # Signs worn down to marks without a shape: half of the staves show the key by the places of the marks.
+        shown = {}
+        for row in rows:
+            # Under the clef that the staff's shape shows: the numbers of a time signature that was not found stand
+            # where two sharps of the other clef would.
+            value = (row.get('worn') or {}).get(row['clef'], 0)
+            if value:
+                shown[value] = shown.get(value, 0) + 1
+        clear = sum(1 for row in rows if row['clef'])
+        good = [(count, abs(value), value) for value, count in shown.items() if count >= max(2, (clear + 1) // 2)]
+        if good:
+            key = max(good)[2]
     if key == 0 and before:
         key = before
     return key
