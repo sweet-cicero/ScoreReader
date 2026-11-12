@@ -20,6 +20,8 @@ LINE = (8, 0.3, 0.6, 2.4)  # a band of words: a row that crosses at least this m
 WORDS_FAR = 9.0            # the words stand at most this many staff spaces over the first staff or under the last
 STEM_MID = True            # the stem's column is that of its middle when its far end lies in a letter beside it
 WORDS_NEAR = 0.3           # a stem's end this many staff spaces before the band lies in the band (a letter's top)
+STEM_GAP = (0.25, 1.2)     # a letter in a stem's column, outside the band: the stem ends where the paper begins, when
+#                            this many staff spaces of paper lie in its column, at most this far before the band (None: off)
 
 
 def _gaps(layers: dict) -> list[tuple]:
@@ -78,8 +80,9 @@ def word_bands(layers: dict) -> list[dict]:
 def cut_stems(layers: dict, heads: list[dict], bands: list[dict]) -> int:
     """Ends each stem that runs into a band of words where the band begins: its 'end' is the last row of its own ink
     before the band, and stem['words'] holds the band's rows, so that nothing in the band counts as its flag.
-    stem['full'] keeps the end that was found first (see scoreread.symbols.WORD_BEAMS). Returns how many stems were
-    cut."""
+    stem['full'] keeps the end that was found first (see scoreread.symbols.WORD_BEAMS), and stem['own'] the row where
+    the stem's own ink ends in the band, without a break (see scoreread.symbols.THIN_FULL). Returns how many stems
+    were cut."""
     if not bands:
         return 0
     bare, space = layers['bare'], layers['space']
@@ -101,12 +104,25 @@ def cut_stems(layers: dict, heads: list[dict], bands: list[dict]) -> int:
                 edge = int(band['top'] - 1) if down else int(band['bottom'] + 1)
                 # The stem's own ink ends at the band or before it: the last inked row on the way from the head.
                 limit = int(head['cy'])
-                row = limit
+                row, letter = limit, False
                 for column in ([int(round(stem['x'])), int(stem['mid'])] if STEM_MID and 'mid' in stem else [int(round(stem['x']))]):
                     strip = bare[:, max(0, column - 2):column + 3].any(axis=1)
                     reach = edge
                     while (reach > limit if down else reach < limit) and not strip[reach]:
                         reach += -1 if down else 1
+                    if STEM_GAP and reach == edge:
+                        # Ink at the edge of the band can be a letter that stands outside the band, in the stem's
+                        # column: then paper lies between the letter and the stem, and the stem ends at the paper.
+                        step, empty, at = (-1 if down else 1), 0, edge
+                        while (at > limit if down else at < limit) and abs(at - edge) <= STEM_GAP[1] * space:
+                            if strip[at]:
+                                if empty >= STEM_GAP[0] * space:
+                                    reach, letter = at, True
+                                    break
+                                empty = 0
+                            else:
+                                empty += 1
+                            at += step
                     # The far end of the way can lie in a letter, beside the stem: the stem's own column reaches the band.
                     if (reach > row) if down else (reach < row) or row == limit:
                         if column != int(round(stem['x'])) and reach != row:
@@ -114,8 +130,18 @@ def cut_stems(layers: dict, heads: list[dict], bands: list[dict]) -> int:
                         row = reach
                 # A head that stands right over the words has no stem left; its stem still ends there.
                 stem['full'] = stem['end']
+                # The stem's own end: its ink goes on into the band without a break, as far as it was found before.
+                own, away = row, (1 if down else -1)
+                if not letter:
+                    strip = bare[:, max(0, int(round(stem['x'])) - 2):int(round(stem['x'])) + 3].any(axis=1)
+                    while 0 <= own + away < len(strip) and strip[own + away] and (own - stem['full']) * away < 0:
+                        own += away
+                stem['own'] = own
                 stem['end'] = row
                 stem['words'] = (band['top'], band['bottom'])
+                if letter:
+                    # The rows of that letter are rows of words for this stem: its ink is no flag.
+                    stem['words'] = (min(band['top'], row + 1), band['bottom']) if down else (band['top'], max(band['bottom'], row - 1))
                 cut += 1
                 break
     return cut

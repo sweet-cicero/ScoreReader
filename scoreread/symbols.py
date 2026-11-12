@@ -1943,8 +1943,15 @@ BEAM_STRAIGHT = (1.5, 0.25)   # a beam without a witness at the next stem is str
 #                      this many staff spaces or more and bends this far from the line between its two ends is a slur
 #                      (None: off)
 BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least this share as thick as the page's beams
+BEAM_PAIR = (0.14, 0.6, 0.65, 0.75)   # a slim beam of a fine engraving: long ink under TAIL_THICK but this thick, at most
+#                      this high where it hangs on the stem, at most this far from the stem's end (staff spaces),
+#                      straight, the next stem shows such ink or a beam from its other side, and it is this share
+#                      as thick as the page's own beams, when the page has thick beams (None: off)
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
 FLAG_BACK = 0.08     # a printed flag comes back toward the head by this many staff spaces while it leaves the stem
+FLAG_HOLE = (0.7, 0.75, 0.3, 0.7)   # a printed flag that reaches 0.6 staff spaces or a little more (under this) shows no
+#                            way back yet: it is a flag when it is this high and leans from this to this much toward
+#                            the head (None: off)
 FLAG_NARROW = (0.6, 0.2)   # a narrow printed flag hugs its stem: it reaches under 0.6 staff spaces from it, but it is
 #                            this many staff spaces high and leans this much toward the head (None: off). A limit on
 #                            how long it touches the stem was measured too: it lost 11 notes for 4.
@@ -1955,6 +1962,13 @@ DOT_BETWEEN = None   # and not from this to this many staff spaces under it: a d
 #                    the head or half a staff space from it (None: off)
 DOT_HIGH = 0.9       # a dot is at most this high, in staff spaces
 DOT_SLIM = 0.38      # and at least this wide for its height: a hand draws a dot as a short stroke
+DOT_FLAT = 1.7       # and at most this wide for its height
+DOT_FILL = 0.55      # and its ink fills at least this share of its box
+DOT_SMALL = 0.18     # and each of its sides is at least this many staff spaces: a smaller piece is a speck of the copy
+#                    or the cut end of a ledger line (0.14: as it was)
+DOT_CLOSE = (0.15, 0.25, 0.65, 1.5)   # a dot stands this near to its head (less than DOT_NEAR) when each of its sides is
+#                    at least this many staff spaces, it is round (from this to this wide for its height: a piece
+#                    of a broken stem is slim) and no other head has it as its dot: a tight engraving (None: off)
 SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
 TAIL_START = 0.55    # the hook of a flag begins this near to the end of its stem, in staff spaces
 THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from the end of a stem to the end of the next:
@@ -1968,6 +1982,8 @@ THIN_BEAM_STAFF = True          # the thickness of a staff line that hides a bea
 THIN_BEAM_END = 0.0             # the beam may meet a stem this many staff spaces past the end that was found for it (0: off)
 WORD_TAILS = True               # a letter beside the end of a stem that ends at the words is no slur that goes on past a
 #                                 thin beam
+THIN_FULL = True                # a thin beam meets a stem that was cut at the words at the stem's own end, in the rows of
+#                                 the words (False: off)
 WORD_BEAMS = False              # a beam in the rows of the words counts when the next stem shows it too (measured on the
 #                                 clean copies: a slur over a beam at the words then counts as a second beam; kept off)
 LAST_HEAD = 'words'             # the flags of a stem hang past the last head on it: 'words' (for a stem that ends at the
@@ -2066,6 +2082,12 @@ def _is_beam(piece: dict) -> bool:
     return bool(piece['thick'] >= TAIL_THICK and piece['far'] >= BEAM_FAR)
 
 
+def _is_slim(piece: dict) -> bool:
+    """Long ink a little thinner than a beam, where a beam hangs: the slim beam of a fine engraving (BEAM_PAIR)."""
+    return bool(BEAM_PAIR and piece['far'] >= BEAM_FAR and BEAM_PAIR[0] <= piece['thick'] < TAIL_THICK
+                and piece['high'] <= BEAM_PAIR[1] and piece['from_end'] <= BEAM_PAIR[2])
+
+
 def count_tails(layers: dict, heads: list[dict]) -> None:
     """Sets head['tails'] for every head: for each of its stems ('up', 'down'), the number of flags or beams at the
     far end: 0 for a quarter or half note, 1 for an eighth, 2 for a sixteenth.
@@ -2095,7 +2117,7 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 stem['in_words'] = [piece for piece in tail_marks(layers, head, stem, last, False) if _is_beam(piece)]
             groups.setdefault((head['staff'], stem['direction']), []).append(stem)
 
-    def witness(group: list[dict], stem: dict, right: bool) -> bool:
+    def witness(group: list[dict], stem: dict, right: bool, slim: bool = False) -> bool:
         """True when the next stem at that side shows a beam at the side that faces this stem."""
         side = [other for other in group
                 if 0.5 * space < (other['x'] - stem['x'] if right else stem['x'] - other['x']) <= BEAM_NEXT * space]
@@ -2103,7 +2125,8 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             return False
         near = min(side, key=lambda other: abs(other['x'] - stem['x']))
         return abs(near['end'] - stem['end']) <= 2.5 * space \
-            and any(_is_beam(piece) and piece['right'] != right for piece in near['marks'] + near.get('in_words', []))
+            and any((_is_beam(piece) or (slim and _is_slim(piece))) and piece['right'] != right
+                    for piece in near['marks'] + near.get('in_words', []))
 
     def straight(group: list[dict], stem: dict, piece: dict) -> bool:
         """False when the ink that leaves the end of the stem bends away from the head: a slur that begins at the
@@ -2129,18 +2152,39 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                     sure.append(piece['thick'])
     usual = float(np.median(sure)) if len(sure) >= 4 else None
     layers['beam'] = usual
+    if BEAM_PAIR:
+        # The page teaches its beams: beside thick beams, slim ink between two stems is a slur.
+        for group in groups.values():
+            for stem in group:
+                for piece in stem['marks']:
+                    if not piece['beam'] and _is_slim(piece) and (usual is None or piece['thick'] >= BEAM_PAIR[3] * usual) \
+                            and witness(group, stem, piece['right'], True) and (not BEAM_STRAIGHT or straight(group, stem, piece)):
+                        piece['slim'] = True
+        for group in groups.values():
+            for stem in group:
+                for piece in stem['marks']:
+                    if piece.get('slim'):
+                        piece['beam'] = piece['witness'] = True
     for head in heads:
         head['tails'] = {}
         for stem in head['stems']:
             pieces = stem['marks']
             beams = [piece for piece in pieces if piece['beam']]
             alone = len({piece['right'] for piece in beams}) == 1
-            rows = [piece['row'] for piece in beams
-                    if piece['witness'] or (alone and usual is not None and piece['thick'] >= BEAM_USUAL * usual
-                                            and (not BEAM_STRAIGHT or straight(groups[(head['staff'], stem['direction'])], stem, piece)))]
+            rows = [piece['row'] for piece in beams if not piece.get('slim')
+                    and (piece['witness'] or (alone and usual is not None and piece['thick'] >= BEAM_USUAL * usual
+                                              and (not BEAM_STRAIGHT or straight(groups[(head['staff'], stem['direction'])], stem, piece))))]
+            if not rows:
+                # A slim beam is one beam: a staff line that crosses it leaves two slivers of it.
+                rows = [piece['row'] for piece in beams if piece.get('slim')][:1]
             short = [piece for piece in pieces if not piece['beam'] and piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6]
             # A printed flag; and beside a beam, the short second beam of a sixteenth.
             rows += [piece['row'] for piece in short if (piece['right'] and piece['back'] >= FLAG_BACK) or rows]
+            if FLAG_HOLE and not rows:
+                rows += [piece['row'] for piece in pieces
+                         if piece['right'] and not piece['beam'] and piece['thick'] >= TAIL_THICK and 0.6 <= piece['far'] < FLAG_HOLE[0]
+                         and piece['high'] >= FLAG_HOLE[1] and FLAG_HOLE[2] <= piece['lean'] <= FLAG_HOLE[3]
+                         and piece['from_end'] <= FLAG_END]
             if FLAG_NARROW and not rows:
                 rows += [piece['row'] for piece in pieces
                          if piece['right'] and not piece['beam'] and piece['thick'] >= TAIL_THICK and piece['far'] < 0.6
@@ -2292,13 +2336,15 @@ def _two_strokes(layers: dict, inner: dict, outer: dict) -> bool:
 def _thin_beam(layers: dict, one: dict, two: dict) -> bool:
     """True when ink runs straight from the far end of one stem to the far end of the next stem."""
     space = layers['space']
-    if not THIN_BEAM_END:
-        return _beam_line(layers, one['x'], one['end'], two['x'], two['end'])
     # A weak copy breaks a stem just before its beam: the stem that was found ends too early. The beam may meet
     # the stem a little past that end.
     def ends(stem: dict) -> list[float]:
         away = -1 if stem['direction'] == 'up' else 1
-        return [stem['end'] + away * step for step in range(0, int(round(THIN_BEAM_END * space)) + 1, 2)]
+        found = [stem['end'] + away * step for step in range(0, int(round(THIN_BEAM_END * space)) + 1, 2)]
+        if THIN_FULL and stem.get('words') and 'own' in stem and (stem['own'] - stem['end']) * away > 0:
+            # The stem was cut where the words begin, and its own ink goes on: the beam meets it at its own end.
+            found += [stem['own'] + away * step for step in range(0, int(round(THIN_BEAM_END * space)) + 1, 2)]
+        return found
     return any(_beam_line(layers, one['x'], first, two['x'], last) for first in ends(one) for last in ends(two))
 
 
@@ -2479,21 +2525,28 @@ def dots(layers: dict, heads: list[dict]) -> None:
     # The dots of two voices stand one over the other, and the joining of dashes makes one upright stroke of them:
     # so the dots are looked for in the ink itself, not in the marks that are left without the strokes.
     count, labels, stats, centres = cv2.connectedComponentsWithStats(layers['bare'], connectivity=8)
-    found = []
+    found, full = [], []
     for index in range(1, count):
         x, y, wide, high, area = stats[index]
-        if not (0.14 * space <= wide <= 0.6 * space and 0.14 * space <= high <= DOT_HIGH * space):
+        if not (DOT_SMALL * space <= wide <= 0.6 * space and DOT_SMALL * space <= high <= DOT_HIGH * space):
             continue
-        if area < 0.55 * wide * high or not DOT_SLIM <= wide / high <= 1.7:
+        if area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
             continue
         found.append((float(centres[index][0]), float(centres[index][1])))
+        full.append(bool(DOT_CLOSE) and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
+    taken = set()
     for head in heads:
         head['dot'] = False
-        for x, y in found:
+        for number, (x, y) in enumerate(found):
             if DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
                     and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
                 head['dot'] = True
-                break
+                taken.add(number)
+    for head in heads:
+        # A tight engraving sets the dot against the head. One dot is the dot of one head.
+        if DOT_CLOSE and not head['dot']:
+            head['dot'] = any(full[number] and number not in taken and DOT_CLOSE[0] * space <= x - head['x1'] < DOT_NEAR * space
+                              and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space for number, (x, y) in enumerate(found))
         if not head['dot'] and LEDGER_DOT and abs(head['place']) > 4.6:
             # A hand draws the ledger line through the head and on to the right, and sets the dot at its end or
             # past its end.
