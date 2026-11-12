@@ -99,6 +99,12 @@ LEDGER_THROUGH = 0.25   # a ledger line that crosses a hollow head between this 
 LEDGER_SIT = (0.2, 0.9)  # a filled head whose middle lies this many staff spaces past its last ledger line sits on
 #                    top of the line, when the line stands at most this many staff spaces from the line before it (a
 #                    print that draws its ledger lines near the staff) (None: the wider limit of 0.27)
+LEDGER_SIT_FOOT = None   # (0.7, 0.1): when that line lies in the lowest part of the mark (from this share of its height on,
+#                          counted from the far edge), the head sits on it from this many staff spaces on. Off: 3
+#                          notes gained and 2 lost on the clean pages, and the measures do not tell them apart.
+LEDGER_FOOT = (0.7, 0.4, 1.2, 0.3, 0.45)   # a head beside the staff with no ledger line found, but with thin level ink at one
+#                          side of its foot (from this share of its height on), this many to this many staff spaces from
+#                          the staff, at least this long and at most this thick: it sits on its ledger line (None: off)
 LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from the staff
 ORPHANS = (0.7, 1.5) # a thick mark with no stem, from this to this many times as wide and as high as the heads of the
 #                    page, is a head when an upright stroke that no head has ends at its edge (None: off)
@@ -753,6 +759,42 @@ def _wings(layers: dict, mark: dict) -> float | None:
     return (ends[0] + ends[1]) / 2
 
 
+def _foot_wing(layers: dict, mark: dict) -> float | None:
+    """The row of the thin level ink that leaves the body of a mark at one side (the longer one, at least
+    LEDGER_FOOT[3] staff spaces long and at most LEDGER_FOOT[4] thick): one end of a ledger line. None without it."""
+    free, space = layers['free'], layers['space']
+    reach = int(round(0.9 * space))
+    top, bottom = max(0, int(mark['y0'] - 0.3 * space)), min(free.shape[0], int(mark['y1'] + 0.3 * space) + 1)
+    first, last = max(0, mark['x0'] - reach), min(free.shape[1], mark['x1'] + reach + 1)
+    window = free[top:bottom, first:last]
+    heights = window.sum(axis=0)
+    own = heights[mark['x0'] - first:mark['x1'] - first + 1]
+    if own.size == 0 or own.max() == 0:
+        return None
+    thin = min(0.45 * own.max(), 0.6 * space)
+    body = np.nonzero(own >= 0.6 * own.max())[0]
+    best = None
+    for step, column in ((-1, mark['x0'] - first + int(body[0]) - 1), (1, mark['x0'] - first + int(body[-1]) + 1)):
+        while 0 <= column < len(heights) and heights[column] > thin:
+            column += step
+        wing = []
+        while 0 <= column < len(heights) and 0 < heights[column] <= thin:
+            rows = np.nonzero(window[:, column])[0]
+            if rows[-1] - rows[0] + 1 != len(rows):
+                break
+            wing.append((heights[column], top + float(rows.mean())))
+            column += step
+        if not wing:
+            continue
+        usual = float(np.median([high for high, _ in wing]))
+        even = [row for high, row in wing if abs(high - usual) <= max(2.0, 0.08 * space)]
+        if len(even) < LEDGER_FOOT[3] * space or max(even) - min(even) > 0.2 * space or usual > LEDGER_FOOT[4] * space:
+            continue
+        if best is None or len(even) > best[0]:
+            best = (len(even), float(np.median(even)))
+    return best[1] if best else None
+
+
 def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
     """The rows of the ledger lines between a staff and a head beside it, the line through the head too. A ledger
     line is a level run of ink that reaches past the head on both sides and is thinner than a head."""
@@ -822,6 +864,15 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
     rows, space = sorted(head.get('ledgers') or []), staff['space']
     place = head['place']
     if not rows:
+        if LEDGER_FOOT and 4.6 < abs(place) < 7.5:
+            # A ledger line that an engraver set close to the staff, with the head on top of it: the line is the foot
+            # of the mark, and it shows at one side of the head only (the stem stands at the other).
+            row = _foot_wing(layers, head)
+            if row is not None:
+                edge = staff['rows'][0] if place > 0 else staff['rows'][-1]
+                foot = ((row - head['y0']) if place > 0 else (head['y1'] - row)) / max(1, head['y1'] - head['y0'])
+                if foot >= LEDGER_FOOT[0] and LEDGER_FOOT[1] * space <= abs(row - edge) <= LEDGER_FOOT[2] * space:
+                    return 7.0 if place > 0 else -7.0
         if NO_LEDGER and 4.6 < abs(place) <= NO_LEDGER_FIVE:
             return 5.0 if place > 0 else -5.0     # a head beside the staff with no ledger line stands in the first space
         return place
@@ -850,6 +901,9 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
         before = (merged[1] if up else merged[-2]) if len(merged) > 1 else staff['rows'][0 if up else -1]
         if abs(last - before) <= LEDGER_SIT[1] * space:
             limit = LEDGER_SIT[0]
+            foot = ((last - head['y0']) if up else (head['y1'] - last)) / max(1, head['y1'] - head['y0'])
+            if LEDGER_SIT_FOOT and foot >= LEDGER_SIT_FOOT[0]:
+                limit = LEDGER_SIT_FOOT[1]     # the line is the foot of the mark: the head sits on it
     steps = 2 * len(merged) + (1 if past > limit * space else 0 if past >= -0.27 * space else -1)
     found = float(4 + steps) if up else float(-4 - steps)
     if abs(found) < abs(place) - 2.2:
