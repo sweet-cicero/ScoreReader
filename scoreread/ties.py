@@ -34,6 +34,12 @@ TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff l
 #                         staff spaces; at most this share of the columns is crossed by a stem or a bar line; the
 #                         run is this many staff spaces long or more; this share of its columns is fat; the line lies
 #                         at most this many staff spaces from the middle of the heads
+TIE_BREAK = (3.0, 0.45, 1.8, 1.0, 0.4, 0.6, 1.0, 0.9, 0.5)   # a tie over the end of a line (None: off): a bow leaves the last
+#                         note of its voice, is this many staff spaces long or more, shows its ink in this share of its
+#                         columns, ends at most this far before the end of the staff and moves at most this far up or
+#                         down; or a short one (this long, this share of ink, ending this near the end) with a bow
+#                         that comes to the first note of the next line (this long, this share of ink). The first note
+#                         of that staff in the next system stands at the same place.
 
 
 def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, space: float) -> dict | None:
@@ -142,6 +148,73 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
     return False
 
 
+def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, last: int, space: float) -> dict | None:
+    """The longest thin way that begins beside a head and goes right, toward the column `last`: {'long' (staff spaces),
+    'seen' (the share of its columns with ink), 'togo' (staff spaces from its end to `last`), 'drift' (how far it
+    moves up or down)}. None without one, when the ink goes on at the left of the head too (a slur that passes), or
+    when it lies in the rows of the words (the line after a syllable)."""
+    first = int(head['x1']) + 1
+    side, high = int(round(TIE_SIDE * space)), int(round(TIE_HIGH * space))
+    top, bottom = max(0, int(head['cy']) - high), min(thin.shape[0], int(head['cy']) + high + 1)
+    best = None
+    for column in range(first, min(last, first + side), 2):
+        found = np.nonzero(thin[top:bottom, column])[0]
+        starts, before = [], None
+        for row in found:
+            if before is None or row != before + 1:
+                starts.append(row + top)
+            before = row
+        for row in starts:
+            way = _follow(thin, lines, column, float(row), last, space)
+            if way is None or (best is not None and len(way['rows']) <= best['count']):
+                continue
+            passing = thin[max(0, int(row - 0.25 * space)):int(row + 0.25 * space) + 1,
+                           max(0, int(head['x0'] - 1.0 * space)):max(0, int(head['x0'] - 0.3 * space))]
+            if passing.any() or any(band['top'] <= row <= band['bottom'] and band['x0'] <= column <= band['x1'] for band in words):
+                continue
+            count = len(way['rows'])
+            best = {'count': count, 'long': count / space, 'seen': way['seen'] / count, 'togo': (last - way['end']) / space,
+                    'drift': abs(float(way['rows'][-1] - way['rows'][0])) / space}
+    return best
+
+
+def _over_break(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict) -> list[tuple[dict, dict]]:
+    """The ties over the end of a line: (the last head of its voice on a staff, the first head of that staff in the
+    next system, at the same place)."""
+    space, lines, words, staves = layers['space'], layers['lines'], layers.get('words') or [], layers['staves']
+    width = thin.shape[1]
+    flipped, flipped_lines = np.ascontiguousarray(thin[:, ::-1]), np.ascontiguousarray(lines[:, ::-1])
+    flipped_words = [dict(band, x0=width - 1 - band['x1'], x1=width - 1 - band['x0']) for band in words]
+    found = []
+    for index, staff in enumerate(staves):
+        target = next((number for number, other in enumerate(staves)
+                       if other['system'] == staff['system'] + 1 and other['number'] == staff['number']), None)
+        if target is None:
+            continue
+        mine = sorted((head for head in heads if head['staff'] == index), key=lambda head: head['cx'])
+        theirs = sorted((head for head in heads if head['staff'] == target), key=lambda head: head['cx'])
+        for number, one in enumerate(mine):
+            place, ways = round(one['place']), voices[id(one)]
+            if one.get('tie_start') or any(round(other['place']) == place or (voices[id(other)] & ways)
+                                           for other in mine[number + 1:] if other['x0'] - one['x1'] >= 0.5 * space):
+                continue
+            two = next((other for other in theirs if round(other['place']) == place), None)
+            if two is None or two.get('tie_stop') or any(voices[id(other)] & voices[id(two)] for other in theirs
+                                                         if two['x0'] - other['x1'] >= 0.5 * space):
+                continue
+            go = _half(thin, lines, words, one, min(width - 1, int(staff['x1'] + space)), space)
+            if go is None:
+                continue
+            tied = go['long'] >= TIE_BREAK[0] and go['seen'] >= TIE_BREAK[1] and go['togo'] <= TIE_BREAK[2] and go['drift'] <= TIE_BREAK[3]
+            if not tied and go['long'] >= TIE_BREAK[4] and go['seen'] >= TIE_BREAK[5] and go['togo'] <= TIE_BREAK[6]:
+                mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'])
+                come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - int(staves[target]['x0']), space)
+                tied = come is not None and come['long'] >= TIE_BREAK[7] and come['seen'] >= TIE_BREAK[8]
+            if tied:
+                found.append((one, two))
+    return found
+
+
 def _in_line(layers: dict, one: dict, two: dict, space: float) -> bool:
     """Is there a flat bow from the head `one` to the head `two` that lies in a staff line? An engraver sets a flat
     tie into the staff line over or under its heads: the line is then fatter between the two heads, like a lens,
@@ -239,4 +312,12 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                 one['tie_start'] = True
                 two['tie_stop'] = True
                 found.append((one, two))
+    if TIE_BREAK:
+        every = {}
+        for head in heads:
+            every[id(head)] = {stem['direction'] for stem in head['stems']}
+        for one, two in _over_break(layers, heads, thin, every):
+            one['tie_start'] = True
+            two['tie_stop'] = True
+            found.append((one, two))
     return found

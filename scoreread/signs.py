@@ -41,6 +41,17 @@ FLAT_LEG = (0.35, 0.1, 0.4, 0.6)   # a flat whose bowl has a second stroke as it
 SIGN_START = 0.3     # a stroke in the first columns of the notes (this many staff spaces) whose ink goes on to the left
 #                    of them, in this many staff spaces of its rows, is the cut end of the clef or of the key: no sign
 #                    of a note (0: off)
+PAIR_WIDE = 0.6          # each of the two strokes of a sharp is at most this wide, in staff spaces (0.45: as it was, and
+#                          as it is for a flat and a natural; a heavy print draws the strokes of a sharp half a staff
+#                          space wide)
+PAIR_FREE = True         # a sharp with a stroke wider than 0.45 staff spaces stands free: two heavy strokes that lie on a
+#                          head are a part of that head (its rim, or the stroke at the side of a breve). False: off
+SHARP_HEAD = (1.7, 0.3, 1.4, 0.95)   # a heavy sharp whose middle closed is no head: a mark with a stem that lies on the two
+#                          strokes of a sharp (each this many staff spaces high or more), reaches less than this share of
+#                          a head's width past them, and is this many staff spaces high or more, or narrower than this
+#                          share of the page's heads (None: off)
+NATURAL_STEM = 1.8       # the right stroke of a natural stands beside the stem of its note, or was taken for a second stem
+#                          of its head that ends at most this many staff spaces from the head's middle (None: off)
 SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
 SHARP_JOINED = (1.8, 0.5, 1.1, 0.15, 0.5)   # a small sharp of a heavy print whose two strokes are one mark: at least
                                 # this high, from this to this wide (staff spaces), with ink at both sides in the top
@@ -62,7 +73,7 @@ GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies 
 def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
     """The signs that two upright strokes show: {'kind', 'x0', 'x1', 'place', 'top', 'bottom'}."""
     space, rows = staff['space'], staff['rows']
-    slim = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1] and stroke['wide'] <= 0.45]
+    slim = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1] and stroke['wide'] <= PAIR_WIDE]
     found, used = [], set()
     for number, left in enumerate(slim):
         if id(left) in used:
@@ -87,7 +98,10 @@ def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
                 kind, middle = 'sharp', (min(left['top'], right['top']) + max(left['bottom'], right['bottom'])) / 2
             else:
                 continue
+            if kind != 'sharp' and max(left['wide'], right['wide']) > 0.45:
+                continue      # only a sharp has two heavy strokes: the rim of a large hollow head is no flat
             found.append({'kind': kind, 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
+                          'wide': float(max(left['wide'], right['wide'])),
                           'place': 4 - 2 * (middle - rows[0]) / space, 'top': min(left['top'], right['top']),
                           'bottom': max(left['bottom'], right['bottom'])})
             used.add(id(left))
@@ -135,17 +149,46 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             return int(rows.any(axis=1).sum()) >= SIGN_START * space
         strokes = [stroke for stroke in strokes if not cut(stroke)]
     every = strokes
-    kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
-    if SHARP_STEM:
-        # A small sharp right before a note with a stem that goes down: its right stroke stands beside the stem,
-        # but it is the second stroke of a sharp, and the stem is another stroke.
+    ghosts = []
+    if SHARP_HEAD:
+        # The middle of a heavy sharp closes in a print, and the mark is taken for a head with one of the strokes as
+        # its stem. A head stands beside its stem; this mark lies between two strokes that are both as long as a
+        # sharp's, and it is higher than a head or narrower.
         for sign in pair_signs(layers, staff, strokes):
             if sign['kind'] != 'sharp':
                 continue
+            parts = [stroke for stroke in strokes if sign['x0'] <= stroke['x'] <= sign['x1']]
+            if len(parts) < 2 or min(stroke['high'] for stroke in parts) < SHARP_HEAD[0]:
+                continue
+            for head in lying(sign, full):
+                if head.get('thin') or not head['stems'] or head['x1'] - sign['x1'] >= SHARP_HEAD[1] * wide:
+                    continue
+                if head['y1'] - head['y0'] + 1 >= SHARP_HEAD[2] * space or head['x1'] - head['x0'] + 1 < SHARP_HEAD[3] * wide:
+                    ghosts.append(head)
+        full = [head for head in full if not any(head is ghost for ghost in ghosts)]
+    kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
+    legs = []
+    if SHARP_STEM or NATURAL_STEM:
+        # A small sharp right before a note with a stem that goes down: its right stroke stands beside the stem,
+        # but it is the second stroke of a sharp, and the stem is another stroke. The same holds for a natural. And
+        # the right stroke of a natural at the left side of a head was taken for a second, short stem of that head.
+        for sign in pair_signs(layers, staff, strokes):
+            if not (sign['kind'] == 'sharp' and SHARP_STEM or sign['kind'] == 'natural' and NATURAL_STEM):
+                continue
             left = next((stroke for stroke in kept if stroke['x0'] == sign['x0']), None)
             right = next((stroke for stroke in strokes if stroke['x1'] == sign['x1'] and stroke['x0'] > sign['x0']), None)
-            if left is not None and right is not None and not any(right is stroke for stroke in kept) and not stem_of_head(right, 0.0):
+            if left is None or right is None or any(right is stroke for stroke in kept):
+                continue
+            if not stem_of_head(right, 0.0):
                 kept.append(right)
+            elif sign['kind'] == 'natural':
+                for head in full:
+                    for stem in head['stems']:
+                        if len(head['stems']) >= 2 and right['x0'] <= stem['x'] <= right['x1'] \
+                                and abs(stem['end'] - head['cy']) <= NATURAL_STEM * space \
+                                and right['top'] <= head['cy'] <= right['bottom'] and not any(right is leg[0] for leg in legs):
+                            legs.append((right, head, stem))
+                            kept.append(right)
         kept.sort(key=lambda stroke: stroke['x'])
     strokes = kept
     signs = pair_signs(layers, staff, strokes)
@@ -170,6 +213,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
         on = lying(sign, full)
+        if PAIR_FREE and on and sign.get('wide', 0.0) > 0.45:
+            continue      # a heavy stroke and the rim of a hollow head, or the stroke at the side of a breve
         if BOWL_HEAD and sign['kind'] == 'flat':
             # The bowl of a flat that a hand drew large is an oval as wide as a head: a head without a stem that
             # lies on a flat is its bowl.
@@ -182,7 +227,7 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         past = [head for head in on if head['x1'] - sign['x1'] >= GLUED * wide]
         if on and (len(past) != len(on) or not glued if GLUED_CHORD else len(glued) != len(on)):
             continue
-        drop = lying(sign, small) + bowls
+        drop = lying(sign, small) + bowls + lying(sign, ghosts)
         best = None
         for head in own:
             if any(head is other for other in drop):
@@ -197,6 +242,10 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             if not head['stems'] and min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) + 1 > SHARP_JOINED[4] * (sign['x1'] - sign['x0'] + 1):
                 continue      # a part of the head, no sign before it
         if best:
+            for right, head, stem in legs:
+                if sign['kind'] == 'natural' and right['x1'] == sign['x1'] and head is best[1]:
+                    head['stems'] = [other for other in head['stems'] if other is not stem]     # no stem: the sign's stroke
+                    head.get('tails', {}).pop(stem['direction'], None)
             out.append(dict(sign, head=best[1], drop=drop))
     if TANGLE:
         signed = {id(sign['head']) for sign in out} | {id(head) for sign in out for head in sign['drop']}
