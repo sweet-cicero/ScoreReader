@@ -44,12 +44,16 @@ SIGN_START = 0.3     # a stroke in the first columns of the notes (this many sta
 PAIR_WIDE = 0.6          # each of the two strokes of a sharp is at most this wide, in staff spaces (0.45: as it was, and
 #                          as it is for a flat and a natural; a heavy print draws the strokes of a sharp half a staff
 #                          space wide)
+PAIR_TOUCH = True        # two strokes with no column between them are joined: the heavy bars of a sharp fill the room
+#                          between its strokes, and the room has no ink of its own to count (False: as it was)
 PAIR_FREE = True         # a sharp with a stroke wider than 0.45 staff spaces stands free: two heavy strokes that lie on a
 #                          head are a part of that head (its rim, or the stroke at the side of a breve). False: off
 SHARP_HEAD = (1.7, 0.3, 1.4, 0.95)   # a heavy sharp whose middle closed is no head: a mark with a stem that lies on the two
 #                          strokes of a sharp (each this many staff spaces high or more), reaches less than this share of
 #                          a head's width past them, and is this many staff spaces high or more, or narrower than this
 #                          share of the page's heads (None: off)
+SHARP_OWN = True         # such a mark is no head either, whatever its size, when its middle lies between the two strokes and
+#                          each of its stems is one of them: a head stands beside its sign (False: off)
 NATURAL_STEM = 1.8       # the right stroke of a natural stands beside the stem of its note, or was taken for a second stem
 #                          of its head that ends at most this many staff spaces from the head's middle (None: off)
 SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
@@ -77,6 +81,16 @@ NATURAL_WIDE = 0.5        # each stroke of a natural is at most this wide, in st
 NATURAL_LOW = (0.2, 0.3, 0.1)   # two nearly level strokes are a natural and no sharp: the right one begins this many staff
 #                          spaces lower than the left one, begins and ends this much lower together, and at most this
 #                          much ink sticks out at the left of the left one (None: off)
+FADED_SHARP = (0.75, 1.3, 0.4, 1.6, 0.2, 0.6, 1.8, 3.0)   # a sharp whose two strokes faded: its two bars are left as two marks,
+#   one over the other, each from this to this wide and from this to this high (staff spaces) with at least this area;
+#   the paper between them is at most this high, and both together are from this to this high (None: off)
+FADED_THICK = 0.47       # and the middle one of its columns holds at most this much ink, in staff spaces: a bar is a thin
+#                          slanting stroke (0.42 at most where it was counted), a note head is thick (0.52 or more). At
+#                          most one of the two marks was read as a note (0: the first form, which took two heads of a
+#                          chord for the two bars and lost 167 notes for 1)
+FADED_STEM = 0.9         # and no column of its box holds a piece of a stem this long, in staff spaces: the strokes of this
+#                          sharp are gone but for stubs (0.58 at most), and two thin marks on a stem are the worn heads of
+#                          a chord (1.18; one case each side of the limit and five more under it; 0: not looked at)
 SIGN_BAR = (0.8, 0.6, 0.4)      # a flat or a natural that stands against a bar line, read as a hollow head with the
 #                                 bar line as its stem: the mark is at most this share as wide as the heads of the page,
 #                                 a head begins at most this many staff spaces after it, and the right stroke of a
@@ -148,7 +162,8 @@ def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
                 continue
             # Ink joins the two strokes, in the rows that both have.
             gap = max(1.0, right['x0'] - left['x1'] - 1)
-            if _ink(layers, left['x1'] + 1, right['x0'] - 1, top, bottom) < 0.25 * gap * min(0.5 * space, bottom - top):
+            if not (PAIR_TOUCH and right['x0'] - left['x1'] <= 1) \
+                    and _ink(layers, left['x1'] + 1, right['x0'] - 1, top, bottom) < 0.25 * gap * min(0.5 * space, bottom - top):
                 continue
             higher, lower = (right['top'] - left['top']) / space, (right['bottom'] - left['bottom']) / space
             even = min(left['high'], right['high']) / max(left['high'], right['high'])
@@ -172,6 +187,7 @@ def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
             if kind != 'sharp' and max(left['wide'], right['wide']) > (NATURAL_WIDE if kind == 'natural' else 0.45):
                 continue      # only a sharp has two heavy strokes: the rim of a large hollow head is no flat
             found.append({'kind': kind, 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
+                          'touch': bool(PAIR_TOUCH) and right['x0'] - left['x1'] <= 1,
                           'wide': float(max(left['wide'], right['wide'])),
                           'place': 4 - 2 * (middle - rows[0]) / space, 'top': min(left['top'], right['top']),
                           'bottom': max(left['bottom'], right['bottom'])})
@@ -236,6 +252,9 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     continue
                 if head['y1'] - head['y0'] + 1 >= SHARP_HEAD[2] * space or head['x1'] - head['x0'] + 1 < SHARP_HEAD[3] * wide:
                     ghosts.append(head)
+                elif SHARP_OWN and sign['x0'] <= head['cx'] <= sign['x1'] and all(
+                        any(stroke['x0'] - 1 <= stem['x'] <= stroke['x1'] + 1 for stroke in parts) for stem in head['stems']):
+                    ghosts.append(head)     # its middle lies between the two strokes, and its stem is one of them
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     legs = []
@@ -284,8 +303,9 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
         on = lying(sign, full)
-        if PAIR_FREE and on and sign.get('wide', 0.0) > 0.45:
-            continue      # a heavy stroke and the rim of a hollow head, or the stroke at the side of a breve
+        if PAIR_FREE and on and (sign.get('wide', 0.0) > 0.45 or sign.get('touch')):
+            continue      # a heavy stroke and the rim of a hollow head, or the stroke at the side of a breve; or the
+            #               heavy stem of a head on a ledger line, cut in two strokes that touch
         if BOWL_HEAD and sign['kind'] == 'flat':
             # The bowl of a flat that a hand drew large is an oval as wide as a head: a head without a stem that
             # lies on a flat is its bowl.
@@ -325,7 +345,93 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 sign = tangle_sign(layers, staff, head, own)
                 if sign:
                     out.append(dict(sign, head=head, drop=lying(sign, small)))
+    if FADED_SHARP:
+        signed = {id(sign['head']) for sign in out} | {id(head) for sign in out for head in sign['drop']}
+        taken = [(sign['x0'], sign['x1'], sign['top'], sign['bottom']) for sign in out]
+        for head in full:
+            if id(head) not in signed and head['x0'] - TANGLE_NEAR[0] * space > first:
+                sign = faded_sharp(layers, staff, head, own)
+                if sign and not any(sign['x0'] <= x1 and x0 <= sign['x1'] and sign['top'] <= bottom and top <= sign['bottom']
+                                    for x0, x1, top, bottom in taken):
+                    parts = sign.pop('parts')
+                    out.append(dict(sign, head=head, drop=lying(sign, small) + [part for part in parts
+                                                                             if not any(part is other for other in lying(sign, small))]))
+                    taken.append((sign['x0'], sign['x1'], sign['top'], sign['bottom']))
     return out
+
+
+def _inside(head: dict, x: int, y: int, wide: int, high: int) -> float:
+    """The share of a head's box that lies in the box x, y, wide, high."""
+    over = min(head['x1'], x + wide - 1) - max(head['x0'], x) + 1
+    tall = min(head['y1'], y + high - 1) - max(head['y0'], y) + 1
+    if over <= 0 or tall <= 0:
+        return 0.0
+    return over * tall / float((head['x1'] - head['x0'] + 1) * (head['y1'] - head['y0'] + 1))
+
+
+def faded_sharp(layers: dict, staff: dict, head: dict, heads: list[dict]) -> dict | None:
+    """The sharp of a faint print before a head: the two thin strokes faded and the two heavy bars are left, as two
+    marks of one width, one over the other, with the stubs of the strokes on them. Each mark lies whole in the room
+    before the head, the two cover the same columns, and the head stands at the height of the paper between them."""
+    space = staff['space']
+    ink = layers['bare'] & (1 - layers['stems'])
+    height, width = ink.shape
+    x0, x1 = int(head['x0'] - (BEFORE[1] + 1.4) * space), int(head['x0'] + 0.05 * space)
+    y0, y1 = int(head['cy'] - 2.2 * space), int(head['cy'] + 2.2 * space)
+    if x0 < 1 or y0 < 1 or y1 >= height - 1 or x1 >= width - 1:
+        return None
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(np.ascontiguousarray(ink[y0:y1 + 1, x0:x1 + 1]), connectivity=8)
+    bars = []
+    for index in range(1, count):
+        x, y, wide, high, area = stats[index]
+        if x > 0 and y > 0 and x + wide < labels.shape[1] and y + high < labels.shape[0] \
+                and FADED_SHARP[0] * space <= wide <= FADED_SHARP[1] * space \
+                and FADED_SHARP[2] * space <= high <= FADED_SHARP[3] * space and area >= FADED_SHARP[4] * space * space:
+            # A bar is a thin slanting stroke: most of its columns hold little ink. A head is as thick as it is high.
+            thick = float(np.median((labels[y:y + high, x:x + wide] == index).sum(axis=0))) / space
+            if FADED_THICK and thick > FADED_THICK:
+                continue
+            bars.append((int(x), int(y), int(wide), int(high), thick, float(area) / space / space))
+    bars.sort(key=lambda bar: bar[1])
+    for number, upper in enumerate(bars):
+        for lower in bars[number + 1:]:
+            shared = min(upper[0] + upper[2], lower[0] + lower[2]) - max(upper[0], lower[0])
+            between = lower[1] - (upper[1] + upper[3])
+            whole = lower[1] + lower[3] - upper[1]
+            if shared < 0.8 * min(upper[2], lower[2]) or not -0.15 * space <= between <= FADED_SHARP[5] * space \
+                    or not FADED_SHARP[6] * space <= whole <= FADED_SHARP[7] * space:
+                continue
+            left, right = x0 + min(upper[0], lower[0]), x0 + max(upper[0] + upper[2], lower[0] + lower[2]) - 1
+            top, bottom = y0 + upper[1], y0 + lower[1] + lower[3] - 1
+            middle = (y0 + upper[1] + upper[3] + y0 + lower[1]) / 2
+            ahead = (head['x0'] - right) / space
+            if not BEFORE[0] <= ahead <= BEFORE[1] or abs(head['cy'] - middle) > 0.5 * HIGH * space:
+                continue
+            # A head that lies on the two marks: one of the bars itself, read as a small note, or another note, and
+            # then this is not the sign of this head.
+            parts, free = [], True
+            for other in heads:
+                if other is head or other['x1'] < left or other['x0'] > right or other['y1'] < top or other['y0'] > bottom:
+                    continue
+                inside = max(_inside(other, x0 + bar[0], y0 + bar[1], bar[2], bar[3]) for bar in (upper, lower))
+                if inside >= 0.7:
+                    parts.append(other)
+                else:
+                    free = False
+            if not free or (FADED_THICK and len(parts) > 1):
+                continue
+            if FADED_STEM:
+                stems = layers['stems'][max(0, top - 2):bottom + 3, max(0, left - 2):right + 3] > 0
+                longest = 0
+                for column in np.nonzero(stems.any(axis=0))[0]:
+                    edges = np.diff(np.concatenate(([0], stems[:, column].astype(np.int8), [0])))
+                    longest = max(longest, int((np.nonzero(edges == -1)[0] - np.nonzero(edges == 1)[0]).max()))
+                if longest >= FADED_STEM * space:
+                    continue
+            return {'kind': 'sharp', 'x0': float(left), 'x1': float(right), 'top': float(top), 'bottom': float(bottom),
+                    'place': 4 - 2 * (middle - staff['rows'][0]) / space, 'faded': True, 'parts': parts,
+                    'bars': [(bar[2] / space, bar[3] / space, bar[4], bar[5]) for bar in (upper, lower)]}
+    return None
 
 
 def _joined_sharp(layers: dict, sign: dict, space: float) -> str | None:
