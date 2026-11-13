@@ -15,7 +15,7 @@ from .drone import letter_marks
 from .layers import read_layers
 from .meter import mid_signs
 from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
-from .signs import note_signs
+from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
     thin_heads, without_flag_loops, without_joints
@@ -92,6 +92,11 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     for index in bars:
         stems = [stem['x'] for head in heads if head['staff'] == index for stem in head['stems']]
         bars[index] = [x for x in bars[index] if all(abs(x - stem) > 0.4 * space for stem in stems)]
+    # A sign that stands against a bar line was read as a small hollow head with the bar line as its stem.
+    at_bars = bar_signs(layers, heads)
+    for sign in at_bars:
+        bars[sign['staff']] = sorted(bars[sign['staff']] + [sign['bar']])
+    heads = [head for head in heads if not any(head is sign['mark'] for sign in at_bars)]
     lost_stems(layers, heads, bars, ends,
                [head for head in symbols['orphans'] if head['cx'] > ends[head['staff']] + 0.3 * space])
     heads = without_joints(heads, space)
@@ -105,6 +110,11 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     if TIMES:
         heads = [head for head in heads if not any(sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space
                                                    for sign in times[head['staff']])]
+    # (The other finders of heads can find the sign at the bar line again.)
+    heads = [head for head in heads
+             if not any(sign['staff'] == head['staff'] and sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space
+                        and sign['top'] - 0.3 * space <= head['cy'] <= sign['bottom'] + 0.3 * space and head is not sign['head']
+                        for sign in at_bars)]
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
@@ -128,6 +138,10 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                 found.append(sign)
         gone = {id(head) for sign in found for head in sign['drop']} - {id(sign['head']) for sign in found}
         heads = [head for head in heads if id(head) not in gone]
+        for sign in at_bars:
+            if any(sign['head'] is head for head in heads):
+                sign['head']['sign'] = {'flat': -1, 'natural': 0}[sign['kind']]
+                found.append(sign)
     if 'marks' in SIGNS:
         for head in heads:
             for sign in symbols['signs']:

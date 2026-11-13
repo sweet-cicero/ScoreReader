@@ -70,6 +70,68 @@ GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies 
                                 # its place (False: a sign that lies on a head at another place is none)
 
 
+NATURAL_ROWS = 1.9       # the two strokes of a natural stand side by side for at most this many staff spaces (1.5: as it
+#                          was; the naturals of a heavy print are higher)
+NATURAL_WIDE = 0.5        # each stroke of a natural is at most this wide, in staff spaces (0.45: as it was, and as a flat's
+#                          stem; a small heavy print has naturals with strokes of 0.46 and 0.47)
+NATURAL_LOW = (0.2, 0.3, 0.1)   # two nearly level strokes are a natural and no sharp: the right one begins this many staff
+#                          spaces lower than the left one, begins and ends this much lower together, and at most this
+#                          much ink sticks out at the left of the left one (None: off)
+SIGN_BAR = (0.8, 0.6, 0.4)      # a flat or a natural that stands against a bar line, read as a hollow head with the
+#                                 bar line as its stem: the mark is at most this share as wide as the heads of the page,
+#                                 a head begins at most this many staff spaces after it, and the right stroke of a
+#                                 natural goes on this far under the mark (None: off)
+
+
+def bar_signs(layers: dict, heads: list[dict]) -> list[dict]:
+    """The signs that stand against a bar line. An engraver can set the sign of the first note of a bar so close to
+    the bar line that they are one piece of ink: the box of the natural or the bowl of the flat is then a small hollow
+    head, and the bar line its stem. But a stem begins at its head, and this line goes through from the top line of
+    the staff to the bottom line; the mark is narrower than a head, and the note that it changes follows at once.
+    Each: {'kind', 'staff', 'x0', 'x1', 'top', 'bottom', 'place', 'bar': the column of the bar line, 'mark': the head
+    that the sign was read as, 'head': the head that it changes}."""
+    if not SIGN_BAR:
+        return []
+    ink, wide, out = layers['ink'], layers['head'][0], []
+    for index, staff in enumerate(layers['staves']):
+        space, top, bottom = staff['space'], int(staff['rows'][0]), int(staff['rows'][4])
+        own = [head for head in heads if head['staff'] == index]
+        for mark in own:
+            if not mark['hollow'] or mark.get('thin') or len(mark['stems']) != 1 \
+                    or mark['x1'] - mark['x0'] + 1 > SIGN_BAR[0] * wide or not top <= mark['cy'] <= bottom:
+                continue
+            x = int(round(mark['stems'][0]['x']))
+            if x > mark['x0'] + 0.3 * (mark['x1'] - mark['x0']) or x < 1:
+                continue
+            if ink[top:bottom + 1, x - 1:x + 2].any(axis=1).mean() < 0.9:
+                continue
+            after = [head for head in own if head is not mark and not head.get('thin')
+                     and -0.2 * space <= head['x0'] - mark['x1'] <= SIGN_BAR[1] * space
+                     and abs(head['place'] - mark['place']) <= HIGH and head['x1'] - head['x0'] + 1 > SIGN_BAR[0] * wide]
+            if not after:
+                continue
+            strokes = [stroke for stroke in start_strokes(layers, staff, int(mark['x0'] - space), int(mark['x1'] + 0.6 * space))
+                       if mark['cx'] - 0.1 * space <= stroke['x'] and stroke['x1'] <= mark['x1'] + 0.15 * space
+                       and stroke['wide'] <= 0.45 and stroke['high'] <= SIGN_STROKE[1]
+                       and stroke['top'] <= mark['cy'] and stroke['bottom'] >= mark['y1'] + SIGN_BAR[2] * space]
+            if any(stroke['top'] < mark['y0'] - 0.3 * space for stroke in strokes):
+                continue      # a stroke that goes on over the mark and under it: no natural and no flat
+            head = min(after, key=lambda head: (abs(head['place'] - mark['place']) > 0.8, head['x0']))
+            out.append({'kind': 'natural' if strokes else 'flat', 'staff': index, 'x0': float(mark['x0']),
+                        'x1': float(max([mark['x1']] + [stroke['x1'] for stroke in strokes])), 'top': float(mark['y0']),
+                        'bottom': float(mark['y1']), 'place': float(mark['place']), 'bar': float(x), 'mark': mark,
+                        'head': head, 'drop': []})
+    return out
+
+
+def _out_left(layers: dict, left: dict, top: float, bottom: float, space: float) -> float:
+    """How much ink sticks out at the left of a stroke in the rows top..bottom, without the staff lines: the rows
+    that have ink in the quarter of a staff space before the stroke, in staff spaces. The bars of a sharp do."""
+    wide = max(2, int(round(0.25 * space)))
+    part = layers['bare'][int(top):int(bottom) + 1, max(0, int(left['x0']) - wide):int(left['x0'])]
+    return float(part.any(axis=1).sum()) / space if part.size else 0.0
+
+
 def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
     """The signs that two upright strokes show: {'kind', 'x0', 'x1', 'place', 'top', 'bottom'}."""
     space, rows = staff['space'], staff['rows']
@@ -90,15 +152,24 @@ def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
                 continue
             higher, lower = (right['top'] - left['top']) / space, (right['bottom'] - left['bottom']) / space
             even = min(left['high'], right['high']) / max(left['high'], right['high'])
-            if higher >= STEP and lower >= STEP and left['high'] <= 2.6 and right['high'] <= 2.6 and bottom - top <= 1.5 * space:
+            if higher >= STEP and lower >= STEP and left['high'] <= 2.6 and right['high'] <= 2.6 \
+                    and bottom - top <= NATURAL_ROWS * space:
                 kind, middle = 'natural', (top + bottom) / 2
             elif higher >= 0.4 and abs(lower) <= 0.45 and even <= 0.75 and left['high'] >= 1.4:
                 kind, middle = 'flat', (right['top'] + right['bottom']) / 2
             elif abs(higher) <= LEVEL and abs(lower) <= LEVEL and even >= EVEN and left['high'] >= SIGN_STROKE[0]:
                 kind, middle = 'sharp', (min(left['top'], right['top']) + max(left['bottom'], right['bottom'])) / 2
+                if NATURAL_LOW and higher >= NATURAL_LOW[0] and lower >= 0 and higher + lower >= NATURAL_LOW[1] \
+                        and left['high'] <= 2.6 and right['high'] <= 2.6 and bottom - top <= NATURAL_ROWS * space \
+                        and max(left['wide'], right['wide']) <= 0.45 \
+                        and _out_left(layers, left, top, bottom, space) <= NATURAL_LOW[2]:
+                    # The natural of a heavy print: its box is high and the free ends of its strokes are short, so
+                    # the strokes are nearly level, as a sharp's are. But its right stroke stands lower at both ends
+                    # (a sharp's stands level or higher), and no bar sticks out at the left of its left stroke.
+                    kind, middle = 'natural', (top + bottom) / 2
             else:
                 continue
-            if kind != 'sharp' and max(left['wide'], right['wide']) > 0.45:
+            if kind != 'sharp' and max(left['wide'], right['wide']) > (NATURAL_WIDE if kind == 'natural' else 0.45):
                 continue      # only a sharp has two heavy strokes: the rim of a large hollow head is no flat
             found.append({'kind': kind, 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
                           'wide': float(max(left['wide'], right['wide'])),
