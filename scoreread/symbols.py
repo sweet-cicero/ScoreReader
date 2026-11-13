@@ -88,6 +88,14 @@ HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; els
 LEDGER_INK = True    # a ledger line is ink: the filled inside of a hollow head does not count for it
 HAND_FLAT = 1.25     # the bowl of a flat that a hand drew is at most this wide, in staff spaces (0: off)
 SHARP_SLIM = 0.3     # the strokes of a sharp are slim for this many staff spaces where they leave its mark
+PAIR_STEM = (1.3, 2.3, 1.25, 0.65, 0.4, 0.08, 1.85, 0.25)   # two filled heads a second apart at the two sides of a
+#                     stem, as one piece of ink (two voices with their stems back to back, the upper head at the
+#                     left): the piece is this many heads wide (least, most), this many heads high or more and at
+#                     most this many staff spaces higher than a head (a third is a whole space higher), the stem
+#                     cuts it into two parts of this share of a head or more each, and the ink at the left of the
+#                     stem lies this many staff spaces or more higher than the ink at its right; a piece up to this
+#                     many heads high is such a pair too when the ink at the left lies this much higher: large
+#                     heads a second apart, where two voices on one note or a third lean less (None: off)
 STUB = 0.3           # a thick stem that is this long (staff spaces) at the top or the bottom of a mark is cut off (0: off)
 STUB_HIGH = 1.25     # when the mark is this many times as high as the heads of the page
 WINGS = 0.25         # a ledger line shows this far at both sides of a head's body, in staff spaces (0: off)
@@ -323,6 +331,37 @@ def _stem_between(layers: dict, x: int, y: int, wide: int, high: int) -> bool:
                for stroke in layers['strokes'] if stroke['slim'])
 
 
+def _pair_at_stem(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float,
+                  blob: int) -> list:
+    """The two heads of a piece of ink that a stem cuts into a higher part at the left and a lower part at the right
+    (PAIR_STEM), the upper head first; an empty list when the piece is no such pair. Two voices that sing a second
+    stand with their stems back to back, the upper head at the left of the stems and the lower one at the right,
+    and the print lets the two heads run together. The lower head may begin under the upper one, at the left of the
+    stems: so the two parts are less apart than the two heads, and the height of the piece says that they are a
+    second apart and not a third. Two voices on one note stand side by side at one height."""
+    space = layers['space']
+    own_high, own_wide = mask.shape
+    least_wide, most_wide, least_high, most_over, least, apart, most_high, clear = PAIR_STEM
+    if not (least_wide * wide <= own_wide <= most_wide * wide and least_high * high <= own_high <= most_high * high):
+        return []
+    stems = [stroke['x'] for stroke in layers['strokes'] if stroke['slim'] and x + own_wide / 3 <= stroke['x'] <= x + 2 * own_wide / 3
+             and stroke['y0'] <= y + own_high + 0.3 * space and stroke['y1'] >= y - 0.3 * space]
+    if not stems:
+        return []
+    column = int(round(min(stems, key=lambda stem: abs(stem - (x + own_wide / 2))) - x))
+    left, right = mask[:, :column], mask[:, column:]
+    if min(left.sum(), right.sum()) < least * wide * high:
+        return []
+    lean = (np.nonzero(right)[0].mean() - np.nonzero(left)[0].mean()) / space
+    step = int(round(0.5 * space))
+    if lean < (apart if own_high <= high + most_over * space else clear) or step >= own_high:
+        return []
+    upper, lower = np.zeros_like(mask), np.zeros_like(mask)
+    upper[:own_high - step, :column] = mask[:own_high - step, :column]
+    lower[step:, column:] = mask[step:, column:]
+    return [_mark(upper, holes, x, y, blob), _mark(lower, holes, x, y, blob)]
+
+
 def thick_marks(layers: dict) -> list[dict]:
     """The thick marks of the page, cut where two heads touch. Each: its box (x0, y0, x1, y1), area, the middle
     (cx, cy), 'hole' (the share of its area that was the inside of a hollow shape), 'hole_cy' and 'blob' (the
@@ -397,6 +436,8 @@ def thick_marks(layers: dict) -> list[dict]:
                         cut = (mask[:, :column], holes[:, :column], x, y), (mask[:, column:], holes[:, column:], x + column, y)
                 if cut:
                     parts = [_mark(part, inside, px, py, mark['blob']) for part, inside, px, py in cut]
+        elif PAIR_STEM and mark['hole'] < HOLLOW and (pair := _pair_at_stem(layers, mask, holes, x, y, wide, high, mark['blob'])):
+            parts = pair
         elif mark['hole'] < HOLLOW and own_wide <= 1.5 * wide and 1.6 * high <= own_high <= 4.4 * high:
             number = int(round(own_high / high))
             step = own_high / number
@@ -1234,6 +1275,13 @@ def read_symbols(layers: dict) -> dict:
         mark['ways'] = {f"{'up' if up else 'down'}_{'right' if right else 'left'}": _way(layers, mark, up, right)
                         for up in (True, False) for right in (True, False)}
         mark['kind'] = _kind(mark, space)
+        if FLAT_HEAD and mark['kind'] == 'flat' and mark['hole'] < HOLLOW \
+                and wide >= FLAT_HEAD * layers['head'][0] and high >= FLAT_HEAD * layers['head'][1] \
+                and sum(1 for other in marks if other['blob'] == mark['blob']) == 2 \
+                and any(other is not mark and other['blob'] == mark['blob'] and abs(other['y1'] + 1 - mark['y0']) <= 2
+                        and abs(other['cx'] - mark['cx']) <= 0.3 * space
+                        and other['x1'] - other['x0'] + 1 >= FLAT_HEAD * wide for other in marks):
+            mark['kind'] = 'head'     # the lower of two heads that were one piece of ink: the upper head is no stroke of a flat
         if WORD_MARKS and mark['kind'] and _in_words(layers, mark):
             mark['kind'] = None       # a letter of the words
         # A beam hangs on two stems that leave it the same way, one at each end. (Right over the words, the two are
@@ -1315,6 +1363,31 @@ def read_symbols(layers: dict) -> dict:
                                            and any(stem['direction'] == way['direction'] and abs(stem['x'] - way['x']) <= 0.35 * space
                                                    for stem in other['stems']) for other in marks):
                 mark['stems'].append(way)
+    if STEM_THROUGH:
+        # Two heads a third apart that were one piece of ink and were cut into an upper and a lower mark: the stem of
+        # the one runs along the other, which lies between that head and the stem's end. Seen from the near head the
+        # stem is too short, or the far head hides where it is slim.
+        wide, high = layers['head']
+        for mark in marks:
+            if mark['kind'] != 'head' or mark['stems'] \
+                    or not STEM_THROUGH[0] * wide <= mark['x1'] - mark['x0'] + 1 <= STEM_THROUGH[1] * wide \
+                    or not STEM_THROUGH[0] * high <= mark['y1'] - mark['y0'] + 1 <= STEM_THROUGH[1] * high:
+                continue
+            same = [other for other in marks if other is not mark and other['blob'] == mark['blob']]
+            if len(same) != 1 or same[0]['kind'] != 'head':
+                continue
+            other = same[0]
+            if min(abs(other['y1'] + 1 - mark['y0']), abs(mark['y1'] + 1 - other['y0'])) > 2 \
+                    or abs(other['cx'] - mark['cx']) > 0.3 * space:
+                continue
+            # The stroke of the sign of cut time and the strokes of a sharp go through both marks and on past them.
+            back = {'up': ('down_left', 'down_right'), 'down': ('up_left', 'up_right')}
+            through = [stem for stem in other['stems'] if min(other['cy'], stem['end']) < mark['cy'] < max(other['cy'], stem['end'])
+                       and mark['x0'] - 0.3 * space <= stem['x'] <= mark['x1'] + 0.3 * space
+                       and not any(other['ways'][name] and other['ways'][name]['past'] >= STEM_THROUGH[2] * space
+                                   and abs(other['ways'][name]['x'] - stem['x']) <= 0.35 * space for name in back[stem['direction']])]
+            if through:
+                mark['stems'].append(dict(through[0], length=abs(mark['cy'] - through[0]['end'])))
     if RIM_STEM:
         # Two whole notes a third apart touch, and the side of the one is upright ink that leaves the other. But a
         # stem goes on past the heads that hang on it: upright ink that ends in the box of another head is its rim.
@@ -1398,7 +1471,7 @@ def read_symbols(layers: dict) -> dict:
                 orphan = True
         head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': mark['cx'], 'cy': cy,
                 'staff': staff, 'place': place, 'hollow': hollow, 'hole': mark['hole'], 'stems': mark['stems'],
-                'mark': number, 'core': core_light(layers, mark),
+                'mark': number, 'blob': mark['blob'], 'core': core_light(layers, mark),
                 'alt': dict(_places(layers['staves'][staff], mark), **_fat(layers, mark))}
         if PLACE_MASS and abs(place) <= 4.6:
             # A second look at a head that was measured at the border of two places.
@@ -1667,9 +1740,26 @@ THIN_INSIDE = 0.5          # when the stem runs inside the piece of ink of a thi
 THIN_BACK = 0.25           # the middle of a thin head lies at most this many staff spaces before the end of its stem
 LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
+STEM_THROUGH = None        # off. (0.7, 1.5, 0.2): a mark with no stem, from this to this many times as wide and as high as the
+#                            heads of the page, has the stem of the head right over or under it that was cut from the
+#                            same piece of ink (a piece of two marks, one column), when it lies between that head and
+#                            the stem's end and the stroke does not go on this many staff spaces past the other side
+#                            of that head. Off: counted in three forms on LitChoir. For any mark of the piece it gained
+#                            24 notes and lost 34 (the head of an eighth note that a hand drew takes the stem of its
+#                            flag and is a quarter, a rest, a sharp and the sign of cut time become notes); for a stem
+#                            too short to be found from the mark itself it lost as many; in this form it gained 11 and
+#                            lost 5 (on the clean copies 1 and 2) and wrote 31 notes that are not there: two whole
+#                            notes that touch are read as half notes, the sharps of a key signature as notes.
+FLAT_HEAD = 0.8            # a filled mark with upright ink over its left half is no flat when that ink is the other mark of
+#                            its piece of ink (a piece of two marks: the end bar of a hymn is cut into more), right
+#                            over it and this share of its width or more, and the mark is this share of the page's head
+#                            or more: two heads a third apart that the print let run together (0: off)
 LOST_STEM = (0.3, 0.45)    # a stem that the copy cut from its thick head stands at most this far past the head's edge
                            # (staff spaces, sideways) and ends at most this far from the head (None: off)
 LOST_ALONE = (0.4, 0.6)    # the same for a mark with no stem at all: it lost its only stem, and the cut may be wider
+LOST_SHARED = 0.5          # a head that gets such a stem shares it with a mark of its own piece of ink that has no stem
+#                            and stands at the far side of it from the stem, its middle at most this many staff spaces
+#                            sideways: two heads a third apart that the print let run together (0: off)
 THROUGH_SIDE = 0.05        # a thin head that crosses a staff line is one piece: its ink over and under the line is joined
                            # through the line, up to this many staff spaces sideways
 LEAN_END = 0.4             # a stem that leans toward its thin head: the head's distance is counted from the stem's end, when
@@ -1730,6 +1820,16 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                                   'lost': True})
             used.append((x, min(head['cy'], end), max(head['cy'], end)))
             given += 1
+            for other in orphans or [] if LOST_SHARED else []:
+                # The two heads of a chord were one piece of ink, and the stem that the copy cut off is the stem of both.
+                if other is not head and not other['stems'] and other['staff'] == staff and other.get('blob') is not None \
+                        and other.get('blob') == head.get('blob') and abs(other['cx'] - head['cx']) <= LOST_SHARED * space \
+                        and (other['cy'] > head['cy']) == (direction == 'up') and not any(other is known for known in heads):
+                    heads.append(other)
+                    other['stems'].append({'direction': direction, 'x': int(round(x)), 'end': int(end),
+                                           'length': abs(other['cy'] - end), 'lost': True})
+                    used.append((x, min(other['cy'], end), max(other['cy'], end)))
+                    given += 1
     return given
 
 
