@@ -1,7 +1,9 @@
 """Makes the list of words for the words of a scan (--words) from typed hymns: wordlist.py <folder of typed hymns> [--without ID] > words.txt
 
 A typed hymn is a JSON file of the test kit (truth/<id>.json): the notes of the part named by 'words' hold the
-syllables ('syl'; 'div' is '-' inside a word). Each line of the list is a word and how often the hymns have it.
+syllables ('syl'; 'div' is '-' inside a word). Each line of the list is a word and how often the hymns have it. A
+word is written with hyphens between its syllables, as the hymns part it ('mer-cy 160'): the reader takes it as the
+word without them, and it learns from them how to part a word where a scan shows no hyphen.
 --without leaves out one hymn and its other scores (<id>, <id>--s2, ...): the test of a scan reads its words with
 the words of the other hymns only. The list is made from the app's hymns: keep it outside git.
 """
@@ -13,18 +15,18 @@ from pathlib import Path
 
 
 def hymn_words(truth: dict) -> list[str]:
-    """The words of a typed hymn, in small letters."""
+    """The words of a typed hymn, in small letters, each with hyphens between its syllables."""
     notes = truth.get('parts', {}).get(truth.get('words') or '') or []
-    words, now = [], ''
+    words, now = [], []
     for note in notes:
         if not note.get('syl'):
             continue
-        now += note['syl']
+        now.append(re.sub(r"[^a-z']", '', note['syl'].lower().replace('’', "'")))
         if note.get('div') != '-':
             words.append(now)
-            now = ''
+            now = []
     words.append(now)
-    plain = (re.sub(r"[^a-z']", '', word.lower().replace('’', "'")).strip("'") for word in words)
+    plain = ('-'.join(part for part in (piece.strip("'") for piece in word) if part) for word in words)
     return [word for word in plain if word]
 
 

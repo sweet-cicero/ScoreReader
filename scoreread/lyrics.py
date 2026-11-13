@@ -69,21 +69,36 @@ RECITED = True          # a syllable that has no note of its own is sung on the 
 #                         after that note's syllable. False: such a syllable is left out
 
 
-def load_words(path: str | Path) -> collections.Counter:
+class Words(collections.Counter):
+    """A list of words, {word: how often}, that also knows how its words are parted into syllables: `parts` is
+    {the syllables of a word: how often}, for the words that the file writes with hyphens between them."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.parts: collections.Counter = collections.Counter()
+
+
+def load_words(path: str | Path) -> Words:
     """The list of words from a text file: {word: how often}. The file holds plain text (each word counts once
     each time it stands there) or lines of a word and its count. Small letters and the apostrophe count; all
-    else parts the words."""
-    counts: collections.Counter = collections.Counter()
+    else parts the words. A word written with hyphens between its syllables ('mer-cy') is the word without them,
+    and it teaches how the word is parted (`parts`)."""
+    counts = Words()
     last = None
-    for token in re.findall(r"[A-Za-z'’]+|\d+", Path(path).read_text(encoding='utf-8')):
+    for token in re.findall(r"[A-Za-z'’]+(?:-[A-Za-z'’]+)*|\d+", Path(path).read_text(encoding='utf-8')):
         if token.isdigit():
             if last:
-                counts[last] += int(token) - 1
+                counts[last[0]] += int(token) - 1
+                if len(last[1]) > 1:
+                    counts.parts[last[1]] += int(token) - 1
             last = None
             continue
-        last = token.lower().replace('’', "'").strip("'")
+        parts = tuple(part for part in (piece.strip("'") for piece in token.lower().replace('’', "'").split('-')) if part)
+        last = (''.join(parts), parts) if parts else None
         if last:
-            counts[last] += 1
+            counts[last[0]] += 1
+            if len(parts) > 1:
+                counts.parts[parts] += 1
     return counts
 
 

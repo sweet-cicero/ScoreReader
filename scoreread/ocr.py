@@ -9,6 +9,7 @@ The rows are the reader's own (scoreread.words): Tesseract never sees the notes.
 """
 from __future__ import annotations
 
+import itertools
 import os
 import re
 import shutil
@@ -26,12 +27,18 @@ AGAIN = (32, 50)         # a second look: the row is read again at these sizes, 
 #                          the one that Tesseract is surest of. A row whose words the list holds all is not read
 #                          again (an empty tuple: each row is read once)
 ROOM = (0.6, 2.0)        # the room kept over and under the band, and at its sides, in staff spaces
-SURE = 20                # a word that Tesseract is less sure of than this (of 100) and that has under three letters is left out
+DIGITS = True            # a 0 or a 1 that Tesseract read in the place of a letter is read as that letter (O, I, l)
+SURE = (20, True)        # a word that Tesseract is less sure of than this (of 100) and that has under three letters is
+#                          left out; with a list of words it stays when the list holds it (True)
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
 #                          ink under a staff: a slur, a hairpin, the ends of stems). None: every row is kept
 JOINS = '-‐‑‒–—~='     # what a hyphen between two syllables can be read as
 STOPS = '.,;:!?'         # a dash after a syllable that ends with one of these is the line of a held syllable, no hyphen
 LINES = '_'              # the line after a syllable that is held
+ROW_HELD = (0.5, 6, 3)   # with a list of words, a row that Tesseract is not sure of is a row of words all the same
+#                          when the list holds the words of this share of its letters, and it has this many letters
+#                          or more; only words of this many letters or more count as held (stray ink reads as a row
+#                          of short words: 'a nus me a t i le we'). None: off
 CUT = (0.3, 2.0, 2, 1, 1.6, 0.2, 1.3)   # two words that Tesseract read as one are cut at a wide gap: the gap is
 #                          this share of the row's height or more, and this many times the usual gap between the
 #                          letters of the word; each part keeps this many letters or more. Only where each sign of
@@ -52,9 +59,20 @@ MEND = (4, 2, 80, 50, 0.2)   # with a list of words: a word of this many letters
 HELD = (1.2, 0.25, 0.35)   # the line of a held syllable is taken out of the picture before Tesseract
 #                          reads the row: a level line this many times as long as the band is high or longer, this
 #                          share of the band's height thick at most, that lies this near the band's lower edge
-ENDS = (2, 2)            # with a list of words: a word that the list does not hold is parted where the list holds the
-#                          words on both sides this often or more, each of this many letters or more; and two words
-#                          are joined that the list holds as one word (None: off)
+ENDS = (2, 2, 3, 0.001)   # with a list of words: a word that the list does not hold is parted where the list holds the
+#                          words on both sides this often or more, each of this many letters or more. On a page
+#                          whose language the list holds, a word of one letter (o, a, I) can be one of the two when
+#                          the other one has this many letters or more, and when it is this share of all the words
+#                          of the list or more (a list holds stray letters too). And two words are joined that the
+#                          list holds as one word (None: off)
+THREE = (0.0003, 0.0025)  # three words that were read as one ('mercyonus') are parted too, on a page whose language
+#                          the list holds: each of them is this share of all the words of the list or more, and a
+#                          word of under three letters this share (two cuts need more witness than one; None: off)
+PARTS = (1, 0.5)         # with a list of words that shows how its words are parted into syllables (a word written
+#                          with hyphens between them): a word that was read in fewer syllables than the list parts it
+#                          into is parted as the list does (a scan loses its hyphens, and many a page prints none),
+#                          when the list parts it so this many times or more, and in this share of the times that
+#                          it holds the word (None: off)
 ABC = 'abcdefghijklmnopqrstuvwxyz'
 VOWELS = 'aeiouy'
 
@@ -85,21 +103,40 @@ def _line(crop: np.ndarray, folder: str, name: str) -> list[tuple[str, int, int,
     return found
 
 
-def _syllables(words: list[tuple[str, float, float, float]]) -> list[dict]:
+def _no_digits(text: str, first: bool = False) -> str:
+    """A word in which Tesseract read a letter as a digit: a 0 that stands alone is the word O, a 1 that stands
+    alone is the word I (not at the start of a row or before a full stop: the number of a verse), and among letters
+    a 0 is an o and a 1 is an I between capitals and an l between small letters. Other digits stay."""
+    core = text.strip(STOPS + '\'"‘’“”')
+    if core == '0':
+        return text.replace('0', 'O')
+    if core == '1':
+        return text if first or '.' in text else text.replace('1', 'I')
+    letters = [sign for sign in text if sign.isalpha()]
+    if not letters or not any(sign in '01' for sign in text) or any(sign.isdigit() and sign not in '01' for sign in text):
+        return text
+    capitals = sum(sign.isupper() for sign in letters) * 2 > len(letters)
+    return text.replace('0', 'O' if capitals else 'o').replace('1', 'I' if capitals else 'l')
+
+
+def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None) -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows), 'sure'} each. A hyphen
     stands alone between two syllables, or inside a word that the reader took for one; the line after a held
     syllable is no letter, and a dash after a comma or a full stop is such a line too."""
     found: list[dict] = []
-    for text, left, right, sure in words:
+    for number, (text, left, right, sure) in enumerate(words):
         text = text.replace('|', '').strip(LINES)
         if not text:
             continue
+        if DIGITS:
+            text = _no_digits(text, first=number == 0)
         if all(sign in JOINS + LINES + '.,' for sign in text):
             if found and any(sign in JOINS for sign in text) and found[-1]['text'][-1] not in STOPS:
                 found[-1]['join'] = True
             continue
         letters = sum(sign.isalpha() for sign in text)
-        if letters == 0 or (sure < SURE and letters < 3):
+        if letters == 0 or (sure < SURE[0] and letters < 3 and not (
+                SURE[1] and known and ''.join(sign for sign in text.lower() if sign.isalpha()) in known)):
             continue
         # The pieces between hyphens, each with its share of the word's width.
         wide = (right - left) / max(1, len(text))
@@ -202,11 +239,95 @@ def _known(lex) -> dict[str, int]:
     return known
 
 
-def _ends(syllables: list[dict], known: dict[str, int]) -> list[dict]:
+def _ways(lex, known: dict[str, int]) -> dict[str, tuple[str, ...]]:
+    """How the list of words parts its words into syllables: {the letters of a word: its syllables}, for the words
+    that the list parts in one way most of the times (`lex.parts`: {the syllables of a word: how often}; a list
+    with no parted words gives none)."""
+    ways: dict[str, tuple[tuple[str, ...], int]] = {}
+    if not PARTS:
+        return {}
+    for parts, count in (getattr(lex, 'parts', None) or {}).items():
+        way = tuple(''.join(sign for sign in part.lower() if sign.isalpha()) for part in parts)
+        word = ''.join(way)
+        if len(way) > 1 and all(way) and count >= PARTS[0] and count >= PARTS[1] * known.get(word, 0) \
+                and count > ways.get(word, (None, 0))[1]:
+            ways[word] = (way, count)
+    return {word: way for word, (way, _) in ways.items()}
+
+
+def _parted(syllables: list[dict], ways: dict[str, tuple[str, ...]]) -> list[dict]:
+    """Parts the words into syllables as the list of words does, where a word was read in fewer syllables than the
+    list parts it into ('mercy' under two notes, or 'mer cy' whose hyphen the scan lost). Each letter keeps its
+    place in the row: the letters of a syllable that was read stand evenly in its width."""
+    found: list[dict] = []
+    word: list[dict] = []
+    for number, syllable in enumerate(syllables):
+        word.append(syllable)
+        if syllable['join'] and number + 1 < len(syllables):
+            continue
+        signs = [(part, at) for part in word for at in range(len(part['text']))]
+        way = ways.get(''.join(part['text'][at] for part, at in signs if part['text'][at].isalpha()).lower())
+        if way and len(way) > len(word):
+            ends, letters = [], 0          # the number of the last sign of each syllable
+            for piece in way:
+                letters += len(piece)
+                ends.append(letters)
+            groups: list[list[tuple[dict, int]]] = [[] for _ in way]
+            seen = 0
+            for part, at in signs:
+                seen += part['text'][at].isalpha()
+                # a sign that is no letter stays with the letter before it
+                groups[next((index for index, end in enumerate(ends) if seen <= end), len(way) - 1)].append((part, at))
+
+            def edge(place: tuple[dict, int], right: int) -> float:
+                part, at = place
+                return part['x0'] + (part['x1'] - part['x0']) * (at + right) / max(1, len(part['text']))
+
+            for index, group in enumerate(groups):
+                found.append(dict(group[0][0], text=''.join(part['text'][at] for part, at in group),
+                                  x0=edge(group[0], 0), x1=edge(group[-1], 1),
+                                  join=True if index + 1 < len(groups) else word[-1]['join']))
+        else:
+            found.extend(word)
+        word = []
+    return found
+
+
+def _cuts(read: str, known: dict[str, int], fits: bool = False) -> list[int]:
+    """Where a word that the list of words does not hold is parted into words that it holds: the places between
+    its letters, or none. Two words of two letters or more come first; then, on a page that the list fits (`fits`:
+    a list in another language holds an 'a' and an 'o' too), a word of one letter and a word, and then three
+    words. The first of these that the list allows decides, and only when it allows one way."""
+    total = sum(known.values())
+
+    def two(pieces: list[str], short: bool) -> bool:
+        small = [piece for piece in pieces if len(piece) < ENDS[1]]
+        if any(known.get(piece, 0) < ENDS[0] for piece in pieces) or bool(small) != short:
+            return False
+        return not small or (len(small) == 1 and len(small[0]) == 1 and known[small[0]] >= ENDS[3] * total
+                             and all(len(piece) >= ENDS[2] for piece in pieces if piece is not small[0]))
+
+    def more(pieces: list[str]) -> bool:
+        return all(known.get(piece, 0) >= max(ENDS[0], THREE[0 if len(piece) > 2 else 1] * total) for piece in pieces)
+
+    tiers = [(2, lambda pieces: two(pieces, False), False), (2, lambda pieces: two(pieces, True), True)]
+    if THREE:
+        tiers.append((3, more, True))
+    for count, allowed, daring in tiers:
+        if daring and not fits:
+            break
+        ways = [list(cuts) for cuts in itertools.combinations(range(1, len(read)), count - 1)
+                if allowed([read[first:last] for first, last in zip((0,) + cuts, cuts + (len(read),))])]
+        if ways:
+            return ways[0] if len(ways) == 1 else []
+    return []
+
+
+def _ends(syllables: list[dict], known: dict[str, int], fits: bool = False) -> list[dict]:
     """Sets where the words end by the list of words. Tesseract reads the line of a held syllable as a hyphen
     ('Thy-church'), it reads two words that stand close as one ('thelord'), and it misses a hyphen here and there
     ('re joice'). A word that the list does not hold is parted at the one place, at a hyphen or between two letters,
-    where the list holds the words on both sides. Two words in a row are joined where the list holds them as one
+    where the list holds the words on both sides, or (`fits`: on a page in the list's language) at two places ('mercyonus'). Two words in a row are joined where the list holds them as one
     word and does not hold one of them alone."""
     found: list[dict] = []
     word: list[dict] = []
@@ -216,19 +337,16 @@ def _ends(syllables: list[dict], known: dict[str, int]) -> list[dict]:
             continue
         places = [(part, at) for part in word for at, sign in enumerate(part['text']) if sign.isalpha()]
         read = ''.join(part['text'][at] for part, at in places).lower()
-        cuts = [at for at in range(ENDS[1], len(read) - ENDS[1] + 1)
-                if known.get(read[:at], 0) >= ENDS[0] and known.get(read[at:], 0) >= ENDS[0]] \
-            if known.get(read, 0) < ENDS[0] else []
-        if len(cuts) == 1:
-            part, place = places[cuts[0]]
-            before = places[cuts[0] - 1][0]
+        for at in reversed(_cuts(read, known, fits) if known.get(read, 0) < ENDS[0] else []):
+            part, place = places[at]
+            before = places[at - 1][0]
             if before is not part:
                 before['join'] = False
             else:
                 text, wide = part['text'], (part['x1'] - part['x0']) / max(1, len(part['text']))
-                first = dict(part, text=text[:place], x1=part['x0'] + wide * place, join=False)
-                part.update(text=text[place:], x0=part['x0'] + wide * place)
-                word.insert(next(n for n, other in enumerate(word) if other is part), first)
+                second = dict(part, text=text[place:], x0=part['x0'] + wide * place)
+                part.update(text=text[:place], x1=part['x0'] + wide * place, join=False)
+                word.insert(next(n for n, other in enumerate(word) if other is part) + 1, second)
         found.extend(word)
         word = []
     words, now = [], []
@@ -336,21 +454,24 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     """What one reading of a row gives: its syllables, how well the reading fits, and whether the list of words
     holds each of its words. The fit is the number of letters in words that the list holds, and among readings
     that are level there, or with no list, how sure Tesseract is of the letters."""
-    if not _words_row(words):
+    unsure = not _words_row(words)
+    if unsure and not (known and ROW_HELD):
         return [], -1.0, False
     letters = [(sum(sign.isalpha() for sign in text), sure) for text, _, _, sure in words]
     count = sum(number for number, _ in letters)
     sure = sum(number * sure for number, sure in letters) / count if count else 0.0
     if CUT:
         words = _cut_wide(words, grey, band)
-    row = _syllables(words)
+    row = _syllables(words, known)
     if not known:
         return row, sure, False
     if ENDS:
-        row = _ends(row, known)
+        row = _ends(row, known, mend)
     if MEND and mend:
         row = _mend(row, known)
     held, total = _held(row, known)
+    if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
+        return [], -1.0, False
     return row, held + total * sure / 5000.0, 0 < total == held
 
 
@@ -366,21 +487,24 @@ def _fits(rows: list[tuple[list[tuple[str, float, float, float]], dict]], grey: 
     return bool(MEND) and held >= MEND[4] * total
 
 
-def _held(row: list[dict], known: dict[str, int]) -> tuple[int, int]:
-    """How many letters of a row stand in words that the list of words holds, and how many letters the row has."""
+def _held(row: list[dict], known: dict[str, int], least: int = 1) -> tuple[int, int]:
+    """How many letters of a row stand in words that the list of words holds (words of `least` letters or more),
+    and how many letters the row has."""
     held = total = 0
     now = ''
     for number, syllable in enumerate(row):
         now += ''.join(sign for sign in syllable['text'].lower() if sign.isalpha())
         if not syllable['join'] or number + 1 == len(row):
             total += len(now)
-            held += len(now) if now in known else 0
+            held += len(now) if now in known and len(now) >= least else 0
             now = ''
     return held, total
 
 
-def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True) -> list[dict]:
-    """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size."""
+def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True,
+          ways: dict[str, tuple[str, ...]] | None = None) -> list[dict]:
+    """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
+    With `ways` the words are parted into syllables as the list of words parts them."""
     best: tuple[list[dict], float] | None = None
     for size in (HIGH,) + tuple(AGAIN or ()):
         row, fit, whole = _text_row(read(size), grey, band, known, mend)
@@ -388,20 +512,23 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
             best = (row, fit)
         if whole:
             break
-    return best[0] if best else []
+    row = best[0] if best else []
+    return _parted(row, ways) if ways else row
 
 
 def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
     """The syllables of the rows of words of a page, read with Tesseract: {'band': (page, the number of the row),
     'text', 'x0', 'x1', 'join'} each, as scoreread.lyrics.read_words() gives them. With a list of words (`lex`:
     {word: how often}) the words that the list does not hold are mended with it, the list sets where a word ends,
-    and it chooses between the readings of a row at several sizes."""
+    it chooses between the readings of a row at several sizes, and a list that shows how its words are parted
+    (`lex.parts`) parts the words into syllables where the scan shows no hyphen."""
     bands = layers.get('words') or []
     if not bands or not available():
         return []
     grey, space = layers['grey'], layers['space']
     height, width = grey.shape
     known = _known(lex)
+    ways = _ways(lex, known)
     found = []
     with tempfile.TemporaryDirectory() as folder:
         readers = []
@@ -427,6 +554,6 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
             readers.append(read)
         mend = bool(known) and _fits([(read(HIGH), band) for read, band in zip(readers, bands)], grey, known)
         for number, (read, band) in enumerate(zip(readers, bands)):
-            for syllable in _pick(read, grey, band, known, mend):
+            for syllable in _pick(read, grey, band, known, mend, ways):
                 found.append(dict(syllable, band=(page, number)))
     return found

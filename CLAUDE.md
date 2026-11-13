@@ -20,11 +20,11 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 84.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 80.5 % on
 scans; 66 scores at 99 % or more), 94.2 % of the notes on the clean copies (21,000 of 22,299; 12 of the 78 counted
-scores at 99 %), and of their syllables 49.9 % with the own letter reader and 90.6 % with Tesseract and a list of
-words (89.6 % of the whole words; 15 scores at 99 % of the syllables); 82.7 % of all syllables with Tesseract
-(80.0 % on scans), and 89.0 % on the kit (6145 of 6901).
+scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
+words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.4 % of all syllables with Tesseract
+(82.2 % on scans), and 89.0 % on the kit (6145 of 6901).
 On the fresh test set, which no rule was set on: 93.2 % of the notes (38,127 of 40,906; 73 of 214 pieces at 99 %),
-67.4 % of the syllables and 86.6 % of the whole words.
+72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
 
@@ -71,7 +71,9 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A rule for the words with Tesseract is counted without Tesseract: its raw rows are stored once for a set of
   pages, at each size, and the words step is read again from them in half a minute with one rule off (scripts
   outside git, with the wide test). Count each such rule alone on the clean copies, on all scan pages and on the
-  fresh set, and make the full runs at the end of the round.
+  fresh set, and make the full runs at the end of the round. The quick count reads one row for each staff: it
+  cannot see a rule that lets stray ink through as a row of words, so read the full runs score by score for
+  syllables lost.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
