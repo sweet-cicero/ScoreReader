@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 85.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.0 % on
-scans; 68 scores at 99 % or more), 94.7 % of the notes on the clean copies (21,110 of 22,293; 14 of the 78 counted
+Not reached yet: 85.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.1 % on
+scans; 68 scores at 99 % or more), 94.7 % of the notes on the clean copies (21,382 of 22,585; 14 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
-words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.4 % of all syllables with Tesseract
-(82.2 % on scans), and 89.3 % on the kit (6162 of 6901).
-On the fresh test set, which no rule was set on: 94.2 % of the notes (38,548 of 40,906; 79 of 214 pieces at 99 %),
+words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
+(82.1 % on scans), and 89.2 % on the kit (6159 of 6901).
+On the fresh test set, which no rule was set on: 94.6 % of the notes (39,494 of 41,761; 83 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -60,6 +60,9 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   `bench/yardstick/` is copisteria's step (`bash bench/kit.sh <name> --yardstick`).
 - The wide test (every score of LitChoir) runs with scripts outside git, because it needs the app's scans. It reads
   each score as `hymn` does: the pages in order, the key and the clefs carried, one vote for the hymn's key.
+- The figures count every typed note of a part, the notes of a chord too (since 13 November 2026; before, one note
+  of a chord for each part of a staff). The kit's own `score.py` counts as before. A rule that moves notes into
+  or out of chords is read by both counts and staff by staff.
 - The clean copies are a fixed list of 81 scores (outside git, with the wide test); 78 are counted (one was sorted
   wrongly, the page of two holds another version than the typed hymn). Report them first after each round, and
   change the list only with a reason.
