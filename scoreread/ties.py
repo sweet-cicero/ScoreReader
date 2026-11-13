@@ -25,6 +25,8 @@ TIE_SMOOTH = 0.35       # and it leaves the curve of a bow by at most this share
 TIE_PARTNER = (0.5, 1.8)  # a whole note has the voice that the note in its column has not: a note with a stem at most
 #                         this many staff spaces from it along the staff, or beside it (at most a second away) at most
 #                         this many (None: a whole note has no voice)
+TIE_COLUMN = 1.0        # a chord is tied note by note: a head in the column of the second head (their middles at most
+#                         this many staff spaces apart) and of its voice is not between the two heads of a tie (0: off)
 TIE_UNDER = True        # a bow that runs into a staff line and comes out at its other side: while no ink shows, the staff
 #                         line within the reach of the search hides it, not only the line at the bow's last row
 TIE_FROM_LINE = True    # a bow may begin in a staff line beside its head: it is followed from the line (False: off)
@@ -301,6 +303,12 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                 if round(other['place']) == place:
                     two = other
                     break
+                # The other note of a chord stands beside the second head, not between the two: it is in its column
+                # and has its stems. (A note of another voice there shows that this voice went on to another place.)
+                if TIE_COLUMN and any(round(head['place']) == place and abs(head['cx'] - other['cx']) <= TIE_COLUMN * space
+                                      and voices[id(head)] == voices[id(other)]
+                                      for head in own[number + 1:] if head is not other):
+                    continue
                 # Another note of this voice between the two heads: a bow over it is a slur.
                 theirs = voices[id(other)]
                 if (ways & theirs) or (not ways and not theirs) or ((not ways or not theirs) and abs((round(other['place']) if TIE_ROUND else other['place']) - place) < 2):

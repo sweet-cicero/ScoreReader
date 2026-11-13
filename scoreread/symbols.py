@@ -2178,6 +2178,11 @@ THIN_BEAM_SIDE = (0.35, 1.3, 1.0, 0.5, 0.6)  # the beam may leave a stem before 
 #                                 (a slur that begins at the side of a stem is slimmer than the page's beams); such a beam
 #                                 rises or falls at most this much for each step to the side (the flag of a stem that
 #                                 touches the next stem close by is no beam) (None: off)
+BAR_MARK = (0.7, 0.9, 0.5, 0.5)  # a hollow mark with a stem is the place where a tie crosses a bar line, and no head: it is
+#   at most this share as high as the heads of the page, the column of its stem has ink in this share of the rows from the
+#   top line of the staff to the bottom line, and the line goes on at both sides of the mark, which lies in the staff: over
+#   this many staff spaces above the mark and below it the column has ink in this share of the rows, the rows of
+#   another head not counted (a stem ends at its head: 0.0 there, 0.64 or more at such a mark) (None: off)
 THIN_BEAM_CHORD = True          # the stems of the heads of one chord are one stem for a thin beam (False: stems in fixed columns)
 PAST_WORDS = True               # past the last stem of a thin beam, ink in the rows of the words is no slur that goes on
 PAST_TWO = (0.3, 1.2, 0.7)      # two strokes one over the other before the last stem (from this far to this far before it, in
@@ -2959,6 +2964,36 @@ def _ledger_end(layers: dict, head: dict) -> tuple[int, bool]:
         rows = [row for row in (int(head['cy']) - far, int(head['cy']) + far) if 0 <= row < bare.shape[0]]
         blob = not bare[rows, left:left + wide].any()
     return end, bool(blob)
+
+
+def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
+    """The marks that are no heads but the place where a tie crosses a bar line: the tie, the bar line and a staff
+    line close in a little paper, which was read as a low hollow head with the bar line as its stem. The line goes
+    through the staff from its top line to its bottom line and goes on above the mark and below it (a stem ends at its
+    head), and the mark is lower than a head."""
+    if not BAR_MARK:
+        return []
+    ink, high, out = layers['ink'], layers['head'][1], []
+    for mark in heads:
+        if not mark['hollow'] or mark.get('thin') or len(mark['stems']) != 1 \
+                or mark['y1'] - mark['y0'] + 1 > BAR_MARK[0] * high:
+            continue
+        staff = layers['staves'][mark['staff']]
+        top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
+        x = int(round(mark['stems'][0]['x']))
+        if not top <= mark['cy'] <= bottom or x < 1 or ink[top:bottom + 1, x - 1:x + 2].any(axis=1).mean() < BAR_MARK[1]:
+            continue
+        column = ink[:, x - 1:x + 2].any(axis=1)
+        for head in heads:      # the head of the other voice, a third away on the same line of stems, is no bar line
+            if head is not mark and head['staff'] == mark['staff'] and head['x0'] - 1 <= x <= head['x1'] + 1:
+                column[max(0, int(head['y0'])):int(head['y1']) + 1] = False
+        reach = max(1, int(round(BAR_MARK[2] * staff['space'])))
+        over = column[max(0, int(mark['y0']) - reach):int(mark['y0'])]
+        under = column[int(mark['y1']) + 1:int(mark['y1']) + 1 + reach]
+        if not len(over) or not len(under) or min(over.mean(), under.mean()) < BAR_MARK[3]:
+            continue
+        out.append(mark)
+    return out
 
 
 def bar_lines(layers: dict, heads: list[dict]) -> dict[int, list[float]]:

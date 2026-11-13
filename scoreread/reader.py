@@ -17,7 +17,7 @@ from .meter import mid_signs
 from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import bar_lines, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
+from .symbols import bar_lines, bar_marks, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
     thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -97,12 +97,23 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     for sign in at_bars:
         bars[sign['staff']] = sorted(bars[sign['staff']] + [sign['bar']])
     heads = [head for head in heads if not any(head is sign['mark'] for sign in at_bars)]
+    # The paper that a tie closes in where it crosses a bar line was read as a low hollow head on that line. The
+    # line is a bar line unless a true head hangs on it: the loop of a flag closes in paper at its stem too.
+    crossed = bar_marks(layers, heads)
+    heads = [head for head in heads if not any(head is mark for mark in crossed)]
+    for mark in crossed:
+        at = mark['stems'][0]['x']
+        if all(abs(at - x) > 0.4 * space for x in bars[mark['staff']]) and not any(
+                head['staff'] == mark['staff'] and head['x0'] - 0.2 * space <= at <= head['x1'] + 0.2 * space
+                for head in heads):
+            bars[mark['staff']] = sorted(bars[mark['staff']] + [float(at)])
     lost_stems(layers, heads, bars, ends,
                [head for head in symbols['orphans'] if head['cx'] > ends[head['staff']] + 0.3 * space])
     heads = without_joints(heads, space)
     heads += thin_heads(layers, heads, bars, ends)
     # A hollow head read from its hole; where the copy broke its rim, it replaces the pieces of the rim.
     from_holes = hole_heads(layers, heads, ends, bars, symbols['signs'])
+    from_holes = [head for head in from_holes if not any(head is mark for mark in bar_marks(layers, from_holes))]
     gone = {id(other) for head in from_holes for other in head.get('replaces', [])}
     heads = [head for head in heads if id(head) not in gone] + from_holes
     # The numbers of a new time signature are no notes.
