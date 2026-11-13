@@ -25,6 +25,14 @@ TIME_PAIR = 1.5          # the staves of a system change the time at one place: 
 TIME_AFTER = 3.0         # in a system of one staff, a bar line stands at most this far before the numbers
 TIME_HEAD = (0.7, 0.05)  # and no ink is as thick as this in every direction, in staff spaces, over more than this
 #                          share of a square staff space: that is the head of a note (a bold number has small such spots)
+TIME_STACK = (1.25, 1.9, 1.1, 0.85, 0.08, 0.25, 0.81, 0.45)   # two numbers that touch, or bold numbers, fail the checks
+#  for a bar line and for a head. They are numbers all the same when the two are this wide together (least, most),
+#  each is this wide or more, the columns that are ink along this share of the staff's height or more (the stem of a
+#  4 over the stem of a 4, or two numbers that meet) all lie between two shares of the width (from this for numbers
+#  that fill the staff from top to bottom, from this for other numbers; to this), and this share or more of the
+#  inked columns is ink along a part of the staff only. A bar line and a closing bar are full columns at the edges
+#  with little beside them; the stem of a note stands at the edge of its head and is shorter than the staff. (None:
+#  off)
 COMMON = True            # the sign of common time (C) at the start of a staff is found too (False: only numbers)
 COMMON_HIGH = (1.5, 2.7) # the C is this high, in staff spaces
 COMMON_WIDE = (0.35, 2.3)    # and this wide (a hand copy draws a thin bow, and the staff lines take its two ends)
@@ -43,6 +51,22 @@ def _free(layers: dict) -> np.ndarray:
     if 'unfilled' not in layers:
         layers['unfilled'] = layers['ink'] & (1 - layers['lines'])
     return layers['unfilled']
+
+
+def _stacked(columns: np.ndarray, wides: list[int], space: float, crosses: bool) -> bool:
+    """Whether the ink of two halves is two numbers one over the other by TIME_STACK. `columns` holds the share of ink
+    of each column between the top and the bottom line, `wides` the width of each half, and `crosses` says that a
+    column is ink along the whole staff."""
+    if not TIME_STACK:
+        return False
+    least, most, each, long, from_cross, from_other, to, part = TIME_STACK
+    if not least * space <= len(columns) <= most * space or min(wides) < each * space:
+        return False
+    full = np.nonzero(columns >= long)[0]
+    inked = columns > 0.05
+    if not len(full) or ((columns >= 0.15) & (columns <= long)).sum() < part * inked.sum():
+        return False
+    return (from_cross if crosses else from_other) <= full.min() / len(columns) and full.max() / len(columns) <= to
 
 
 def time_signs(layers: dict, staff: dict, first: float | None = None, last: float | None = None) -> list[dict]:
@@ -104,17 +128,20 @@ def time_signs(layers: dict, staff: dict, first: float | None = None, last: floa
             continue
         # A bar line, a double bar or the line that opens a system crosses the whole staff.
         inside = mask[max(0, int(top - y0)):int(bottom - y0) + 1]
-        if (inside.mean(axis=0) >= TIME_BAR).any():
+        columns = inside.mean(axis=0)
+        crosses = bool((columns >= TIME_BAR).any())
+        stacked = _stacked(columns, [box[1] - box[0] + 1 for box in boxes], space, crosses)
+        if crosses and not stacked:
             continue
         # A note with a flag fills both halves too (its head in one, its flag in the other): a head is a thick blot.
         size = max(3, int(round(TIME_HEAD[0] * space)))
         thick = cv2.erode(mask.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
-        if thick.sum() > TIME_HEAD[1] * space * space:
+        if thick.sum() > TIME_HEAD[1] * space * space and not stacked:
             continue
         # The stem of a note crosses the middle line as one thin stroke. Two numbers meet there with more ink, or
         # they do not meet.
         waist = mask[max(0, split - int(TIME_WAIST[0] * space)):split + int(TIME_WAIST[0] * space) + 1].any(axis=0).sum()
-        if 0 < waist < TIME_WAIST[1] * space:
+        if 0 < waist < TIME_WAIST[1] * space and not (crosses and stacked):
             continue
         found.append({'x0': float(x0 + begin), 'x1': float(x0 + end)})
     return found

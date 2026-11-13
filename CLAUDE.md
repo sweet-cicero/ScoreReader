@@ -19,11 +19,11 @@ optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, 
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 85.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.3 % on
-scans; 69 scores at 99 % or more), 94.9 % of the notes on the clean copies (21,427 of 22,590; 15 of the 78 counted
+scans; 70 scores at 99 % or more), 94.9 % of the notes on the clean copies (21,432 of 22,589; 16 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
-(82.1 % on scans), and 89.4 % on the kit (6172 of 6901).
-On the fresh test set, which no rule was set on: 94.6 % of the notes (39,494 of 41,761; 83 of 214 pieces at 99 %),
+(82.1 % on scans), and 89.5 % on the kit (6175 of 6901).
+On the fresh test set, which no rule was set on: 94.6 % of the notes (39,500 of 41,761; 83 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction

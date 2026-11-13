@@ -29,6 +29,14 @@ REACH = 0.9                    # a note of the bracket stands at most this many 
 MEND = 0.25                    # breaks of an arm up to this many staff spaces wide are closed for a second look (0: off)
 TOGETHER = 0.6                 # the other voices of the system sing a triplet too when their notes stand in its columns, at most
 #                                this many staff spaces off (0: off)
+IN_WORDS = (0.3, 1.2, 4.0, 0.5, 0.2, 0.08)   # the hyphens of the words with a syllable between them and an l at each
+#  outer end look like a bracket (Al-le-lu). A bracket whose row lies in a band of the words, or at most this many
+#  staff spaces outside it, is a piece of the words when the words go on at both of its sides (in the rows up to this
+#  many staff spaces over and under its row, the columns up to this many staff spaces beside each hook hold this
+#  much ink or more, in squares of a staff space) and its arms are not whole: within this many staff spaces of its
+#  row, this share or more of the columns between the hooks is bare beside the two widest gaps. The arms of a
+#  bracket are two unbroken lines, and the number in the break between them leaves a gap at each of its sides
+#  (at most 0.02 on the pages the limit was set on, 0.16 in the words). (None: off)
 RATIO = Fraction(2, 3)         # a note of a triplet has this share of its drawn length
 
 
@@ -119,7 +127,7 @@ def mark_triplets(layers: dict, heads: list[dict]) -> list[dict]:
     """Gives each head under a bracket head['triplet']: the directions of its stems that the bracket holds ('' for a
     head without a stem). Returns the brackets, each with 'heads': how many heads it holds."""
     space = layers['space']
-    found = brackets(layers)
+    found = [bracket for bracket in brackets(layers) if not _in_words(layers, bracket)]
     for bracket in found:
         down = bracket['points'] == 'down'
         near = []
@@ -152,6 +160,28 @@ def mark_triplets(layers: dict, heads: list[dict]) -> list[dict]:
         if TOGETHER and bracket['heads'] >= 2:
             _together(layers, heads, bracket, [head for head in own if head.get('triplet')], space)
     return found
+
+
+def _in_words(layers: dict, bracket: dict) -> bool:
+    """Whether a bracket is a piece of the words by IN_WORDS."""
+    if not IN_WORDS or not layers.get('words'):
+        return False
+    near, rows, reach, least, row, whole = IN_WORDS
+    space, bare = layers['space'], layers['bare']
+    if not any(band['top'] - near * space <= bracket['y'] <= band['bottom'] + near * space
+               and band['x0'] <= bracket['x0'] and bracket['x1'] <= band['x1'] for band in layers['words']):
+        return False
+    top, bottom = max(0, int(bracket['y'] - rows * space)), int(bracket['y'] + rows * space)
+    left = bare[top:bottom, max(0, int(bracket['x0'] - reach * space)):max(0, int(bracket['x0']) - 2)]
+    right = bare[top:bottom, int(bracket['x1']) + 3:int(bracket['x1'] + reach * space)]
+    if min(left.sum(), right.sum()) < least * space * space:
+        return False
+    arms = bare[max(0, int(bracket['y'] - row * space)):int(bracket['y'] + row * space) + 1, int(bracket['x0']):int(bracket['x1']) + 1]
+    inked = arms.any(axis=0)
+    edges = np.flatnonzero(np.diff(np.concatenate(([1], inked.astype(np.int8), [1]))))
+    gaps = sorted(edges[1::2] - edges[::2])
+    beside = len(inked) - int(sum(gaps[-2:]))
+    return beside > 0 and int(sum(gaps[:-2])) >= whole * beside
 
 
 def _together(layers: dict, heads: list[dict], bracket: dict, own: list[dict], space: float) -> None:
