@@ -17,7 +17,7 @@ from .meter import mid_signs
 from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
 from .signs import note_signs
 from .starts import read_start, read_starts
-from .symbols import bar_lines, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
+from .symbols import bar_lines, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
     thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -74,6 +74,15 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     space = layers['space']
     staves = layers['staves']
     begin = read_starts(layers, key_before, clefs_before, key_hymn)
+    big = big_holes(layers, [head for head in heads if head['cx'] > begin['ends'][head['staff']] + 0.3 * space])
+    if big is not None:
+        # A second look: paper that a slur closes in is no inside of a head, and the page is read without it.
+        layers = read_layers(grey, places, big)
+        words = layers['words'] = word_bands(layers)
+        symbols = read_symbols(layers)
+        heads = symbols['heads']
+        staves = layers['staves']
+        begin = read_starts(layers, key_before, clefs_before, key_hymn)
     system_clefs = {staff['number']: clef for staff, clef in zip(staves, begin['clefs'])}
     key, clefs, ends, keys = begin['key'], list(begin['clefs']), begin['ends'], begin['keys']
     # Notes begin after the clef and the key signature.

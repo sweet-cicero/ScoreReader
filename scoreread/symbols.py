@@ -1410,10 +1410,41 @@ OPEN_STEM = (0.4, 0.3, 0.5)   # ... and its stem is its own: no bar line (within
 #                    clean copies and lost 5, but lost 285 on the fresh test set.)
 OPEN_SLANT = (0.8, 0.75)   # such a hole may be as high as wide (from this share) when it fills at most this share of its box
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+HOLE_BIG = None      # (2.5, 4): the hole of a mark that is this many times the usual hole of the page's hollow heads (the
+#                    median of this many or more) is no inside of a head, and the page is read again without it.
+#                    Off: a slur does close in paper with a stem and a staff line, and filled it hides the stem of
+#                    the real note; but the size alone does not tell it. A page has two usual holes, the small one of
+#                    its half notes and the large one of its whole notes (5 to 9 times apart in a thick print). On
+#                    LitChoir the rule gained 87 notes and lost 229; counted by the largest piece of paper of each
+#                    head and only after the clefs, it gained 65 and lost 271.
 HOLE_THROUGH = True  # a hollow head on a staff line: the two halves of its inside, over and under the line, are one hole
 HOLE_RIM = 0.2       # the rim of such a head is this thick, in staff spaces
 HOLE_CELL = 0.85     # a hole in a space of the staff that is this share of the gap between two staff lines high is a cell
 HOLE_CLOSED = 0.6    # past its rim, paper shows at the left and at the right within this many staff spaces
+
+
+def big_holes(layers: dict, heads: list[dict]) -> np.ndarray | None:
+    """The closed-in paper at the marks whose hole is far larger than the usual hole of the page's hollow heads
+    (HOLE_BIG): a slur closes in paper with a stem and a staff line, and so does a tie with two heads. Filled, such
+    paper is a thick mark that hides the stem it lies on, and the real head beside it loses that stem. The page
+    teaches how large the holes of its heads are: each hollow head shows its largest piece of closed-in paper (two
+    heads of a chord that touch are one mark with two holes). `heads` are the heads after the clefs: a clef closes
+    in large paper too. None when the page shows no such paper, or too few hollow heads."""
+    if not HOLE_BIG:
+        return None
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(layers['holes'], connectivity=4)
+    own = []
+    for head in heads:
+        if head['hollow'] and not head.get('thin') and not head.get('from_hole'):
+            inside = np.unique(labels[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1])
+            inside = inside[inside > 0]
+            if len(inside):
+                own.append(max(inside, key=lambda index: stats[index][4]))
+    if len(own) < HOLE_BIG[1]:
+        return None
+    usual = float(np.median([stats[index][4] for index in own]))
+    big = sorted({int(index) for index in own if stats[index][4] >= HOLE_BIG[0] * usual})
+    return np.isin(labels, big).astype(np.uint8) if big else None
 
 
 def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[int, list[float]] | None = None,
@@ -1571,6 +1602,10 @@ THIN_WIDE = (0.55, 2.6)    # the width of a head drawn as one stroke, in staff s
 THIN_HIGH = (0.2, 1.3)     # and its height
 THIN_NEAR = 1.3            # the head lies at most this many staff spaces from the end of its stem
 THIN_HOLLOW = 0.15         # such a head is hollow when its ink goes around this share of its box
+THIN_OPEN = True           # the paper that the rim of such a head closes in when a small break of the rim is closed (the
+                           # open holes of the layers; with the line through the head as large as OPEN_HOLE, and
+                           # with the rim of OPEN_RIM) is its inside too, from the same share: a printed oval whose
+                           # inside is too narrow for the loop, on a ledger line that is faint in it
 LOOP_LINE = True           # an open oval may have a staff line as its upper or lower side
 OPEN_HOLE = 0.12           # the open hole of such a head has at least this area, in staff spaces squared (0: off)
 TWO_STEMS = True           # a thick head with two stems may give one of them to a thin head of the other voice
@@ -1716,6 +1751,30 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         after = cv2.dilate(small & under & (1 - over), np.ones((1, reach + 1), np.uint8), anchor=(reach, 0))
         before = cv2.dilate(small & over & (1 - under), np.ones((1, reach + 1), np.uint8), anchor=(0, 0))
         ink |= layers['lines'] & after & before
+    rimmed = None
+    if THIN_OPEN and OPEN_HOLE:
+        # The insides of heads whose rim has a small break: paper that is closed in when the break is closed. A line
+        # through the head cuts its inside in two, and the two pieces of a slanted oval do not stand right over each
+        # other: pieces that a line's thickness parts, upright, and a third of a staff space, sideways, are one
+        # inside. It is as large as OPEN_HOLE and has the head's own ink around it (OPEN_RIM): the paper between
+        # two staff lines beside a stem has staff lines around it.
+        paper = ((layers['open_holes'] > 0) | (layers['holes'] > 0)).astype(np.uint8)
+        grown = cv2.dilate(paper, np.ones((near + 1, int(round(0.3 * space)) | 1), np.uint8))
+        rimmed = np.zeros_like(paper)
+        count, labelled, stats, _ = cv2.connectedComponentsWithStats(grown, connectivity=8)
+        for index in range(1, count):
+            x, y, wide, high, _ = stats[index]
+            box = (slice(y, y + high), slice(x, x + wide))
+            inside = paper[box] & (labelled[box] == index).astype(np.uint8)
+            columns = np.nonzero(inside.any(axis=0))[0]
+            if inside.sum() < OPEN_HOLE * space * space or columns[-1] - columns[0] + 1 < 0.4 * space \
+                    or high > THIN_HIGH[1] * space + near or wide > THIN_WIDE[1] * space:
+                continue
+            if OPEN_RIM:
+                ring = cv2.dilate(inside, np.ones((7, 7), np.uint8)) & (1 - inside)
+                if (ring & layers['bare'][box]).sum() < OPEN_RIM * ring.sum():
+                    continue
+            rimmed[box] |= inside & (layers['open_holes'][box] > 0)
     count, labels, stats, centres = cv2.connectedComponentsWithStats(ink, connectivity=8)
     pieces = []
     for index in range(1, count):
@@ -1769,9 +1828,14 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 box = (labels[y0:y + high + over, first:last] == index) | (layers['stems'][y0:y + high + over, first:last] > 0) \
                     | (layers['lines'][y0:y + high + over, first:last] > 0)
                 loop = max(loop, _loop(box, space) * box.shape[0] * box.shape[1] / (wide * high))
+        opened = 0.0
+        if rimmed is not None:
+            inside = float(rimmed[y:y + high, x:x + wide].sum())
+            opened = inside / (area + inside)
         pieces.append({'x0': int(x), 'y0': int(y), 'x1': int(x + wide - 1), 'y1': int(y + high - 1), 'area': int(area),
                        'cx': cx, 'cy': cy,
-                       'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area, loop)})
+                       'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area, loop),
+                       'opened': opened})
     # A thick head with a stem up and a stem down can be two notes: a thin head of the other voice lies right over
     # it or under it, and its stem passed through the thick head. So the stems of such a head are asked too.
     if two and OPEN_HOLE:
@@ -1859,6 +1923,9 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             if place is None or (not head['ledgers'] and abs(head['place']) > max(5.6, NO_LEDGER)):
                 return None
             head['place'] = place
+        if piece.get('opened', 0.0) >= THIN_HOLLOW > piece['hole']:
+            # The same head, with the place that its ink gave it: only its inside was not seen before.
+            head['hollow'], head['hole'] = True, piece['opened']
         return head
 
     def other_piece(x: float, top: float, bottom: float, direction: str, held: dict) -> dict | None:
@@ -2014,6 +2081,8 @@ BEAM_STRAIGHT = (1.5, 0.25)   # a beam without a witness at the next stem is str
 #                      this many staff spaces or more and bends this far from the line between its two ends is a slur
 #                      (None: off)
 BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least this share as thick as the page's beams
+BEAM_SIDES = 0.8     # a piece of a beam at the left of a stem and one at its right are one beam when their rows are
+#                      less than this share of the thicker one's thickness apart (0: off; before: 0.35 staff spaces)
 BEAM_PAIR = (0.14, 0.6, 0.65, 0.75)   # a slim beam of a fine engraving: long ink under TAIL_THICK but this thick, at most
 #                      this high where it hangs on the stem, at most this far from the stem's end (staff spaces),
 #                      straight, the next stem shows such ink or a beam from its other side, and it is this share
@@ -2265,6 +2334,19 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             for row in sorted(rows):
                 if not levels or row - levels[-1] > 0.35 * space:
                     levels.append(row)
+            if BEAM_SIDES and len(levels) > 1:
+                # A beam that goes on past the stem is one piece of ink at each side of it. Where the beam slants or
+                # the copy made it fat, the two pieces lie a little apart; but two beams lie a beam's thickness
+                # and a gap apart.
+                sides = {piece['row']: piece for piece in beams}
+                kept = [levels[0]]
+                for row in levels[1:]:
+                    one, two = sides.get(kept[-1]), sides.get(row)
+                    if one is not None and two is not None and one['right'] != two['right'] \
+                            and row - kept[-1] < BEAM_SIDES * max(one['thick'], two['thick']) * space:
+                        continue
+                    kept.append(row)
+                levels = kept
             if levels:
                 head['tails'][stem['direction']] = min(len(levels), 3)
                 continue
