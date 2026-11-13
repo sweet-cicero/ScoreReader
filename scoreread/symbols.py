@@ -2171,6 +2171,13 @@ WORD_BEAMS = False              # a beam in the rows of the words counts when th
 #                                 clean copies: a slur over a beam at the words then counts as a second beam; kept off)
 LAST_HEAD = 'words'             # the flags of a stem hang past the last head on it: 'words' (for a stem that ends at the
 #                                 words), 'all' (for every stem), or None (past the stem's own head only)
+THIN_BEAM_SIDE = (0.35, 1.3, 1.0, 0.5, 0.6)  # the beam may leave a stem before the end that was found for it (a slur begins
+#                                 at the stem's end, and the stem was followed into it): at ink that hangs on the stem at
+#                                 the side of the other stem, from this to this many staff spaces before the end, this
+#                                 long, and at least this share of the page's usual beam as thick, where the page has one
+#                                 (a slur that begins at the side of a stem is slimmer than the page's beams); such a beam
+#                                 rises or falls at most this much for each step to the side (the flag of a stem that
+#                                 touches the next stem close by is no beam) (None: off)
 THIN_BEAM_CHORD = True          # the stems of the heads of one chord are one stem for a thin beam (False: stems in fixed columns)
 PAST_WORDS = True               # past the last stem of a thin beam, ink in the rows of the words is no slur that goes on
 PAST_TWO = (0.3, 1.2, 0.7)      # two strokes one over the other before the last stem (from this far to this far before it, in
@@ -2596,6 +2603,14 @@ def _round_ends(layers: dict, one: dict, two: dict) -> tuple[float, float] | Non
     return toward([entry for entry in edge if entry[0] < near]), toward([entry for entry in edge if entry[0] >= count - near])
 
 
+def _beam_rows(inner: dict, outer: dict) -> tuple[float, float]:
+    """The rows where the thin beam between two stems meets `outer` and `inner` (see _thin_beam): the ends of the
+    stems, or the ink at a stem's side that the beam was found from."""
+    if outer['x'] > inner['x']:
+        return outer.get('thin_left', outer['end']), inner.get('thin_right', inner['end'])
+    return outer.get('thin_right', outer['end']), inner.get('thin_left', inner['end'])
+
+
 def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
     """True when the ink that runs from the end of the stem `inner` to the end of the stem `outer` goes on past
     `outer`, along the same line or bending away from it a little."""
@@ -2603,12 +2618,13 @@ def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
     ink = layers['bare']
     height, width = ink.shape
     side = 1 if outer['x'] > inner['x'] else -1
-    slope = (outer['end'] - inner['end']) / (outer['x'] - inner['x'])
+    last, before = _beam_rows(inner, outer)
+    slope = (last - before) / (outer['x'] - inner['x'])
     reach = int(round(THIN_BEAM_PAST[2] * space))
     seen = count = 0
     for step in range(int(round(THIN_BEAM_PAST[0] * space)), int(round(THIN_BEAM_PAST[1] * space)) + 1):
         x = int(round(outer['x'])) + side * step
-        y = int(round(outer['end'] + slope * side * step))
+        y = int(round(last + slope * side * step))
         top, bottom = max(0, y - reach), min(height, y + reach + 1)
         if WORD_TAILS and outer.get('words'):
             # The stem ends at the words: a letter beside its end is no ink of a slur.
@@ -2640,12 +2656,13 @@ def _two_strokes(layers: dict, inner: dict, outer: dict) -> bool:
     ink = layers['bare']
     height, width = ink.shape
     side = 1 if outer['x'] > inner['x'] else -1
-    slope = (outer['end'] - inner['end']) / (outer['x'] - inner['x'])
+    last, before = _beam_rows(inner, outer)
+    slope = (last - before) / (outer['x'] - inner['x'])
     reach = int(round(PAST_TWO[2] * space))
     two = count = 0
     for step in range(int(round(PAST_TWO[0] * space)), int(round(PAST_TWO[1] * space)) + 1):
         x = int(round(outer['x'])) - side * step
-        y = int(round(outer['end'] - slope * side * step))
+        y = int(round(last - slope * side * step))
         top, bottom = max(0, y - reach), min(height, y + reach + 1)
         if not 0 <= x < width or bottom <= top:
             continue
@@ -2661,14 +2678,35 @@ def _thin_beam(layers: dict, one: dict, two: dict) -> bool:
     space = layers['space']
     # A weak copy breaks a stem just before its beam: the stem that was found ends too early. The beam may meet
     # the stem a little past that end.
-    def ends(stem: dict) -> list[float]:
+    def ends(stem: dict, right: bool) -> list[tuple[float, bool]]:
         away = -1 if stem['direction'] == 'up' else 1
         found = [stem['end'] + away * step for step in range(0, int(round(THIN_BEAM_END * space)) + 1, 2)]
         if THIN_FULL and stem.get('words') and 'own' in stem and (stem['own'] - stem['end']) * away > 0:
             # The stem was cut where the words begin, and its own ink goes on: the beam meets it at its own end.
             found += [stem['own'] + away * step for step in range(0, int(round(THIN_BEAM_END * space)) + 1, 2)]
-        return found
-    return any(_beam_line(layers, one['x'], first, two['x'], last) for first in ends(one) for last in ends(two))
+        if THIN_BEAM_SIDE:
+            # The stem was followed past its end into a slur that begins there: the beam leaves it before the end
+            # that was found, as long ink at the side of the other stem. That ink is tried first.
+            side = [piece['row'] for piece in stem.get('marks', [])
+                    if piece['right'] == right and THIN_BEAM_SIDE[0] <= piece['from_end'] <= THIN_BEAM_SIDE[1]
+                    and piece['far'] >= THIN_BEAM_SIDE[2]
+                    and piece['thick'] >= THIN_BEAM_SIDE[3] * (layers.get('beam') or 0)]
+            return [(row, True) for row in side] + [(row, False) for row in found]
+        return [(row, False) for row in found]
+    one.pop('thin_right', None)
+    two.pop('thin_left', None)
+    for first, first_side in ends(one, True):
+        for last, last_side in ends(two, False):
+            if (first_side or last_side) and abs(last - first) > THIN_BEAM_SIDE[4] * (two['x'] - one['x']):
+                continue
+            if _beam_line(layers, one['x'], first, two['x'], last):
+                # (Where the beam leaves a stem before its end, for the look past the last stem of the run.)
+                if first_side:
+                    one['thin_right'] = first
+                if last_side:
+                    two['thin_left'] = last
+                return True
+    return False
 
 
 def _bow(layers: dict, x: float, row: float, right: bool) -> tuple[float, float] | None:
