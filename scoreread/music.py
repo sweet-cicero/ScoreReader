@@ -33,13 +33,10 @@ SECOND_TOUCH = (0.2, 0.95)   # two voices a second apart with the lower voice at
 #                    and heads that touch (at most this many staff spaces of paper between them) begin together. They
 #                    are two whole heads side by side: their middles stand at least the second number apart (the
 #                    slanted stroke of a hand that two voices share is one mark, read as two pieces). (None: off)
-STACKED = 0          # off. 0.6: two notes of one voice on two stems begin together when their heads are at most this many
-#                      staff spaces apart (a third voice on a staff: the basses in octaves under the tenors); a note that
-#                      follows another stands a head's width or more after it. Counted staff by staff the rule gains 51
-#                      notes on the clean copies and loses 3, and 95 and 0 on the fresh test set; counted part by part,
-#                      as the figures of this project are, it loses more than it gains (5 and 7; 7 and 20), because the
-#                      count of parts keeps one note of a column for each part and a false note in the column takes the
-#                      true note's place. Off until the count of parts holds such columns
+STACKED = 0.6        # two notes of one voice on two stems begin together when their heads are at most this many staff
+#                      spaces apart (a third voice on a staff: the basses in octaves under the tenors, a part that divides
+#                      with a stem for each note); a note that follows another stands a head's width or more after it
+#                      (0: off)
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
