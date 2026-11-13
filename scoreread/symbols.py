@@ -111,6 +111,11 @@ LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from t
 ORPHANS = (0.7, 1.5) # a thick mark with no stem, from this to this many times as wide and as high as the heads of the
 #                    page, is a head when an upright stroke that no head has ends at its edge (None: off)
 WHOLE_HALF = 0.3     # the same over or under a half note, when the oval is wider than it by this many staff spaces (0: off)
+WHOLE_APART = (0.7, 0.2, 0.2, 0.2, 0.8)   # a whole note a third under or over a note with a stem: the two boxes are at
+#                      most this many staff spaces apart, the oval is wider than the head by this much, the stem
+#                      stands this far inside the oval's far edge, the way from the oval to the stem crosses this
+#                      much paper, and the head with the stem is this share as wide as the page's heads with stems
+#                      (a smaller mark is a piece of a head) (None: off)
 WHOLE_OVER = 0.4     # the oval may begin this many staff spaces left of the head it touches (it is set in the middle
 #                      under it); 0: only as far as WHOLE_BESIDE says
 WHOLE_STAFF = 0      # in the staff a whole note is at least this many times as wide as it is high (0: as WHOLE says).
@@ -646,6 +651,14 @@ def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
     best['inked'] = len(outside)
     best['mid'] = int(np.median([column for row, column in outside])) if outside else best['x']
     best['slim'] = sum(1 for row, column in outside if _run(ink, row, column) <= SLIM_STEM * space)
+    # How much the way bends in its last part: a straight stem, slanted or not, has 0; a stem that was followed
+    # into the end of a slur turns there (staff spaces; positive: to the right).
+    step = int(round(STEM_TURN * space))
+    best['turn'] = 0.0
+    if step and len(outside) > 2 * step + 2:
+        columns = [column for row, column in outside]
+        one, two = float(np.median(columns[-step - 3:-step + 2])), float(np.median(columns[-2 * step - 3:-2 * step + 2]))
+        best['turn'] = (columns[-1] - 2 * one + two) / space
     return best
 
 
@@ -1146,6 +1159,8 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
     space = layers['space']
     near, apart, edge, wider = (value * space for value in WHOLE_BESIDE)
     heads = [mark for mark in marks if mark['kind'] == 'head' and mark['stems']]
+    # The usual width of a head with a stem on this page.
+    usual = float(np.median([mark['x1'] - mark['x0'] + 1 for mark in heads])) if heads else space
     count = 0
     for mark in heads:
         wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
@@ -1172,6 +1187,21 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
                 gap = (mark['y0'] - other['y1']) if up else (other['y0'] - mark['y1'])
                 if gap <= apart and -max(edge, WHOLE_OVER * space) <= mark['x0'] - other['x0'] <= edge \
                         and wide - (other['x1'] - other['x0'] + 1) >= more \
+                        and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
+                                for own in other['stems']):
+                    mark['stems'].remove(stem)
+                    count += 1
+                    break
+                # A third apart the two heads do not touch. The stem of a chord runs along the edge of both its
+                # heads without a break; the way from a whole note to the other voice's stem crosses paper, and the
+                # stem stands inside the oval's width.
+                inside = (mark['x1'] - stem['x']) if up else (stem['x'] - mark['x0'])
+                if WHOLE_APART and apart < gap <= WHOLE_APART[0] * space \
+                        and -max(edge, WHOLE_OVER * space) <= mark['x0'] - other['x0'] <= edge \
+                        and wide - (other['x1'] - other['x0'] + 1) >= WHOLE_APART[1] * space \
+                        and other['x1'] - other['x0'] + 1 >= WHOLE_APART[4] * usual \
+                        and inside >= WHOLE_APART[2] * space \
+                        and stem.get('past', 0) - stem.get('inked', 0) >= WHOLE_APART[3] * space \
                         and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
                                 for own in other['stems']):
                     mark['stems'].remove(stem)
@@ -2095,6 +2125,12 @@ FLAG_HOLE = (0.7, 0.75, 0.3, 0.7)   # a printed flag that reaches 0.6 staff spac
 FLAG_NARROW = (0.6, 0.2)   # a narrow printed flag hugs its stem: it reaches under 0.6 staff spaces from it, but it is
 #                            this many staff spaces high and leans this much toward the head (None: off). A limit on
 #                            how long it touches the stem was measured too: it lost 11 notes for 4.
+BOW_THIN = 1.0       # a thin head this near (staff spaces) at the right of the down stem of a note with a flag, in the
+#                      far half of that stem, is the bow of that flag (0: off)
+FLAG_BOW = (1.8, 0.7, 1.3, 0.8)   # the flag of a down stem that is a bow: it leaves the head or the stem beside it,
+#                            bulges to the right and comes back to the stem before its end. The ink right of the stem
+#                            is this many staff spaces high, reaches from this to this far from the stem and no
+#                            farther, and paper lies between it and the stem for this many staff spaces (None: off)
 DOT_REACH = 1.3      # a dot stands at most this many staff spaces right of its head
 DOT_NEAR = 0.3       # and at least this many
 DOT_UNDER = 0.6      # its middle lies at most this many staff spaces under the middle of the head (and 0.7 over it)
@@ -2114,6 +2150,13 @@ TAIL_START = 0.55    # the hook of a flag begins this near to the end of its ste
 THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from the end of a stem to the end of the next:
                                 # ink at most this far (staff spaces) from the straight line, on this share of the way
                                 # with the staff lines it crosses, and on this share without them (None: off)
+STEM_TURN = 0.6                 # the bend of a stem is measured over twice this many staff spaces before its end
+STEM_SLUR = (0.2, 0.4, 0.25, 0.03, 0.2)   # a slur that joins the ends of two stems: both stems bend toward each other at
+                                # their ends by this many staff spaces, the stroke is at most this thick, the two stems
+                                # turn there by this much together (STEM_TURN; the stems of a hand that lean toward
+                                # each other do not turn), and the stroke is round at both stems: its outer edge lies
+                                # this far toward the heads at each, and this far at both together, from the straight
+                                # line through its middle half (a beam has square corners) (None: off)
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
@@ -2218,6 +2261,43 @@ def tail_marks(layers: dict, head: dict, stem: dict, last: float | None = None, 
     return pieces
 
 
+def _bow_flag(layers: dict, head: dict, stem: dict, low: float) -> bool:
+    """True when the ink at the right side of a down stem, from under its last head (row `low`) to its end, is the
+    bow of a flag (FLAG_BOW): high, near the stem, with paper between it and the stem. A tie or a beam goes on to
+    the right; a head or a blot has no paper between it and the stem."""
+    ink, space = layers['bare'], layers['space']
+    x, end = int(stem['x']), int(stem['end'])
+    top = int(low + 0.1 * space)
+    bottom = min(ink.shape[0] - 1, end + int(0.3 * space))
+    band = max(2, int(round(0.13 * space)))
+    first, last = max(0, x - band), min(ink.shape[1] - 1, x + int(FLAG_BOW[2] * space))
+    if bottom - top < FLAG_BOW[0] * space or last - first < 2 * band + 3:
+        return False
+    window = ink[top:bottom + 1, first:last + 1].copy()
+    # (As in tail_marks: a staff line comes back where ink stands over it and under it.)
+    lines = layers['lines'][top:bottom + 1, first:last + 1]
+    high = int(np.ceil(head['staff_ref']['thick'])) + 3
+    near = cv2.dilate(window, np.ones((1, 5), np.uint8))
+    window |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((high, 1), np.uint8)) & lines
+    if stem.get('words'):
+        window[max(0, int(stem['words'][0]) - top):max(0, int(stem['words'][1]) + 1 - top)] = 0
+    edge = 2 * band + 1
+    stem_rows = window[:, :edge].any(axis=1)
+    window[:, :edge] = 0
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(window, connectivity=8)
+    for index in range(1, count):
+        px, py, wide, tall, area = stats[index]
+        if tall < FLAG_BOW[0] * space or px + wide >= window.shape[1] or px + wide - 1 - band < FLAG_BOW[1] * space:
+            continue
+        if not ((labels[:, edge] == index) & stem_rows).any():
+            continue
+        part = labels == index
+        room = sum(1 for row in part if row.any() and int(np.argmax(row[edge:])) >= 2)
+        if room >= FLAG_BOW[3] * space:
+            return True
+    return False
+
+
 def _is_beam(piece: dict) -> bool:
     return bool(piece['thick'] >= TAIL_THICK and piece['far'] >= BEAM_FAR)
 
@@ -2317,9 +2397,12 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
             if not rows:
                 # A slim beam is one beam: a staff line that crosses it leaves two slivers of it.
                 rows = [piece['row'] for piece in beams if piece.get('slim')][:1]
+            stem['beam_only'] = bool(rows)
             short = [piece for piece in pieces if not piece['beam'] and piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6]
             # A printed flag; and beside a beam, the short second beam of a sixteenth.
-            rows += [piece['row'] for piece in short if (piece['right'] and piece['back'] >= FLAG_BACK) or rows]
+            flags = [piece['row'] for piece in short if (piece['right'] and piece['back'] >= FLAG_BACK) or rows]
+            stem['beam_only'] = stem['beam_only'] and not flags
+            rows += flags
             if FLAG_HOLE and not rows:
                 rows += [piece['row'] for piece in pieces
                          if piece['right'] and not piece['beam'] and piece['thick'] >= TAIL_THICK and 0.6 <= piece['far'] < FLAG_HOLE[0]
@@ -2349,12 +2432,23 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 levels = kept
             if levels:
                 head['tails'][stem['direction']] = min(len(levels), 3)
+                if BOW_THIN and FLAG_BOW and stem['direction'] == 'down' and not beams and not head.get('thin'):
+                    last = _last_head([other for other in staffs[head['staff']] if not other['hollow'] and not other.get('thin')],
+                                      head, stem, space)
+                    stem['bow'] = _bow_flag(layers, head, stem, head['y1'] + last - head['cy'])
                 continue
             thin = [piece for piece in pieces if not (piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6)]
             thin_left = [piece['row'] for piece in thin if not piece['right']]
             hooks = [piece['row'] for piece in thin if piece['right'] and piece['from_end'] <= TAIL_START and piece['back'] >= 0.12]
             hook = any(all(abs(row - other) > 0.25 * space for other in thin_left) for row in hooks)
             head['tails'][stem['direction']] = 1 if hook else 0
+            if FLAG_BOW and not hook and stem['direction'] == 'down' and not any(piece['beam'] for piece in pieces):
+                # (The room of the bow can be read as a hollow head on the stem: the bow is looked for past the
+                # last filled head, and without_flag_loops then drops the hollow one.)
+                last = _last_head([other for other in staffs[head['staff']] if not other['hollow']], head, stem, space)
+                if _bow_flag(layers, head, stem, head['y1'] + last - head['cy']):
+                    head['tails']['down'] = 1
+                    stem['bow'] = True
         if ROOM_HEADS and head.get('room'):
             # The room at such a head is closed by a flag or by a beam: the stem that goes along the room has one.
             x0, y0, x1, y1 = head['loop']
@@ -2401,6 +2495,34 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 one, two = left[0][1], right[0][1]
                 joined.append(0.8 * space <= two['x'] - one['x'] <= BEAM_NEXT * space
                               and abs(two['end'] - one['end']) <= 2.5 * space and _thin_beam(layers, one, two))
+            if STEM_SLUR:
+                # A slur from the end of one stem to the end of the next: the stems were followed into its two ends,
+                # so they bend toward each other and turn there, and the stroke is thin. It is no beam of any kind,
+                # whether a straight line joins the two ends or each stem shows the stroke at the side of the other.
+                for number, (left, right) in enumerate(zip(ordered, ordered[1:])):
+                    one, two = left[0][1], right[0][1]
+                    if not (0.8 * space <= two['x'] - one['x'] <= BEAM_NEXT * space and abs(two['end'] - one['end']) <= 2.5 * space):
+                        continue
+                    bends = ((one['x'] - one.get('mid', one['x'])) / space, (two.get('mid', two['x']) - two['x']) / space)
+                    turns = (one.get('turn', 0.0), -two.get('turn', 0.0))
+                    if min(bends) < STEM_SLUR[0] or sum(turns) < STEM_SLUR[2]:
+                        continue
+                    round_ = _round_ends(layers, one, two)
+                    if round_ is None or min(round_) < STEM_SLUR[3] or sum(round_) < STEM_SLUR[4]:
+                        continue
+                    faces = [[piece for head, stem in entry for piece in stem['marks'] if piece['beam']] for entry in (left, right)]
+                    if not (joined[number] or (faces[0] and faces[1])) \
+                            or any(not piece['right'] for piece in faces[0]) or any(piece['right'] for piece in faces[1]) \
+                            or any(piece['thick'] > STEM_SLUR[1] for side in faces for piece in side) \
+                            or any(head['tails'].get(direction, 0) > 1 for entry in (left, right) for head, stem in entry):
+                        continue
+                    joined[number] = False
+                    for entry in (left, right):
+                        for head, stem in entry:
+                            if stem.get('beam_only', True):
+                                head['tails'][direction] = 0
+                            stem['stem_slur'] = True
+                            stem['thin_bends'], stem['thin_turns'] = bends, turns
             # A run of stems that are joined one to the next is one beam, when the line ends at its first and its
             # last stem. A slur goes on past the stems.
             first = 0
@@ -2412,18 +2534,66 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 while last + 1 < len(joined) and joined[last + 1]:
                     last += 1
                 run = ordered[first:last + 2]
+                # How far the first and the last stem bend toward each other at their ends (staff spaces).
+                bends = ((run[0][0][1]['x'] - run[0][0][1].get('mid', run[0][0][1]['x'])) / space,
+                         (run[-1][0][1].get('mid', run[-1][0][1]['x']) - run[-1][0][1]['x']) / space)
+                turns = (run[0][0][1].get('turn', 0.0), -run[-1][0][1].get('turn', 0.0))
                 if not THIN_BEAM_PAST or not (_goes_on(layers, run[1][0][1], run[0][0][1])
                                               or _goes_on(layers, run[-2][0][1], run[-1][0][1])):
                     for entry in run:
                         for head, stem in entry:
+                            stem['thin_before'] = head['tails'].get(direction, 0)
                             head['tails'][direction] = max(1, head['tails'].get(direction, 0))
                             stem['thin_beam'] = True
+                            stem['thin_bends'] = bends
+                            stem['thin_turns'] = turns
+                            stem['thin_run'] = len(run)
                 first = last + 1
     for head in heads:
         if SHARED_TAILS and len(head['tails']) == 2:
             # One head with two stems is one note that two voices sing: a hand draws its flag at one stem only.
             most = max(head['tails'].values())
             head['tails'] = {direction: most for direction in head['tails']}
+
+
+def _round_ends(layers: dict, one: dict, two: dict) -> tuple[float, float] | None:
+    """How round the stroke is that joins the far ends of two stems of one direction (`one` at the left): for each
+    stem, how far the outer edge of the stroke lies toward the heads there, from the straight line through the
+    middle half of the stroke (staff spaces). A beam meets its stems in square corners: about 0. None when no
+    stroke is found on four fifths of the way."""
+    ink, space = layers['bare'], layers['space']
+    down = one['direction'] == 'down'
+    band = max(2, int(round(0.13 * space)))
+    first = int(max(one['x'], one.get('mid', one['x']))) + band + 1
+    last = int(min(two['x'], two.get('mid', two['x']))) - band - 1
+    if last - first < 1.0 * space:
+        return None
+    reach = int(round(0.9 * space))
+    edge = []
+    for column in range(first, last + 1):
+        y = one['end'] + (two['end'] - one['end']) * (column - one['x']) / max(1, two['x'] - one['x'])
+        top, bottom = max(0, int(y) - reach), min(ink.shape[0], int(y) + reach + 1)
+        rows = np.nonzero(ink[top:bottom, column])[0] + top
+        if len(rows) == 0:
+            continue
+        # The run of ink nearest to the line between the two ends, and its edge away from the heads.
+        cuts = np.nonzero(np.diff(rows) > 1)[0]
+        runs = [(rows[a], rows[b]) for a, b in zip(np.r_[0, cuts + 1], np.r_[cuts, len(rows) - 1])]
+        low, high = min(runs, key=lambda run: 0 if run[0] <= y <= run[1] else min(abs(run[0] - y), abs(run[1] - y)))
+        edge.append((column - first, high if down else low))
+    count = last - first + 1
+    middle = [(at, row) for at, row in edge if 0.25 * count <= at <= 0.75 * count]
+    if len(edge) < 0.8 * count or len(middle) < 4:
+        return None
+    slope, start = np.polyfit([at for at, row in middle], [row for at, row in middle], 1)
+    near = max(3, int(round(0.25 * space)))
+
+    def toward(part: list) -> float:
+        if not part:
+            return 0.0
+        away = float(np.median([slope * at + start - row for at, row in part]))
+        return (away if down else -away) / space
+    return toward([entry for entry in edge if entry[0] < near]), toward([entry for entry in edge if entry[0] >= count - near])
 
 
 def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
@@ -2634,6 +2804,21 @@ def without_flag_loops(heads: list[dict], space: float) -> list[dict]:
                             and abs(other['cy'] - far['end']) >= near + 0.8 * space \
                             and max(other['tails'].get(far['direction'], 0), head['tails'].get(stem['direction'], 0)) >= 1:
                         gone.add(id(head))
+    if BOW_THIN:
+        # The bow of a flag at a down stem (FLAG_BOW) is thin ink around paper, as a thin hollow head is: a thin head
+        # at the right of the down stem of a note with a flag, between that note's head and the end of its stem, and
+        # nearer to the end: the bow hangs at the far half of the stem. (Nearer to the head it is the lower head of
+        # two that touch a third apart, which the thick marks show as one.)
+        for head in heads:
+            if not head.get('thin'):
+                continue
+            for other in heads:
+                if other is head or other['staff'] != head['staff'] or other['tails'].get('down', 0) < 1:
+                    continue
+                if any(stem['direction'] == 'down' and stem.get('bow') and 0 < head['cx'] - stem['x'] <= BOW_THIN * space
+                       and other['cy'] < head['cy'] <= stem['end'] + 0.3 * space
+                       and head['cy'] - other['cy'] > stem['end'] - head['cy'] for stem in other['stems']):
+                    gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
 
 
