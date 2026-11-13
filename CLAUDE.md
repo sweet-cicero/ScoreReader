@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 85.0 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 80.9 % on
-scans; 68 scores at 99 % or more), 94.5 % of the notes on the clean copies (21,058 of 22,293; 14 of the 78 counted
+Not reached yet: 85.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.0 % on
+scans; 68 scores at 99 % or more), 94.6 % of the notes on the clean copies (21,087 of 22,293; 14 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.4 % of all syllables with Tesseract
-(82.2 % on scans), and 89.2 % on the kit (6158 of 6901).
-On the fresh test set, which no rule was set on: 93.7 % of the notes (38,332 of 40,906; 77 of 214 pieces at 99 %),
+(82.2 % on scans), and 89.2 % on the kit (6159 of 6901).
+On the fresh test set, which no rule was set on: 94.2 % of the notes (38,539 of 40,906; 78 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
