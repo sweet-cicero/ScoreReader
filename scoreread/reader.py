@@ -17,7 +17,7 @@ from .meter import mid_signs
 from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import bar_lines, bar_marks, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
+from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
     thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -107,6 +107,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                 head['staff'] == mark['staff'] and head['x0'] - 0.2 * space <= at <= head['x1'] + 0.2 * space
                 for head in heads):
             bars[mark['staff']] = sorted(bars[mark['staff']] + [float(at)])
+    # The bar lines of a faint print, broken into dashes: the staves of a system agree on them.
+    for index, found in faint_bars(layers, heads, bars).items():
+        bars[index] = sorted(bars[index] + found)
     lost_stems(layers, heads, bars, ends,
                [head for head in symbols['orphans'] if head['cx'] > ends[head['staff']] + 0.3 * space])
     heads = without_joints(heads, space)

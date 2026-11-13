@@ -67,6 +67,12 @@ SHORT_STEM = (0.9, 0.45)   # a head on a ledger line may have a stem this short:
 SHORT_SLIM = 0.15    # such a short stem is slim for this share of its way past the head
 RIM_WINGS = (0.25, 0.3)  # a ledger line at the rim of a hollow head: in this many staff spaces past the head, at both
                          # sides, it has ink in at least this share of the columns
+PLACE_MASS = None    # off. (0.35, 0.08): a head in the staff whose middle was measured this far or more from the middle
+#   of its place (in places: the border of two places lies at 0.5) takes the place of the middle of all its ink, when
+#   that lies in the place next to it at that side, this far or more past the border. The middle of a hollow head is
+#   the middle of its hole. With no margin the rule gained 8 notes on the clean copies and lost 2, and 27 and 24 on the
+#   other scans; with the margin 8 and 0, 28 and 10 on all scores, but 0 and 6 on the fresh test set, and no measure
+#   of the head separates the mended notes from the broken ones
 NO_LEDGER_FIVE = 5.75# and up to this place it stands in the first space; past it, its measured place stays
 NO_LEDGER = 6.3      # a head with no ledger line, up to this place beside the staff, stands in the first space (0: off)
 FAR_STEM = (2.0, 8.4, 0.75, 1.35)   # a head past NO_LEDGER with no ledger line is a note when its stem goes on this many
@@ -1394,6 +1400,12 @@ def read_symbols(layers: dict) -> dict:
                 'staff': staff, 'place': place, 'hollow': hollow, 'hole': mark['hole'], 'stems': mark['stems'],
                 'mark': number, 'core': core_light(layers, mark),
                 'alt': dict(_places(layers['staves'][staff], mark), **_fat(layers, mark))}
+        if PLACE_MASS and abs(place) <= 4.6:
+            # A second look at a head that was measured at the border of two places.
+            mass, near = head['alt']['mass'], round(place)
+            if abs(place - near) >= PLACE_MASS[0] and round(mass) == near + (1 if place > near else -1) \
+                    and abs(mass - round(mass)) <= 0.5 - PLACE_MASS[1]:
+                head['place'] = place = mass
         if mark.get('loop'):
             head['loop'] = mark['loop']
         if mark.get('room'):
@@ -2993,6 +3005,69 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
         if not len(over) or not len(under) or min(over.mean(), under.mean()) < BAR_MARK[3]:
             continue
         out.append(mark)
+    return out
+
+
+BAR_FAINT = (0.38, 0.55, 0.02, 0.6, 0.3)   # a bar line of a faint print, broken into dashes: an upright line with ink
+#   in this share of the rows of the staff (three columns together), with at most this share of ink at each side of it
+#   over a third of a staff space (a stem has its head there), and on the other staves of its system a bar line or such
+#   a line at most this many staff spaces away; one of the two lines has the second share. And it goes on toward the
+#   next staff of its system, with ink in the last share of the rows from 1 to 4 staff spaces past the staff: the
+#   crease of a page and a dotted guide line stay in the staff or cross the whole page (None: off)
+
+
+def faint_bars(layers: dict, heads: list[dict], bars: dict[int, list[float]]) -> dict[int, list[float]]:
+    """The bar lines that bar_lines() did not read because the print is faint (staff index: the x of each). A sign
+    holds up to the next bar line, so a sharp is carried too far where a bar line is lost."""
+    from .starts import _free
+    out = {index: [] for index in bars}
+    if not BAR_FAINT:
+        return out
+    staves, space = layers['staves'], layers['space']
+    wide = cv2.dilate(np.ascontiguousarray(layers['ink']), np.ones((1, 3), np.uint8))
+    free = _free(layers)
+    side, reach = max(3, int(0.35 * space)), max(2, int(0.3 * space))
+    lines = {}
+    for index, staff in enumerate(staves):
+        top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
+        share = wide[top:bottom + 1].mean(axis=0)
+        stems = [stem['x'] for head in heads if head['staff'] == index for stem in head['stems']]
+        found = []
+        for column in np.nonzero(share >= BAR_FAINT[0])[0]:
+            column = int(column)
+            if not staff['x0'] + 2 * space < column < min(staff['x1'] - space, share.size - side - 5):
+                continue
+            if share[column] < share[column - reach:column + reach + 1].max() or (found and column - found[-1][0] <= reach):
+                continue
+            if free[top:bottom + 1, column - 3 - side:column - 3].mean() > BAR_FAINT[2] \
+                    or free[top:bottom + 1, column + 4:column + 4 + side].mean() > BAR_FAINT[2]:
+                continue
+            if any(abs(column - x) <= 0.4 * space for x in stems) or any(
+                    head['staff'] == index and head['x0'] - 0.2 * space <= column <= head['x1'] + 0.2 * space for head in heads):
+                continue
+            numbers = [mate['number'] for mate in staves if mate['system'] == staff['system']]
+            spans = []
+            if staff['number'] > min(numbers):
+                spans.append((max(0, top - int(4 * space)), top - int(space)))
+            if staff['number'] < max(numbers):
+                spans.append((bottom + int(space), bottom + int(4 * space)))
+            if not any(last > first and layers['ink'][first:last, column - 2:column + 3].any(axis=1).mean() >= BAR_FAINT[4]
+                       for first, last in spans):
+                continue
+            found.append((column, float(share[column])))
+        lines[index] = found
+    for index, staff in enumerate(staves):
+        mates = [other for other, mate in enumerate(staves) if other != index and mate['system'] == staff['system']]
+        for column, share in lines[index]:
+            if not mates or any(abs(column - x) < 0.9 * space for x in bars[index]):
+                continue
+            agree = 0
+            for other in mates:
+                if any(abs(column - x) <= BAR_FAINT[3] * space for x in bars[other]) or any(
+                        abs(column - x) <= BAR_FAINT[3] * space and max(share, its) >= BAR_FAINT[1] for x, its in lines[other]):
+                    agree += 1
+            if 2 * agree >= len(mates):
+                out[index].append(float(column))
     return out
 
 

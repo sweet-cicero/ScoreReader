@@ -33,6 +33,13 @@ SECOND_TOUCH = (0.2, 0.95)   # two voices a second apart with the lower voice at
 #                    and heads that touch (at most this many staff spaces of paper between them) begin together. They
 #                    are two whole heads side by side: their middles stand at least the second number apart (the
 #                    slanted stroke of a hand that two voices share is one mark, read as two pieces). (None: off)
+STACKED = 0          # off. 0.6: two notes of one voice on two stems begin together when their heads are at most this many
+#                      staff spaces apart (a third voice on a staff: the basses in octaves under the tenors); a note that
+#                      follows another stands a head's width or more after it. Counted staff by staff the rule gains 51
+#                      notes on the clean copies and loses 3, and 95 and 0 on the fresh test set; counted part by part,
+#                      as the figures of this project are, it loses more than it gains (5 and 7; 7 and 20), because the
+#                      count of parts keeps one note of a column for each part and a false note in the column takes the
+#                      true note's place. Off until the count of parts holds such columns
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -182,7 +189,12 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                     and any(other['stem_x'] is not None and event['place'] - other['place'] == 1
                             and event['head']['x0'] - other['head']['x1'] <= SECOND_TOUCH[0] * space
                             and event['x'] - other['x'] >= SECOND_TOUCH[1] * space for other in column)
-                if same_stem or other_voice or one_line or stemless or partner or touching:
+                # A third voice: two notes with their stems to one side, each on its own stem, closer than a head is
+                # wide. One cannot follow the other there: they begin together.
+                stacked = bool(STACKED) and event['stem_x'] is not None and any(
+                    other['voice'] == event['voice'] and other['stem_x'] is not None and other['place'] != event['place']
+                    and abs(other['x'] - event['x']) <= STACKED * space for other in column)
+                if same_stem or other_voice or one_line or stemless or partner or touching or stacked:
                     column.append(event)
                     break
             else:
