@@ -35,6 +35,10 @@ TANGLE_NEAR = (2.0, 0.7)        # it begins at most this many staff spaces befor
                                 # this many staff spaces over or under the middle of the head
 TANGLE_SPECK = 0.04             # a piece of ink under this area (staff spaces squared) is a speck, no stroke of it
 TANGLE_HOLE = 0.08              # the paper that it closes in is at most this share of its box: an oval is a head
+FLAT_FLAG = 0.2          # the flag of an eighth is no flat: a flat whose stroke begins inside the reach of a stem's flag
+#                          (the flag's reach and this many staff spaces more, right of the stem) and stands between
+#                          that stem's end and its head is the flag's own stroke and hook. A stem in a beam has
+#                          no flag, and a flat can stand close behind it, under the beam (None: off)
 FLAT_LEG = (0.35, 0.1, 0.4, 0.6)   # a flat whose bowl has a second stroke as its right wall is a natural: the stroke stands
 #                    from this far before the sign's right edge to this far past it, begins this far under the sign's
 #                    top or lower, and ends this far under its bottom (staff spaces; None: off)
@@ -218,6 +222,20 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     return True
         return False
 
+    def flag_of_stem(sign: dict) -> bool:
+        for head in full:
+            for stem in head['stems']:
+                marks = stem.get('marks') or []
+                reach = max((mark['far'] for mark in marks if mark.get('right')), default=None)
+                if reach is None or any(mark.get('beam') for mark in marks) \
+                        or not (head.get('tails') or {}).get(stem['direction']):
+                    continue      # no flag, or a stem in a beam: a flat can stand close behind it, under the beam
+                top, bottom = min(head['cy'], stem['end']), max(head['cy'], stem['end'])
+                if stem['x'] < sign['x0'] <= stem['x'] + (reach + FLAT_FLAG) * space \
+                        and top - 0.1 * space <= sign['top'] and sign['bottom'] <= bottom + 0.1 * space:
+                    return True
+        return False
+
     def lying(sign: dict, group: list[dict]) -> list[dict]:
         return [head for head in group
                 if min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) >= 0.5 * min(sign['x1'] - sign['x0'] + 1, head['x1'] - head['x0'] + 1)
@@ -287,6 +305,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         if any(x0 - 2 <= sign['x0'] <= x1 + 2 for x0, x1 in taken):
             continue
         if sign['kind'] == 'flat':
+            if FLAT_FLAG is not None and flag_of_stem(sign):
+                continue
             if FLAT_LEG and any(sign['x1'] - FLAT_LEG[0] * space <= stroke['x'] <= sign['x1'] + FLAT_LEG[1] * space
                                 and sign['top'] + FLAT_LEG[2] * space <= stroke['top'] <= sign['bottom']
                                 and stroke['bottom'] >= sign['bottom'] + FLAT_LEG[3] * space

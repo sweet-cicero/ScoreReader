@@ -122,6 +122,15 @@ LEDGER_FOOT = (0.7, 0.4, 1.2, 0.3, 0.45)   # a head beside the staff with no led
 #                          side of its foot (from this share of its height on), this many to this many staff spaces from
 #                          the staff, at least this long and at most this thick: it sits on its ledger line (None: off)
 LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from the staff
+LEDGER_PAPER = (0.75, 0.3, 0.15, 0.8, 0.7, 1.3, 0.3)   # a print that sets its first ledger line near the staff (up to this
+#                      many staff spaces from it) has little room for a head past that line: the head is a half moon on
+#                      top of the line, and its middle lies hardly past it. But a head ON the line has its near half
+#                      between the line and the staff. Where at most this share of a band at the line's near edge
+#                      (this many staff spaces high, this many wide, under the head's middle) is ink, the head sits
+#                      past the line. One head stands there, no stem alone and no oval with the words under it:
+#                      0.3 staff spaces past the line the mark is from this to this share of a head of the page
+#                      wide. And the line is a line, no rim of a wide oval: it is this many staff spaces longer
+#                      than the mark is wide there (None: off)
 ORPHANS = (0.7, 1.5) # a thick mark with no stem, from this to this many times as wide and as high as the heads of the
 #                    page, is a head when an upright stroke that no head has ends at its edge (None: off)
 WHOLE_HALF = 0.3     # the same over or under a half note, when the oval is wider than it by this many staff spaces (0: off)
@@ -140,6 +149,10 @@ WHOLE_FILLED = 0     # a filled oval without a stem, as large as a whole note, t
 WHOLE_UNISON = 0.25  # two voices on one note, a half note and a whole note side by side: the oval at the far side of
 #                      the stem, its middle at most this many staff spaces from the height of the stem's own head,
 #                      has no stem (0: off)
+WHOLE_SECOND = (0.25, 0.85)   # a whole note a second from a note with a stem, in the order that no chord has. In a
+#                      chord the lower head of a second stands left of the stem and the upper head right of it. An oval
+#                      left of a stem down and from this to this many staff spaces over the stem's own head, or
+#                      right of a stem up and as far under it, is the whole note of the other voice (None: off)
 LINE_CHORD = 0.75    # hollow heads that touch, each on a line: the first and the last cell of their insides lie this
 #                      many staff spaces further apart than as many heads less two in the spaces would (0: off)
 SIGN_GLUED = (1.25, 2.3, 1.5, 0.3, 1.4, 0.5, 0.8, 1.3, 0.6, 2.0, 0.95)   # a sharp whose right stroke touches its head is one mark
@@ -925,6 +938,102 @@ def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
     return rows
 
 
+LEDGER_SHORT = (5.5, 6.5, 0.3, 0.15, 0.65, 0.1)   # the same print draws that line short, and no ledger line is found: a mark
+#                      beside the staff whose measured place lies from this to this. The rows where the ink runs on
+#                      through the mark's middle this many staff spaces longer than a head of the page is wide are a
+#                      line's. They are the foot of a head that sits on the line where at most this many staff spaces
+#                      of the mark lie between them and the staff, where they are at most this thick together (the
+#                      rim of a wide oval that a hand drew is as thick as the oval), and where the line sticks out at
+#                      both sides, by this much, past the mark's ink 0.3 staff spaces farther from the staff (None: off)
+
+
+def _short_line(layers: dict, head: dict, up: bool, space: float) -> bool:
+    """True when a mark holds a short ledger line as its foot: nothing of the mark lies between that line and the
+    staff, and the head stands on it (see LEDGER_SHORT)."""
+    free, cx = layers['free'], int(round(head['cx']))
+    reach, slack = int(1.3 * space), int(0.3 * space)
+    first = max(0, cx - reach)
+    long = layers['head'][0] + LEDGER_SHORT[2] * space
+    line = []
+    for y in range(head['y0'], head['y1'] + 1):
+        row = free[y, first:cx + reach + 1]
+        at = cx - first
+        if not row[at]:
+            near = np.nonzero(row[max(0, at - slack):at + slack + 1])[0]
+            if not near.size:
+                continue
+            at = max(0, at - slack) + int(near[np.argmin(np.abs(near - min(at, slack)))])
+        left = right = at
+        while left > 0 and row[left - 1]:
+            left -= 1
+        while right < len(row) - 1 and row[right + 1]:
+            right += 1
+        if right - left + 1 >= long:
+            line.append((y, first + left, first + right))
+    if not line or len(line) > LEDGER_SHORT[4] * space:
+        return False
+    if (head['y1'] - line[-1][0] if up else line[0][0] - head['y0']) > LEDGER_SHORT[3] * space:
+        return False
+    begin, end = min(left for _, left, _ in line), max(right for _, _, right in line)
+    body = (line[0][0] - slack) if up else (line[-1][0] + slack)
+    if not head['y0'] <= body <= head['y1']:
+        return False
+    ink = np.nonzero(free[body, begin:end + 1])[0]
+    return bool(ink.size) and ink[0] >= LEDGER_SHORT[5] * space and (end - begin) - ink[-1] >= LEDGER_SHORT[5] * space
+
+
+def _near_ink(layers: dict, head: dict, last: float, up: bool, space: float) -> float:
+    """The share of ink right at the near edge of a head's last ledger line, toward the staff, under the head's
+    middle (see LEDGER_PAPER). The edge of the line is measured at its wings, beside the head. The hole of a hollow
+    head counts as ink: a whole note on the line has its hole there."""
+    free, cx = layers['free'], head['cx']
+    wings = [column for column in list(range(int(cx - 0.95 * space), int(cx - 0.7 * space) + 1))
+             + list(range(int(cx + 0.7 * space), int(cx + 0.95 * space) + 1)) if 0 <= column < free.shape[1]]
+    row = edge = int(round(last))
+    step = 1 if up else -1
+    while wings and 0 < edge + step < free.shape[0] - 1 and abs(edge + step - row) <= 0.4 * space \
+            and free[edge + step, wings].mean() >= 0.5:
+        edge += step
+    first, other = edge + step, edge + step * max(2, int(round(LEDGER_PAPER[2] * space)))
+    half = LEDGER_PAPER[3] / 2 * space
+    rows, columns = slice(max(0, min(first, other)), max(first, other) + 1), slice(max(0, int(cx - half)), int(cx + half) + 1)
+    band = free[rows, columns] | layers['holes'][rows, columns]      # the inside of a hollow head on the line is no paper
+    return float(band.mean()) if band.size else 1.0
+
+
+def _line_out(layers: dict, head: dict, last: float, up: bool, space: float) -> bool:
+    """True when a head stands on its last ledger line, past it: 0.3 staff spaces past the line the mark is as wide
+    as a head, and the line is longer than that (see LEDGER_PAPER)."""
+    free, cx = layers['free'], int(round(head['cx']))
+    row = int(round(last))
+    if not 0 < row < free.shape[0] - 1 or not 0 <= cx < free.shape[1]:
+        return False
+    if not free[row, cx]:
+        row += 1 if free[row + 1, cx] else -1 if free[row - 1, cx] else 0
+    if not free[row, cx]:
+        return False
+    begin = end = cx
+    while begin > 0 and free[row, begin - 1]:
+        begin -= 1
+    while end < free.shape[1] - 1 and free[row, end + 1]:
+        end += 1
+    wings = [column for column in list(range(int(cx - 0.95 * space), int(cx - 0.7 * space) + 1))
+             + list(range(int(cx + 0.7 * space), int(cx + 0.95 * space) + 1)) if 0 <= column < free.shape[1]]
+    edge, step = row, -1 if up else 1
+    while wings and 0 < edge + step < free.shape[0] - 1 and abs(edge + step - row) <= 0.4 * space \
+            and free[edge + step, wings].mean() >= 0.5:
+        edge += step
+    body = edge + step * int(0.3 * space)
+    if not 0 <= body < free.shape[0]:
+        return False
+    ink = np.nonzero(free[body, begin:end + 1])[0]
+    if not ink.size:
+        return False
+    wide = int(ink[-1] - ink[0] + 1)
+    return LEDGER_PAPER[4] * layers['head'][0] <= wide <= LEDGER_PAPER[5] * layers['head'][0] \
+        and (end - begin + 1) - wide >= LEDGER_PAPER[6] * space
+
+
 def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
     """The place of a head beside the staff, read from its ledger lines as a singer reads it: the lines are counted,
     and the head stands on the last one or past it. A hand often draws the ledger lines nearer to each other than the
@@ -943,6 +1052,8 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
                 foot = ((row - head['y0']) if place > 0 else (head['y1'] - row)) / max(1, head['y1'] - head['y0'])
                 if foot >= LEDGER_FOOT[0] and LEDGER_FOOT[1] * space <= abs(row - edge) <= LEDGER_FOOT[2] * space:
                     return 7.0 if place > 0 else -7.0
+        if LEDGER_SHORT and LEDGER_SHORT[0] <= abs(place) < LEDGER_SHORT[1] and _short_line(layers, head, place > 0, space):
+            return 7.0 if place > 0 else -7.0
         if NO_LEDGER and 4.6 < abs(place) <= NO_LEDGER_FIVE:
             return 5.0 if place > 0 else -5.0     # a head beside the staff with no ledger line stands in the first space
         return place
@@ -974,11 +1085,19 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
             foot = ((last - head['y0']) if up else (head['y1'] - last)) / max(1, head['y1'] - head['y0'])
             if LEDGER_SIT_FOOT and foot >= LEDGER_SIT_FOOT[0]:
                 limit = LEDGER_SIT_FOOT[1]     # the line is the foot of the mark: the head sits on it
-    steps = 2 * len(merged) + (1 if past > limit * space else 0 if past >= -0.27 * space else -1)
+    sits, reach = past > limit * space, 1.6
+    if LEDGER_PAPER and not sits and past >= -0.27 * space:
+        before = staff['rows'][0 if up else -1]
+        if len(merged) == 1 and abs(last - before) <= LEDGER_PAPER[0] * space \
+                and _near_ink(layers, head, last, up, space) <= LEDGER_PAPER[1] and _line_out(layers, head, last, up, space):
+            # Paper between the line and the staff: the head is no head on the line. Its mark is the half moon and
+            # the line under it, so its measured place lies near the line.
+            sits, reach = True, 2.0
+    steps = 2 * len(merged) + (1 if sits else 0 if past >= -0.27 * space else -1)
     found = float(4 + steps) if up else float(-4 - steps)
     if abs(found) < abs(place) - 2.2:
         return None       # too few ledger lines for a head this far from the staff: a letter over a hyphen
-    return found if abs(found - place) <= 1.6 else place
+    return found if abs(found - place) <= reach else place
 
 
 def _on_ledger(layers: dict, mark: dict) -> bool:
@@ -1282,6 +1401,16 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
                             and (other['x1'] <= stem['x'] + near if up else other['x0'] >= stem['x'] - near)
                             and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
                                     for own in other['stems']) for other in heads):
+                mark['stems'].remove(stem)
+                count += 1
+                continue
+            if WHOLE_SECOND and (mark['cx'] > stem['x'] if up else mark['cx'] < stem['x']) \
+                    and any(other is not mark and (other['cx'] < stem['x'] if up else other['cx'] > stem['x'])
+                            and WHOLE_SECOND[0] * space <= (mark['cy'] - other['cy'] if up else other['cy'] - mark['cy'])
+                            <= WHOLE_SECOND[1] * space
+                            and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= near
+                                    for own in other['stems']) for other in heads):
+                # The two heads of a second stand in the order that no chord has (see WHOLE_SECOND).
                 mark['stems'].remove(stem)
                 count += 1
                 continue
