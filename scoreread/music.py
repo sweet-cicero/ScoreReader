@@ -390,6 +390,27 @@ def _bar_steps(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[fl
                     votes[number][length] = votes[number].get(length, 0) + 1
                     if pause:
                         resting[number][length] = resting[number].get(length, 0) + 1
+        for at, (number, following, events, length, pause) in enumerate(spans):
+            # A hollow head with the ink of a printed flag (symbols.RING_FLAG): the copy burnt out a filled head, where
+            # another voice of the step says the length that the flag gives.
+            short = length / 4
+            if following == number + 1 and votes[number].get(short) \
+                    and all(event['head'].get('hollow') and event['length'] == length
+                            and ('up' if event['voice'] == 1 else 'down') in event['head'].get('flag_ink', ())
+                            for event in events):
+                for event in events:
+                    event['length'] = short
+                    event['agreed'] = True
+                votes[number][length] -= 1
+                if not votes[number][length]:
+                    del votes[number][length]
+                votes[number][short] += 1
+                if pause:
+                    resting[number][length] -= 1
+                    if not resting[number][length]:
+                        del resting[number][length]
+                    resting[number][short] = resting[number].get(short, 0) + 1
+                spans[at] = (number, following, events, short, pause)
         sure = [None] * count
         for number in range(count):
             if votes[number]:

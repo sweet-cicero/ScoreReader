@@ -142,6 +142,14 @@ WHOLE_UNISON = 0.25  # two voices on one note, a half note and a whole note side
 #                      has no stem (0: off)
 LINE_CHORD = 0.75    # hollow heads that touch, each on a line: the first and the last cell of their insides lie this
 #                      many staff spaces further apart than as many heads less two in the spaces would (0: off)
+SIGN_GLUED = (1.25, 2.3, 1.5, 0.3, 1.4, 0.5, 0.8, 1.3, 0.6, 2.0, 0.95)   # a sharp whose right stroke touches its head is one mark
+#                      with the head (None: off). The mark is from this to this many times as wide as the heads of the page
+#                      and at most this many times as high; a stroke goes through its left third, up and down, from
+#                      this to this many staff spaces past the mark (the stroke of a sign: a stem is longer); the mark
+#                      is cut at most this many staff spaces right of that stroke, where it is narrowest; what is left
+#                      of it at the right is from this to this many times as large as a head, has ink in this
+#                      share of its box, and a stem at its right side that goes this many staff spaces past it; the
+#                      other stroke of the sharp stands at most this many staff spaces left of the first
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -1198,6 +1206,58 @@ def _two_heads(layers: dict, mark: dict) -> list[dict] | None:
     return out
 
 
+def _glued_sign(layers: dict, mark: dict) -> list[dict] | None:
+    """The two parts of a mark that is the right stroke of a sharp and the head that the sharp touches (see
+    SIGN_GLUED): [what is left of the sign, the head]. None when the mark is no such mark."""
+    space = layers['space']
+    wide, high = layers['head']
+    own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    if not (SIGN_GLUED[0] * wide <= own_wide <= SIGN_GLUED[1] * wide and own_high <= SIGN_GLUED[2] * high):
+        return None
+    ways = {name: _way(layers, mark, name == 'up', False) for name in ('up', 'down')}
+    if not all(way and SIGN_GLUED[3] * space <= way['past'] <= SIGN_GLUED[4] * space
+               and way['slim'] >= SHARP_SLIM * space for way in ways.values()):
+        return None
+    stroke = (ways['up']['mid'] + ways['down']['mid']) / 2
+    if abs(ways['up']['mid'] - ways['down']['mid']) > 0.25 * space or stroke > mark['x0'] + 0.35 * own_wide:
+        return None
+    # A sharp has two strokes: the other one stands at the left of this one, as high as the mark, and it ends as
+    # this one does (a bar line goes on).
+    ink = layers['bare']
+    top, bottom = max(0, mark['y0'] - int(SIGN_GLUED[4] * space) - 2), min(ink.shape[0], mark['y1'] + int(SIGN_GLUED[4] * space) + 3)
+    other = False
+    for x in range(max(0, int(stroke - SIGN_GLUED[10] * space)), max(0, int(stroke - SIGN_GLUED[3] * space))):
+        column = ink[top:bottom, x] > 0
+        if not column[0] and not column[-1] and column[mark['y0'] - top:mark['y1'] + 1 - top].mean() >= 0.9:
+            other = True
+            break
+    if not other:
+        return None
+    mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    first = max(1, int(round(stroke - mark['x0'])) + 1)
+    last = min(own_wide - 2, first + int(round(SIGN_GLUED[5] * space)))
+    if last <= first:
+        return None
+    cut = first + int(np.argmin(mask[:, first:last + 1].sum(axis=0)))
+    # The room between the stroke and the round side of the head is closed in: it is no hole of the head.
+    inside = holes[:, cut:].copy()
+    inside[:, :int(0.35 * (own_wide - cut))] = False
+    head = _mark(mask[:, cut:], inside, mark['x0'] + cut, mark['y0'], mark['blob'])
+    sign = _mark(mask[:, :cut], holes[:, :cut], mark['x0'], mark['y0'], mark['blob'])
+    if head is None or sign is None:
+        return None
+    part_wide, part_high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
+    if not (SIGN_GLUED[6] * wide <= part_wide <= SIGN_GLUED[7] * wide and SIGN_GLUED[6] * high <= part_high <= SIGN_GLUED[7] * high
+            and head['area'] >= SIGN_GLUED[8] * part_wide * part_high):
+        return None
+    stems = [_way(layers, head, up, True) for up in (True, False)]
+    if not any(is_stem(way, space) and way['past'] >= SIGN_GLUED[9] * space for way in stems):
+        return None
+    head['glued'] = True
+    return [sign, head]
+
+
 def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
     """A stem carries heads of one kind: all filled or all hollow. A print sets a whole note of one voice in the
     column of a stemmed note of the other voice, with their left edges in line; the two heads touch, and followed
@@ -1266,6 +1326,9 @@ def read_symbols(layers: dict) -> dict:
     'kind', 'staff', 'place' and 'count' (two sharps that touch are one mark)."""
     space = layers['space']
     marks = thick_marks(layers)
+    if SIGN_GLUED:
+        # A sharp that touches its head: the right stroke of the sharp and the head are one mark, and no head.
+        marks = [part for mark in marks for part in (_glued_sign(layers, mark) or [mark])]
     for mark in marks:
         wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
         mark['stems'] = []
@@ -1275,6 +1338,10 @@ def read_symbols(layers: dict) -> dict:
         mark['ways'] = {f"{'up' if up else 'down'}_{'right' if right else 'left'}": _way(layers, mark, up, right)
                         for up in (True, False) for right in (True, False)}
         mark['kind'] = _kind(mark, space)
+        if mark.get('glued'):
+            # The head that a sharp touches: the upright ink at its left side is the stroke of the sharp.
+            mark['ways']['up_left'] = mark['ways']['down_left'] = None
+            mark['kind'] = 'head'
         if FLAT_HEAD and mark['kind'] == 'flat' and mark['hole'] < HOLLOW \
                 and wide >= FLAT_HEAD * layers['head'][0] and high >= FLAT_HEAD * layers['head'][1] \
                 and sum(1 for other in marks if other['blob'] == mark['blob']) == 2 \
@@ -2282,6 +2349,12 @@ DOT_CLOSE = (0.15, 0.25, 0.65, 1.5)   # a dot stands this near to its head (less
 #                    at least this many staff spaces, it is round (from this to this wide for its height: a piece
 #                    of a broken stem is slim) and no other head has it as its dot: a tight engraving (None: off)
 SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
+RING_FLAG = (0.45, 0.75, 0.25, 0.5, 0.4)   # a hollow head with the ink of a printed flag at its stem: one piece at the right
+#                      of the stem's end and none at its left, from this to this many staff spaces far, from this to this
+#                      thick, leaning this much, and no beam. A copy that burns out its filled heads leaves such rings: it
+#                      is no flag of a half note. The ink is asked of each stem alone: a head that two voices share
+#                      is such a ring for the voice whose stem has the flag. music._bar_steps takes the note for an
+#                      eighth where another voice of its step says an eighth (None: off)
 TAIL_START = 0.55    # the hook of a flag begins this near to the end of its stem, in staff spaces
 THIN_BEAM = (0.2, 0.85, 0.6)    # a beam that a hand drew as one thin line from the end of a stem to the end of the next:
                                 # ink at most this far (staff spaces) from the straight line, on this share of the way
@@ -2326,6 +2399,13 @@ PAST_TWO = (0.3, 1.2, 0.7)      # two strokes one over the other before the last
 #                                 is the slur's (None: off)
 THIN_BEAM_PAST = (0.4, 1.0, 0.45)   # a slur goes on past the last stem: ink from this far to this far past it, at most
                                     # this far from the line (staff spaces; None: off)
+PAST_SLIM = (0.35, 0.4, 0.9, 0.33, 0.6)   # the ink that goes on ends in a blob (None: any ink counts): in the first columns
+                                    # past the stem (this share of them, the second number) it is a stroke at most this
+                                    # many staff spaces high (the first), and in the last columns (the fourth, a share)
+                                    # it is this many staff spaces high or more (the third) in this share of them (the
+                                    # fifth). That is the end of the beam beside a letter of the dynamics or a sign,
+                                    # and a slur only where the two stems bend and turn toward each other as in a slur
+                                    # (STEM_SLUR)
 
 
 def _last_head(heads: list[dict], head: dict, stem: dict, space: float) -> float:
@@ -2702,6 +2782,15 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                             stem['thin_run'] = len(run)
                 first = last + 1
     for head in heads:
+        if RING_FLAG:
+            # The ink of a printed flag, for a head that is hollow (see RING_FLAG).
+            # It is asked of each stem alone: a head of two voices is a ring with a flag for the voice whose stem has it.
+            head['flag_ink'] = [
+                stem['direction'] for stem in head['stems']
+                if head['tails'].get(stem['direction']) and len(stem.get('marks', [])) == 1
+                and all(piece['right'] and not piece['beam'] and RING_FLAG[0] <= piece['far'] <= RING_FLAG[1]
+                        and RING_FLAG[2] <= piece['thick'] <= RING_FLAG[3] and piece['lean'] >= RING_FLAG[4]
+                        for piece in stem['marks'])]
         if SHARED_TAILS and len(head['tails']) == 2:
             # One head with two stems is one note that two voices sing: a hand draws its flag at one stem only.
             most = max(head['tails'].values())
@@ -2767,6 +2856,7 @@ def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
     slope = (last - before) / (outer['x'] - inner['x'])
     reach = int(round(THIN_BEAM_PAST[2] * space))
     seen = count = 0
+    runs = []
     for step in range(int(round(THIN_BEAM_PAST[0] * space)), int(round(THIN_BEAM_PAST[1] * space)) + 1):
         x = int(round(outer['x'])) + side * step
         y = int(round(last + slope * side * step))
@@ -2788,10 +2878,30 @@ def _goes_on(layers: dict, inner: dict, outer: dict) -> bool:
         if not 0 <= x < width or bottom <= top:
             continue
         count += 1
-        seen += bool(ink[top:bottom, x].any())
-    if PAST_TWO and count > 0 and seen >= 0.6 * count and _two_strokes(layers, inner, outer):
+        rows = np.nonzero(ink[top:bottom, x])[0]
+        if len(rows):
+            seen += 1
+            # The run of ink nearest to the line, followed past the rows that were looked at.
+            first = low = top + int(rows[np.argmin(np.abs(rows + top - y))])
+            while first > 0 and ink[first - 1, x]:
+                first -= 1
+            while low + 1 < height and ink[low + 1, x]:
+                low += 1
+            runs.append(low - first + 1)
+        else:
+            runs.append(0)
+    if count == 0 or seen < 0.6 * count:
         return False
-    return count > 0 and seen >= 0.6 * count
+    near, far = runs[:max(1, int(PAST_SLIM[1] * count))] if PAST_SLIM else [], runs[-max(1, int(PAST_SLIM[3] * count)):] if PAST_SLIM else []
+    if PAST_SLIM and all(0 < run <= PAST_SLIM[0] * space for run in near) \
+            and sum(1 for run in far if run >= PAST_SLIM[2] * space) >= PAST_SLIM[4] * len(far):
+        # A stroke that ends in a blob (a letter of the dynamics, a sign): the end of the beam, and what stands beside
+        # it. The stems tell a slur: they were followed into it, and bend and turn toward each other (STEM_SLUR).
+        one, two = (inner, outer) if inner['x'] < outer['x'] else (outer, inner)
+        bends = ((one['x'] - one.get('mid', one['x'])) / space, (two.get('mid', two['x']) - two['x']) / space)
+        if not (STEM_SLUR and min(bends) >= STEM_SLUR[0] and one.get('turn', 0.0) - two.get('turn', 0.0) >= STEM_SLUR[2]):
+            return False
+    return not (PAST_TWO and _two_strokes(layers, inner, outer))
 
 
 def _two_strokes(layers: dict, inner: dict, outer: dict) -> bool:
