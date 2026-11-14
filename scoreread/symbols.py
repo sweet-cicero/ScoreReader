@@ -2314,6 +2314,13 @@ BEAM_PAIR = (0.14, 0.6, 0.65, 0.75)   # a slim beam of a fine engraving: long in
 #                      this high where it hangs on the stem, at most this far from the stem's end (staff spaces),
 #                      straight, the next stem shows such ink or a beam from its other side, and it is this share
 #                      as thick as the page's own beams, when the page has thick beams (None: off)
+BEAM_TWO = (1.0, 1.55, 0.45, 0.85, 1.75, 0.8, 0.04, 0.15)   # two printed beams that a staff line joins are one block of ink
+#                      (None: off). At a stem with one beam counted, the beam's piece at one side is a full flat block
+#                      from [0] to [1] staff spaces thick, its piece at the other side one from [2] to [3], and the thick
+#                      one is at least [4] times the other: the thick piece is two beams, and the note a sixteenth. A
+#                      block fills this share [5] of its box, and the thick one leans at most [6]: a beam that a
+#                      hand drew fat is neither. The stem at the other end of the thick piece has the same ink, as thick within this
+#                      share [7], and two beams too
 BEAM_EDGE = 0.3      # one beam can be TAIL_THICK at one stem and slimmer at the next: a beam under this thickness that the
 #                      next stem does not show as a thick beam is looked at as a slim beam too (see BEAM_PAIR; None: off)
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
@@ -2341,6 +2348,12 @@ DOT_FLAT = 1.7       # and at most this wide for its height
 DOT_FILL = 0.55      # and its ink fills at least this share of its box
 DOT_SMALL = 0.18     # and each of its sides is at least this many staff spaces: a smaller piece is a speck of the copy
 #                    or the cut end of a ledger line (0.14: as it was)
+DOT_TWO = (0.7, 1.25, 0.12, 0.7, 0.75, 1.4, 1.6)   # a second dot (None: off): a dot from [0] to [1] staff spaces right of
+#                      the first, at most [2] higher or lower, with paper between them: the note is one and three
+#                      quarters as long as its head says. The two dots are alike (the smaller has this share [3] of
+#                      the larger one's ink) and round (from [4] to [5] as wide as high): a speck of the copy beside
+#                      a dot is neither. No dot stands over or under the second one, up to [6] staff spaces away:
+#                      these are the two dots of a repeat sign
 DOT_ASK = (0.75, 0.45, 0.8)   # a mark at the right of a head that is nearly a dot: at most this many staff spaces wide,
 #                    its ink at least this share of its box, its middle at most this far over the middle of the head,
 #                    of any shape. It is no dot by itself: music.agree_lengths takes it for one where the sure steps
@@ -2688,6 +2701,52 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 along = y0 < head['y0'] - 0.5 * space if stem['direction'] == 'up' else y1 > head['y1'] + 0.5 * space
                 if along and not head['tails'].get(stem['direction']):
                     head['tails'][stem['direction']] = 1
+    if BEAM_TWO:
+        # Two beams with a staff line in the gap between them (see BEAM_TWO).
+        low, high, slim_low, slim_high, times, fill, lean, same = BEAM_TWO
+
+        def block(piece: dict) -> bool:
+            return piece['area'] >= fill * piece['thick'] * piece['far'] and abs(piece['lean']) <= lean
+
+        def side(stem: dict, right: bool) -> dict | None:
+            pieces = [piece for piece in stem.get('marks', []) if piece['beam'] and piece['right'] == right]
+            return max(pieces, key=lambda piece: piece['thick']) if pieces else None
+
+        owners = [(head, stem) for head in heads for stem in head['stems'] if head['tails'].get(stem['direction']) == 1]
+        double: dict[int, bool] = {}     # the stems with two beams, and the side of their thick piece
+        for head, stem in owners:
+            for right in (True, False):
+                big, slim = side(stem, right), side(stem, not right)
+                if big is not None and slim is not None and block(big) and slim['area'] >= fill * slim['thick'] * slim['far'] \
+                        and low <= big['thick'] <= high \
+                        and slim_low <= slim['thick'] <= slim_high and big['thick'] >= times * slim['thick']:
+                    double[id(stem)] = right
+                    break
+        changed = bool(double)
+        while changed:
+            changed = False
+            for head, stem in owners:
+                if id(stem) in double:
+                    continue
+                for right in (True, False):
+                    mine = side(stem, right)
+                    if mine is None or not block(mine) or not low <= mine['thick'] <= high:
+                        continue
+                    others = [other for other in groups[(head['staff'], stem['direction'])]
+                              if 0.33 * space < (other['x'] - stem['x']) * (1 if right else -1) <= 10 * space
+                              and side(other, not right) is not None]
+                    if not others:
+                        continue
+                    near = min(others, key=lambda other: abs(other['x'] - stem['x']))
+                    far = side(near, not right)
+                    if double.get(id(near)) is not None and block(far) and abs(mine['thick'] - far['thick']) <= same * far['thick'] \
+                            and (double[id(near)] == (not right) or low <= far['thick'] <= high):
+                        double[id(stem)] = right
+                        changed = True
+                        break
+        for head, stem in owners:
+            if id(stem) in double:
+                head['tails'][stem['direction']] = 2
     if THIN_BEAM:
         # A hand draws a beam as one thin line. A slur is thin too, but it bends over the notes: only a beam runs
         # straight from the end of one stem to the end of the next.
@@ -3156,7 +3215,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
     # The dots of two voices stand one over the other, and the joining of dashes makes one upright stroke of them:
     # so the dots are looked for in the ink itself, not in the marks that are left without the strokes.
     count, labels, stats, centres = cv2.connectedComponentsWithStats(layers['bare'], connectivity=8)
-    found, full = [], []
+    found, full, sizes = [], [], []
     for index in range(1, count):
         x, y, wide, high, area = stats[index]
         if not (DOT_SMALL * space <= wide <= 0.6 * space and DOT_SMALL * space <= high <= DOT_HIGH * space):
@@ -3164,6 +3223,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
         if area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
             continue
         found.append((float(centres[index][0]), float(centres[index][1])))
+        sizes.append((int(x), int(wide), int(high), int(area)))
         full.append(bool(DOT_CLOSE) and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
     nearly = []
     for index in range(1, count if DOT_ASK else 1):
@@ -3172,6 +3232,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
                 and area >= DOT_ASK[1] * wide * high:
             nearly.append((float(centres[index][0]), float(centres[index][1])))
     taken = set()
+    first = {}
     for head in heads:
         head['dot'] = False
         head['dot_near'] = any(DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space
@@ -3181,6 +3242,31 @@ def dots(layers: dict, heads: list[dict]) -> None:
                     and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
                 head['dot'] = True
                 taken.add(number)
+                if id(head) not in first or x < found[first[id(head)]][0]:
+                    first[id(head)] = number
+    for head in heads if DOT_TWO else []:
+        # A second dot at the right of the first (see DOT_TWO).
+        if id(head) not in first:
+            continue
+        near, far, level, alike, slim, flat, colon = DOT_TWO
+        one = first[id(head)]
+        x, y = found[one]
+        for number, (other, row) in enumerate(found):
+            if not (near * space <= other - x <= far * space and abs(row - y) <= level * space):
+                continue
+            if min(sizes[one][3], sizes[number][3]) < alike * max(sizes[one][3], sizes[number][3]) \
+                    or not all(slim <= sizes[index][1] / sizes[index][2] <= flat for index in (one, number)):
+                continue
+            if any(index != number and abs(column - other) <= 0.3 * space and 0.5 * space <= abs(line - row) <= colon * space
+                   for index, (column, line) in enumerate(found)):
+                continue        # the two dots of a repeat sign stand one over the other
+            left, right = sizes[one][0] + sizes[one][1] + 1, sizes[number][0] - 1
+            top, bottom = int(min(y, row) - 0.15 * space), int(max(y, row) + 0.15 * space) + 1
+            if right > left and layers['bare'][max(0, top):bottom, left:right].any():
+                continue        # paper stands between the two dots
+            head['dots'] = 2
+            taken.add(number)
+            break
     for head in heads:
         # A tight engraving sets the dot against the head. One dot is the dot of one head.
         if DOT_CLOSE and not head['dot']:

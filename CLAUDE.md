@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 85.9 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.0 % on
-scans; 77 scores at 99 % or more), 95.6 % of the notes on the clean copies (21,593 of 22,589; 23 of the 78 counted
+Not reached yet: 86.0 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.1 % on
+scans; 78 scores at 99 % or more), 95.8 % of the notes on the clean copies (21,638 of 22,591; 24 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
-words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
+words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
 (82.1 % on scans), and 89.9 % on the kit (6203 of 6901).
-On the fresh test set, which no rule was set on: 94.9 % of the notes (39,618 of 41,761; 90 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 94.9 % of the notes (39,630 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -90,6 +90,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   notes before a rule is blamed for it.
 - A copy of the code that writes a new field into the notes for a census makes every page differ from the run
   before it. Compare the pages without that field.
+- The notes gained and lost are the net of each score. A rule can read wrongly on a score whose count does not
+  move: a second dot was read from a speck or from a repeat sign on eight pages, and no count showed it
+  (14 November 2026). Look at every page that a rule changes outside the scores that it was written for.
+- The words under a staff are those of every voice of the staff, and the words over a staff are those of the
+  staff over it. Where one voice holds its note the others sing on, so a rule that asks the words about a note is
+  a rule of the page (a bow from syllable to syllable: five such bows or more, and half of the page's bows).
 - OpenCV's opening and closing with a kernel of an even size are one pixel off: `ink & (1 - open(ink))` then
   keeps one edge of every blob (the top row for a kernel that stands, the left column for one that lies). Each
   place of the reader was mended alone and read (14 November 2026). Only the thin ink of the layers gains and is

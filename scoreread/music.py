@@ -103,6 +103,8 @@ def length_of(head: dict, tails: int) -> Fraction:
         base = Fraction(2) if head['stems'] else Fraction(4)
     else:
         base = Fraction(1) / (2 ** tails)
+    if head.get('dot') and head.get('dots') == 2:
+        return base * Fraction(7, 4)      # two dots (symbols.DOT_TWO)
     return base * Fraction(3, 2) if head.get('dot') else base
 
 LETTER = re.compile(r'^([A-G])([b♭#♯]?)([↓↑]?)$')
@@ -556,6 +558,9 @@ def _note_xml(note: dict, chord: bool) -> str:
         drawn = length
     dotted = drawn / Fraction(3, 2)
     kind, dot = (TYPES[dotted], True) if dotted in TYPES and drawn not in TYPES else (TYPES.get(drawn), False)
+    twice = drawn / Fraction(7, 4)
+    if kind is None and twice in TYPES:
+        kind, dot = TYPES[twice], 2       # a note with two dots
     parts = ['<note>']
     if chord:
         parts.append('<chord/>')
@@ -568,7 +573,7 @@ def _note_xml(note: dict, chord: bool) -> str:
     if kind:
         parts.append(f'<type>{kind}</type>')
         if dot:
-            parts.append('<dot/>')
+            parts.append('<dot/>' * int(dot))
         if triplet:
             parts.append('<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>')
     if ties:

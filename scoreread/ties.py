@@ -48,6 +48,14 @@ TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff l
 #                         staff spaces; at most this share of the columns is crossed by a stem or a bar line; the
 #                         run is this many staff spaces long or more; this share of its columns is fat; the line lies
 #                         at most this many staff spaces from the middle of the heads
+TIE_WORD = (5, 0.5, 6.5, 2.0, 0.3, 0.7, 0.45, 0.4)   # a page whose bows join the syllables of a word (None: off). A tied note
+#                         takes no syllable. Where at least [0] ties of a page end over the beginning of a syllable (the
+#                         ties of a chord count once), and these are at least this share [1] of its ties that have words,
+#                         they are no ties: the print draws a bow from syllable to syllable. The words of a staff are the
+#                         nearest band of words under it, at most [2] staff spaces away. A syllable begins from [3] staff spaces left of
+#                         the middle of the second head to [4] right of it and is at least [5] wide; its letters stand at
+#                         most [6] apart, and a letter's column has ink over [7] staff spaces of rows (a hyphen and a
+#                         line under the words are flat)
 TIE_BREAK = (3.0, 0.45, 1.8, 1.0, 0.4, 0.6, 1.0, 0.9, 0.5)   # a tie over the end of a line (None: off): a bow leaves the last
 #                         note of its voice, is this many staff spaces long or more, shows its ink in this share of its
 #                         columns, ends at most this far before the end of the staff and moves at most this far up or
@@ -308,6 +316,34 @@ def _in_line(layers: dict, one: dict, two: dict, space: float) -> bool:
     return False
 
 
+def _syllable(layers: dict, head: dict) -> bool | None:
+    """True where a syllable of the words begins under the head; None where no words stand under the staff of the
+    head (see TIE_WORD). The words over a staff are those of the staff over it: a voice under them can hold its note
+    while the others sing on."""
+    space, bare = layers['space'], layers['bare']
+    rows = layers['staves'][head['staff']]['rows']
+    bands = layers.get('words') or []
+    band = min((band for band in bands if band['top'] > rows[4] - space), key=lambda band: band['top'], default=None)
+    if band is None or band['top'] - rows[4] > TIE_WORD[2] * space:
+        return None
+    middle = head['cx']
+    first = max(0, int(middle - (TIE_WORD[3] + 1.0) * space))
+    last = min(bare.shape[1], int(middle + (TIE_WORD[4] + TIE_WORD[5] + 1.0) * space))
+    part = bare[band['top']:band['bottom'], first:last]
+    if part.size == 0:
+        return False
+    top, bottom = part.argmax(axis=0), part.shape[0] - 1 - part[::-1].argmax(axis=0)
+    letters = np.flatnonzero(part.any(axis=0) & (bottom - top + 1 >= TIE_WORD[7] * space)) + first
+    start = None
+    for number, column in enumerate(letters):
+        if number == 0 or column - letters[number - 1] > TIE_WORD[6] * space:
+            start = column
+        if (number + 1 == len(letters) or letters[number + 1] - column > TIE_WORD[6] * space) \
+                and column - start >= TIE_WORD[5] * space and -TIE_WORD[3] * space <= start - middle <= TIE_WORD[4] * space:
+            return True
+    return False
+
+
 def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
     """The ties of a page: (first head, second head). Each first head gets 'tie_start' and each second head
     'tie_stop'."""
@@ -368,6 +404,23 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                                 other['tie_stop'] = True
                                 found.append((one, other))
                             break
+    if TIE_WORD:
+        # A page whose bows go from syllable to syllable (see TIE_WORD).
+        asked = [(one, two, _syllable(layers, two)) for one, two in found]
+        word = [(one, two) for one, two, begins in asked if begins]
+
+        def columns(pairs: list) -> int:
+            # The ties of a chord are one bow of the page.
+            places = sorted((two['staff'], two['cx']) for _, two in pairs)
+            return sum(1 for number, (staff, x) in enumerate(places)
+                       if number == 0 or staff != places[number - 1][0] or x - places[number - 1][1] > 0.7 * space)
+
+        if columns(word) >= TIE_WORD[0] \
+                and columns(word) >= TIE_WORD[1] * columns([(one, two) for one, two, begins in asked if begins is not None]):
+            found = [(one, two) for one, two, begins in asked if not begins]
+            for one, two in word:
+                one['tie_start'] = any(other is one for other, _ in found)
+                two['tie_stop'] = any(other is two for _, other in found)
     if TIE_BREAK:
         every = {}
         for head in heads:
