@@ -19,11 +19,11 @@ optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, 
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.0 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.1 % on
-scans; 78 scores at 99 % or more), 95.8 % of the notes on the clean copies (21,638 of 22,591; 24 of the 78 counted
+scans; 78 scores at 99 % or more), 95.9 % of the notes on the clean copies (21,656 of 22,591; 24 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
-(82.1 % on scans), and 89.9 % on the kit (6203 of 6901).
-On the fresh test set, which no rule was set on: 94.9 % of the notes (39,630 of 41,761; 90 of 214 pieces at 99 %),
+(82.1 % on scans), and 89.9 % on the kit (6204 of 6901).
+On the fresh test set, which no rule was set on: 94.9 % of the notes (39,633 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -84,6 +84,7 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   showed, not to a limit.
 - A rule for a head asks its measure of the stem of the note's own voice. A head that two voices share has two
   stems, and a flag at one of them says nothing of the other voice (the fresh set showed it, 14 November 2026).
+  A stem in a beam has no flag: a mark at its right is the beam, and a flat can stand close behind it.
 - The sheets of mistakes compare staff by staff, and they can line up the notes of a chord crosswise: a score showed
   10 mistakes where 3 were real. Count a score's lost notes by parts before a rule is written from its sheet. The
   count by parts can move by a note too where only a note that is not there changed its length: look at the read
@@ -96,6 +97,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The words under a staff are those of every voice of the staff, and the words over a staff are those of the
   staff over it. Where one voice holds its note the others sing on, so a rule that asks the words about a note is
   a rule of the page (a bow from syllable to syllable: five such bows or more, and half of the page's bows).
+- A rule for a head beside the staff is read on the thick copies and the copies by hand before it is trusted. A
+  hand draws a note under the staff as a wide oval with no ledger line, and the rim of that oval is as level and
+  as long as a line; on a thick copy a stem alone stands on a ledger line where the head is one blot with it. Two
+  rules for a head on top of a near ledger line gained 12 and 11 notes on all of LitChoir in their first forms
+  and lost 11 and 10, on such copies (14 November 2026). Ask for the shape of the print: one head as wide as the
+  page's heads past the line, and a line that is longer than the head.
+- The clean list holds some hymns in two or three scans of one print. A cause on such a page counts two or three
+  times, in the notes that a rule gains and in the notes that a score lacks.
 - OpenCV's opening and closing with a kernel of an even size are one pixel off: `ink & (1 - open(ink))` then
   keeps one edge of every blob (the top row for a kernel that stands, the left column for one that lies). Each
   place of the reader was mended alone and read (14 November 2026). Only the thin ink of the layers gains and is
