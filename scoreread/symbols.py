@@ -2247,6 +2247,8 @@ BEAM_PAIR = (0.14, 0.6, 0.65, 0.75)   # a slim beam of a fine engraving: long in
 #                      this high where it hangs on the stem, at most this far from the stem's end (staff spaces),
 #                      straight, the next stem shows such ink or a beam from its other side, and it is this share
 #                      as thick as the page's own beams, when the page has thick beams (None: off)
+BEAM_EDGE = 0.3      # one beam can be TAIL_THICK at one stem and slimmer at the next: a beam under this thickness that the
+#                      next stem does not show as a thick beam is looked at as a slim beam too (see BEAM_PAIR; None: off)
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
 FLAG_BACK = 0.08     # a printed flag comes back toward the head by this many staff spaces while it leaves the stem
 FLAG_HOLE = (0.7, 0.75, 0.3, 0.7)   # a printed flag that reaches 0.6 staff spaces or a little more (under this) shows no
@@ -2444,9 +2446,10 @@ def _is_beam(piece: dict) -> bool:
     return bool(piece['thick'] >= TAIL_THICK and piece['far'] >= BEAM_FAR)
 
 
-def _is_slim(piece: dict) -> bool:
-    """Long ink a little thinner than a beam, where a beam hangs: the slim beam of a fine engraving (BEAM_PAIR)."""
-    return bool(BEAM_PAIR and piece['far'] >= BEAM_FAR and BEAM_PAIR[0] <= piece['thick'] < TAIL_THICK
+def _is_slim(piece: dict, under: float = TAIL_THICK) -> bool:
+    """Long ink a little thinner than a beam (thinner than `under`), where a beam hangs: the slim beam of a fine
+    engraving (BEAM_PAIR)."""
+    return bool(BEAM_PAIR and piece['far'] >= BEAM_FAR and BEAM_PAIR[0] <= piece['thick'] < under
                 and piece['high'] <= BEAM_PAIR[1] and piece['from_end'] <= BEAM_PAIR[2])
 
 
@@ -2519,7 +2522,10 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
         for group in groups.values():
             for stem in group:
                 for piece in stem['marks']:
-                    if not piece['beam'] and _is_slim(piece) and (usual is None or piece['thick'] >= BEAM_PAIR[3] * usual) \
+                    # (A beam at the edge of TAIL_THICK without its witness: the next stem can show it slim, see BEAM_EDGE.)
+                    slim = _is_slim(piece) if not piece['beam'] else \
+                        bool(BEAM_EDGE and not piece['witness'] and _is_slim(piece, BEAM_EDGE))
+                    if slim and (usual is None or piece['thick'] >= BEAM_PAIR[3] * usual) \
                             and witness(group, stem, piece['right'], True) and (not BEAM_STRAIGHT or straight(group, stem, piece)):
                         piece['slim'] = True
         for group in groups.values():

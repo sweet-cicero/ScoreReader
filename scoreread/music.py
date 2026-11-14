@@ -61,6 +61,12 @@ REST_SPAN = (0.75, 1.0)   # a note with a rest of its staff after it (the rest's
 #                           On a staff of two voices a rest that stands this many staff spaces or more over the
 #                           middle line is the upper voice's alone, and one as far under it the lower voice's
 #                           (None: the rests are not looked at)
+BAR_FULL = (0.5, 4)  # the bars of a page whose steps are all sure each have a sum. Where this share of them or more, and
+#                      this many at least, have the same sum, a bar with one open step is as long as they are: the open
+#                      step is what is left of that sum, when a voice of the step says that length (None: off)
+BAR_KEEP = True      # and the last note of a voice in its bar that ends where such a full bar ends is not made shorter by
+#                      the steps under it: the other voices rest at the end of the bar. A whole note has no stem to
+#                      show its voice, and is kept whatever follows it on its staff (False: off)
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -233,7 +239,7 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
 
 
 def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[float]], space: float,
-                  rests: list[dict] | None = None) -> int:
+                  rests: list[dict] | None = None, full: Fraction | None = None) -> int:
     """A music check for the staves of one system: notes that begin together and whose next notes begin together are
     as long as each other. Returns the number of lengths that were changed.
 
@@ -245,7 +251,61 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
     columns is only made shorter, never longer: a note can be missing after it, or a rest can stand there.
 
     `rests` holds the rests of the page (scoreread.rests.quarter_rests): a note with a rest after it is silent for
-    a part of the way to the next note of its voice (see REST_SPAN)."""
+    a part of the way to the next note of its voice (see REST_SPAN). `full` is the sum that most bars of the page
+    have (full_sum): a bar with one open step is as long (see BAR_FULL)."""
+    changed = 0
+    for votes, resting, spans, sure in _bar_steps(plans, bars, space, rests, full):
+        for number, following, events, length, pause in spans:
+            for event in events:      # for the record: how the voices voted on this note's steps
+                event['votes'] = [{str(value): votes[step][value] for value in votes[step]} for step in range(number, following)]
+            if any(sure[step] is None for step in range(number, following)):
+                continue
+            total = sum(sure[number:following], Fraction(0))
+            if total == length or not (total in TYPES or total / Fraction(3, 2) in TYPES or total / TRIPLET in TYPES):
+                continue
+            leaning = any(_leans(votes, resting, sure, step) for step in range(number, following))
+            if length > total:
+                change = pause or not leaning
+                if BAR_KEEP and full is not None \
+                        and (following == len(sure) or all(event['stem_x'] is None for event in events)) \
+                        and all(value is not None for value in sure[:number]) \
+                        and sum(sure[:number], Fraction(0)) + length == full:
+                    # The note fills the bar, and it is the last of its voice there. A note without a stem shows no
+                    # voice: a later note of the staff need not be of its voice.
+                    change = False
+            else:
+                change = following == number + 1 and (leaning or not pause)
+            if change:
+                for event in events:
+                    event['length'] = total
+                    event['agreed'] = True
+                changed += 1
+    return changed
+
+
+def bar_sums(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[float]], space: float,
+             rests: list[dict] | None = None) -> list[Fraction]:
+    """The sums of the bars of one system whose steps are all sure, before any length is changed (see BAR_FULL)."""
+    return [sum(sure, Fraction(0)) for votes, resting, spans, sure in _bar_steps(plans, bars, space, rests)
+            if sure and all(value is not None for value in sure)]
+
+
+def full_sum(sums: list[Fraction]) -> Fraction | None:
+    """The sum of a full bar of the page, from the sums of its sure bars (bar_sums of each system): the sum that most
+    of them have, or None where the bars of the page are not as long as each other (see BAR_FULL)."""
+    if BAR_FULL is None or len(sums) < BAR_FULL[1]:
+        return None
+    best = max(set(sums), key=sums.count)
+    return best if sums.count(best) >= BAR_FULL[0] * len(sums) else None
+
+
+def _bar_steps(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[float]], space: float,
+               rests: list[dict] | None, full: Fraction | None = None):
+    """The steps of each bar of one system, for agree_lengths: (votes, resting, spans, sure). `votes` holds for each
+    step from one column to the next the lengths that the voices say and how many say each; `resting` the votes of
+    the voices with a rest after their note; `spans` each voice's notes as (first step, step after the last, notes,
+    length, whether a rest follows); `sure` the length of each step that is sure, or None. `full` is the sum of a
+    full bar of the page, or None (see BAR_FULL)."""
     xs = sorted(x for index in plans for x in bars.get(index, []))
     groups = []
     for x in xs:
@@ -260,7 +320,6 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
             for column in measure:
                 x = sorted(event['x'] for event in column)[len(column) // 2]
                 cells.setdefault(sum(1 for edge in edges if edge < x), []).append((x, index, column))
-    changed = 0
     for bar, group in cells.items():
         group.sort(key=lambda cell: cell[0])
         pauses = [rest for rest in rests or [] if REST_SPAN is not None and sum(1 for edge in edges if edge < rest['x']) == bar]
@@ -308,31 +367,28 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                     sure[number] = best
         if SPAN_VOTE:
             _span_votes(votes, spans, sure, resting)
+        _fill_bar(votes, spans, sure, resting, full)       # before the tie of quarters and halves is settled for the halves
         for number in range(count):
             if sure[number] is None and AGREE_HOLLOW and len(votes[number]) == 2 and votes[number].get(Fraction(1), 0) >= AGREE \
                     and votes[number].get(Fraction(1)) == votes[number].get(Fraction(2)):
                 sure[number] = Fraction(2)
         if SPAN_VOTE:
             _span_votes(votes, spans, sure, resting)
-        for number, following, events, length, pause in spans:
-            for event in events:      # for the record: how the voices voted on this note's steps
-                event['votes'] = [{str(value): votes[step][value] for value in votes[step]} for step in range(number, following)]
-            if any(sure[step] is None for step in range(number, following)):
-                continue
-            total = sum(sure[number:following], Fraction(0))
-            if total == length or not (total in TYPES or total / Fraction(3, 2) in TYPES or total / TRIPLET in TYPES):
-                continue
-            leaning = any(_leans(votes, resting, sure, step) for step in range(number, following))
-            if length > total:
-                change = pause or not leaning
-            else:
-                change = following == number + 1 and (leaning or not pause)
-            if change:
-                for event in events:
-                    event['length'] = total
-                    event['agreed'] = True
-                changed += 1
-    return changed
+        _fill_bar(votes, spans, sure, resting, full)
+        yield votes, resting, spans, sure
+
+
+def _fill_bar(votes: list[dict], spans: list[tuple], sure: list, resting: list[dict], full: Fraction | None) -> None:
+    """A bar with one open step is as long as the full bars of the page: the open step is what is left of their sum,
+    when a voice of the step says that length (see BAR_FULL). The long notes are asked again then."""
+    opened = [number for number, value in enumerate(sure) if value is None]
+    if full is None or len(opened) != 1:
+        return
+    left = full - sum((value for value in sure if value is not None), Fraction(0))
+    if left > 0 and left in votes[opened[0]]:
+        sure[opened[0]] = left
+        if SPAN_VOTE:
+            _span_votes(votes, spans, sure, resting)
 
 
 def _leans(votes: list[dict], resting: list[dict], sure: list, step: int) -> bool:

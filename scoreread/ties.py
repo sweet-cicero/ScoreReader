@@ -20,6 +20,15 @@ TIE_HIGH = 1.4          # and at most this many staff spaces over or under their
 TIE_GAP = 0.5           # it may break for this many staff spaces
 TIE_SEEN = (0.6, 0.9)   # its ink shows in this share of the columns; its ink or a staff line that hides it in this share
 TIE_BOW = (0.2, 3.5)    # the bow is at least and at most this many staff spaces high
+TIE_FLAT = (0.15, 0.9, 0.6)   # a short tie between two heads that stand close hides its ends under the heads, and what
+#                         shows of it is flatter: a way whose ink shows in this share of its columns or more is a bow from
+#                         this height on, if it begins and ends this many staff spaces or more over or under the middles
+#                         of the heads (two ledger lines that touch run on at the height of the heads) (None: off)
+TIE_RIM = 'even'        # thin ink is the ink without its thick blobs. The opening that finds the blobs lies one pixel
+#                         low where the limit is an even number of pixels, and the top row of every blob is then left
+#                         over as thin ink: a bold bow is followed along its upper edge. 'even': on those pages, as it
+#                         always was; 'all': on every page; None: on no page. The flat bow of TIE_FLAT is followed on
+#                         the thin ink without any such row: the upper edge of a head is a flat bow too
 TIE_EVEN = 1.0          # its highest place lies in the middle part: the two ends differ by at most this many bow heights
 TIE_SMOOTH = 0.35       # and it leaves the curve of a bow by at most this share of its height
 TIE_PARTNER = (0.5, 1.8)  # a whole note has the voice that the note in its column has not: a note with a stem at most
@@ -92,10 +101,28 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
             'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1}
 
 
-def _is_bow(way: dict, space: float) -> bool:
+def _thin(bare: np.ndarray, height: int) -> tuple[np.ndarray, np.ndarray]:
+    """The thin ink of a page, for the bows: the ink without the blobs that are `height` pixels high or more, column
+    by column. Twice: with the top row of the blobs where TIE_RIM asks for it, and without it."""
+    kernel = np.ones((height, 1), np.uint8)
+    worn = cv2.erode(bare, kernel, anchor=(0, height // 2))
+    tall = cv2.dilate(worn, kernel, anchor=(0, height - 1 - height // 2))
+    core = bare & (1 - tall)
+    if TIE_RIM == 'even':
+        # OpenCV's opening, as it always was: with an even height its result lies one pixel low.
+        return bare & (1 - cv2.morphologyEx(bare, cv2.MORPH_OPEN, kernel)), core
+    if TIE_RIM == 'all':
+        rim = tall.copy()
+        rim[1:] &= 1 - tall[:-1]
+        return core | rim, core
+    return core, core
+
+
+def _is_bow(way: dict, space: float, flat: bool = False) -> bool:
     """Is the way that was followed one smooth bow? The curve of a bow (a parabola) is laid through the rows where
     ink was seen: it is high enough, its highest place is in the middle part, and the ink stays close to it. A
-    straight line with a hook at its end, and a line with a mark on it, are no bow."""
+    straight line with a hook at its end, and a line with a mark on it, are no bow. `flat`: the way begins and ends
+    under or over the heads, so that it may be flatter where all of it shows (see TIE_FLAT)."""
     count = len(way['rows'])
     if way['seen'] < 8:
         return False
@@ -104,12 +131,21 @@ def _is_bow(way: dict, space: float) -> bool:
     bend, lean, level = np.polyfit(along, rows, 2)
     rest = float(np.sqrt(np.mean((rows - (bend * along ** 2 + lean * along + level)) ** 2)))
     high = abs(bend)
-    return TIE_BOW[0] * space <= high <= TIE_BOW[1] * space and abs(lean) <= TIE_EVEN * high + 0.2 * space \
+    least = TIE_FLAT[0] if TIE_FLAT and flat and way['seen'] >= TIE_FLAT[1] * count else TIE_BOW[0]
+    return least * space <= high <= TIE_BOW[1] * space and abs(lean) <= TIE_EVEN * high + 0.2 * space \
         and rest <= TIE_SMOOTH * high + 0.04 * space
 
 
-def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float) -> bool:
-    """Is there a bow from the head `one` to the head `two`?"""
+def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float,
+         core: np.ndarray | None = None) -> bool:
+    """Is there a bow from the head `one` to the head `two`? `core` is the thin ink for the flat bow (TIE_FLAT)."""
+    if _way(thin, lines, one, two, space, False):
+        return True
+    return bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True)
+
+
+def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float, low: bool) -> bool:
+    """Is there a way of thin ink from the head `one` to the head `two` that is a bow? `low`: a flat bow counts."""
     first, last = int(one['x1']) + 1, int(two['x0']) - 1
     if last - first < TIE_LEAST * space:
         return False
@@ -147,7 +183,8 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                 continue
             if way['seen'] < TIE_SEEN[0] * count or way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
                 continue
-            if not _is_bow(way, space):
+            flat = low and min(abs(way['rows'][0] - one['cy']), abs(way['rows'][-1] - two['cy'])) >= TIE_FLAT[2] * space
+            if not _is_bow(way, space, flat):
                 continue
             return True
     return False
@@ -279,7 +316,7 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
     space = layers['space']
     bare, lines = layers['bare'], layers['lines']
     most = int(round(TIE_THIN * space)) + 1
-    thin = bare & (1 - cv2.morphologyEx(bare, cv2.MORPH_OPEN, np.ones((most + 1, 1), np.uint8)))
+    thin, core = _thin(bare, most + 1)
     found = []
     for staff in sorted({head['staff'] for head in heads}):
         own = sorted((head for head in heads if head['staff'] == staff), key=lambda head: head['cx'])
@@ -318,7 +355,7 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                     break
             if two is None:
                 continue
-            tied = _bow(thin, lines, one, two, space) or bool(TIE_LINE and _in_line(layers, one, two, space))
+            tied = _bow(thin, lines, one, two, space, core) or bool(TIE_LINE and _in_line(layers, one, two, space))
             if tied:
                 one['tie_start'] = True
                 two['tie_stop'] = True
@@ -327,7 +364,7 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                     for other in own[number + 1:]:
                         if other is not two and round(other['place']) == place and voices[id(other)] != voices[id(two)] \
                                 and 0 <= other['x0'] - two['x1'] <= TIE_BOTH * space and not other.get('tie_stop'):
-                            if _bow(thin, lines, one, other, space):
+                            if _bow(thin, lines, one, other, space, core):
                                 other['tie_stop'] = True
                                 found.append((one, other))
                             break
