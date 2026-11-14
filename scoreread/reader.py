@@ -45,15 +45,18 @@ def page_starts(grey: np.ndarray, places: list[dict]) -> list[dict]:
 
 
 def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
-              clefs_before: list[str] | None = None, key_hymn: int | None = None) -> dict:
+              clefs_before: list[str] | None = None, key_hymn: int | None = None, ties_before: list | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
     ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests') for pictures and checks.
     `key_before` is the key of the page before in the same hymn: a page that shows no key signature has that key.
     `clefs_before` are the clefs of the staves of a system on that page, and `key_hymn` is the key that the staves
-    of all pages of the hymn voted for together (see scoreread.starts).
+    of all pages of the hymn voted for together (see scoreread.starts). `ties_before` is the 'ties_out' of the page
+    before: the notes that a tie leaves over the end of that page, as (the number of the staff in its system, the
+    place). A tie comes to the first notes of this page only there (see scoreread.ties.TIE_PAGE).
 
     'key' is the key of the page, and 'staff_keys' the key of each staff (a page with two pieces has two keys).
+    'ties_out' are the notes of the last system that a tie leaves over the end of the page (for the next page).
 
     Each note: 'staff', 'bar', 'onset' and 'length' (quarter notes, the onset from the bar's start), 'voice', 'step',
     'alter', 'octave', 'midi', 'x', 'place' (0 is the middle line, +1 a step up), 'agreed' (the music check changed
@@ -172,7 +175,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                     head['sign'] = {'sharp': 1, 'flat': -1, 'natural': 0}[sign['kind']]
     slit_page(heads)
     # A tie: a bow from a head to the next head of its pitch.
-    ties = read_ties(layers, heads)
+    ties = read_ties(layers, heads, ties_before)
     # Choir rule: in a system of three or more staves, a treble staff over the bass staff is the tenors'.
     width = max(staff['number'] for staff in staves) + 1
     if width >= 3:
@@ -252,6 +255,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     return {'musicxml': musicxml(parts, title, names), 'parts': parts, 'names': names, 'notes': notes, 'part_notes': part_notes, 'title': title,
             'staves': len(staves), 'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
+            'ties_out': [[staves[head['staff']]['number'], int(round(head['place']))] for head in heads if head.get('tie_out')],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words, 'triplets': triplets,
             'rests': rests, 'times': [([start['time']] if start.get('time') else []) + times.get(index, [])

@@ -77,6 +77,15 @@ TIE_BREAK = (3.0, 0.45, 1.8, 1.0, 0.4, 0.6, 1.0, 0.9, 0.5)   # a tie over the en
 #                         of that staff in the next system stands at the same place.
 
 
+TIE_PAGE = (3.0, 0.45, 1.8, 1.0, 0.9, 0.45, 3.0, 2.0)   # a tie over the end of a page (None: off): on the last system of a page one
+#                         bow leaves the last note of its voice (this many staff spaces long or more, its ink in this
+#                         share of its columns, ending at most this far before the end of the staff, moving at most this
+#                         far up or down): the note gets 'tie_start', and the reader hands its staff and place on to
+#                         the next page of the hymn. There the first note of that staff at that place gets 'tie_stop'
+#                         when a bow comes to it (this long, this share of ink, looked for over this many staff spaces
+#                         before the note: the bow begins after the time signature) and the note stands at most this
+#                         many staff spaces after the first note of the system. A page that is read alone marks the
+#                         leaving half only: the ink before a first note (clef, key, time) looks like a short bow.
 TIE_BREAK_LINE = 0.5     # the long bow over the end of a line may begin in a staff line beside its head: the line hides
 #                         its first part (None: off). Such a bow ends at the end of the staff: its way stops this many
 #                         staff spaces or more before the column to which it is followed, one staff space past the
@@ -298,7 +307,7 @@ def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, la
                 continue
             count = len(way['rows'])
             best = {'count': count, 'long': count / space, 'seen': way['seen'] / count, 'togo': (last - way['end']) / space,
-                    'drift': abs(float(way['rows'][-1] - way['rows'][0])) / space}
+                    'drift': abs(float(way['rows'][-1] - way['rows'][0])) / space, 'way': way}
     return best
 
 
@@ -344,6 +353,53 @@ def _over_break(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict)
             if tied:
                 found.append((one, two))
     return found
+
+
+def _over_page(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict, before: list | None) -> None:
+    """The ties over the end of a page (see TIE_PAGE). The last head of its voice on a staff of the last system that
+    one long bow leaves toward the end of the staff gets 'tie_start' and 'tie_out'. `before` holds the heads that
+    left such a bow on the page before, as (the number of the staff in its system, the place): the first head of
+    that staff at that place on the first system gets 'tie_stop' when a bow comes to it."""
+    space, lines, words, staves = layers['space'], layers['lines'], layers.get('words') or [], layers['staves']
+    width = thin.shape[1]
+    systems = [staff['system'] for staff in staves]
+    for index, staff in enumerate(staves):
+        own = sorted((head for head in heads if head['staff'] == index), key=lambda head: head['cx'])
+        if staff['system'] != max(systems):
+            continue
+        for number, one in enumerate(own):
+            place, ways = round(one['place']), voices[id(one)]
+            if one.get('tie_start') or any(round(other['place']) == place or (voices[id(other)] & ways)
+                                           for other in own[number + 1:] if other['x0'] - one['x1'] >= 0.5 * space):
+                continue
+            end = min(width - 1, int(staff['x1'] + space))
+            ways = [_half(thin, lines, words, one, end, space)]
+            if TIE_BREAK_LINE:
+                ways.append(_half(thin, lines, words, one, end, space, True))
+                if ways[1] is not None and ways[1]['togo'] < TIE_BREAK_LINE:
+                    ways[1] = None
+            if any(go is not None and go['long'] >= TIE_PAGE[0] and go['seen'] >= TIE_PAGE[1] and go['togo'] <= TIE_PAGE[2]
+                   and go['drift'] <= TIE_PAGE[3] and _is_bow(go['way'], space) for go in ways):
+                one['tie_start'] = one['tie_out'] = True
+    if not before:
+        return
+    flipped, flipped_lines = np.ascontiguousarray(thin[:, ::-1]), np.ascontiguousarray(lines[:, ::-1])
+    flipped_words = [dict(band, x0=width - 1 - band['x1'], x1=width - 1 - band['x0']) for band in words]
+    first = min((head['cx'] for head in heads if staves[head['staff']]['system'] == min(systems)), default=0.0)
+    for index, staff in enumerate(staves):
+        if staff['system'] != min(systems):
+            continue
+        own = sorted((head for head in heads if head['staff'] == index), key=lambda head: head['cx'])
+        for place in sorted({int(item[1]) for item in before if int(item[0]) == staff['number']}):
+            two = next((head for head in own if round(head['place']) == place), None)
+            if two is None or two.get('tie_stop') or two['cx'] > first + TIE_PAGE[7] * space \
+                    or any(voices[id(other)] & voices[id(two)] for other in own if two['x0'] - other['x1'] >= 0.5 * space):
+                continue
+            mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'])
+            begin = max(int(staff['x0']), int(two['x0'] - TIE_PAGE[6] * space))
+            come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - begin, space)
+            if come is not None and come['long'] >= TIE_PAGE[4] and come['seen'] >= TIE_PAGE[5]:
+                two['tie_stop'] = True
 
 
 def _in_line(layers: dict, one: dict, two: dict, space: float) -> bool:
@@ -425,9 +481,10 @@ def _syllable(layers: dict, head: dict) -> bool | None:
     return False
 
 
-def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
+def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> list[tuple[dict, dict]]:
     """The ties of a page: (first head, second head). Each first head gets 'tie_start' and each second head
-    'tie_stop'."""
+    'tie_stop'. A tie over the end of the page marks its head alone ('tie_out' too, where it leaves); `before` are
+    such heads of the page before in the same hymn, as (the number of the staff in its system, the place)."""
     if not TIE_FAR:
         return []
     space = layers['space']
@@ -511,4 +568,6 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
             one['tie_start'] = True
             two['tie_stop'] = True
             found.append((one, two))
+    if TIE_PAGE:
+        _over_page(layers, heads, thin, {id(head): {stem['direction'] for stem in head['stems']} for head in heads}, before)
     return found

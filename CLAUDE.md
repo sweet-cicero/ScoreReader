@@ -19,11 +19,11 @@ optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, 
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.2 % on
-scans; 79 scores at 99 % or more), 96.0 % of the notes on the clean copies (21,679 of 22,591; 25 of the 78 counted
+scans; 79 scores at 99 % or more), 96.0 % of the notes on the clean copies (21,683 of 22,591; 25 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
 (82.1 % on scans), and 89.9 % on the kit (6206 of 6901).
-On the fresh test set, which no rule was set on: 94.9 % of the notes (39,647 of 41,761; 90 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -59,7 +59,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - `bench/` holds the tests. Measure each change with `bash bench/kit.sh <name>` and the kit's `score.py`.
   `bench/yardstick/` is copisteria's step (`bash bench/kit.sh <name> --yardstick`).
 - The wide test (every score of LitChoir) runs with scripts outside git, because it needs the app's scans. It reads
-  each score as `hymn` does: the pages in order, the key and the clefs carried, one vote for the hymn's key.
+  each score as `hymn` does: the pages in order, the key, the clefs and the leaving ties carried, one vote for the
+  hymn's key. Its scorer joins a tie over the end of a page where both pages mark it at one pitch.
 - The figures count every typed note of a part, the notes of a chord too (since 13 November 2026; before, one note
   of a chord for each part of a staff). The kit's own `score.py` counts as before. A rule that moves notes into
   or out of chords is read by both counts and staff by staff.
@@ -144,6 +145,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   and no false one, the fresh set 3 notes gained and 12 lost (a short stroke beside a head that runs into a
   staff line). It was narrowed by the measures of LitChoir's true ties (the way that shows against the part
   that the line hides), not by the pages of the fresh set, and read there again.
+- A mark that is read from the ink before the first note of a staff cannot be told from the clef, the key and
+  the time signature by its measures: of 62 coming halves of a tie over the end of a page, 55 were such ink in
+  the first form (14 November 2026). The page before tells the next page where to look (`ties_out` of a page,
+  `ties_before` of the next), as the key and the clefs go on. A page that is read alone marks no coming half.
+- A half that stands alone moves no count: the 55 false halves gained and lost nothing, on LitChoir and on the
+  fresh set. A rule that marks something for a later step (the hymn, the scorer) is judged by looking at every
+  mark on the page.
+- When the wide scorer is changed, the reading before the round is scored again with it and must give the same
+  figures. A change of the scorer that the fresh set shows to be wrong is mended in the scorer, never by a limit
+  of the reader. The count staff by staff can move by the line-up of a clean copy too (two staves of two parts,
+  then four voices, in non-liturgical-jesus-prayer: 62 notes that no rule read otherwise).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
