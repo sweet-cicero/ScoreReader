@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.0 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.1 % on
-scans; 78 scores at 99 % or more), 95.9 % of the notes on the clean copies (21,656 of 22,591; 24 of the 78 counted
+Not reached yet: 86.0 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.2 % on
+scans; 79 scores at 99 % or more), 95.9 % of the notes on the clean copies (21,667 of 22,591; 25 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
 (82.1 % on scans), and 89.9 % on the kit (6204 of 6901).
-On the fresh test set, which no rule was set on: 94.9 % of the notes (39,633 of 41,761; 90 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 94.9 % of the notes (39,644 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -124,6 +124,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   fresh set, and make the full runs at the end of the round. The quick count reads one row for each staff: it
   cannot see a rule that lets stray ink through as a row of words, so read the full runs score by score for
   syllables lost.
+- A rule that makes an older limit milder (a bow that shows less of its ink, a stem that leans) reads, on a copy
+  by hand, whatever stands between two near heads: a number of the time signature, a flat, the bent stroke of a
+  stem. Look at every new reading of its first form on the page, true and false, and measure both: the shape that
+  only the true ones have is the second half of the rule (a bow comes out of the line at both sides; the end of a
+  slur does not go on upright). A narrowed rule acts only where its first form did, so the second reading needs
+  only the pages that the first one changed.
+- Before a helper is added to a module, search the module for its name: a second `def` of one name further down
+  wins without a word (14 November 2026, `symbols._goes_on`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules

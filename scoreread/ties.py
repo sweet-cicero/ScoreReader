@@ -41,6 +41,13 @@ TIE_BOTH = 0.5          # a head that two voices share (a stem up and a stem dow
 #                         beside the first bow's second head, at most this many staff spaces from it (0: off)
 TIE_UNDER = True        # a bow that runs into a staff line and comes out at its other side: while no ink shows, the staff
 #                         line within the reach of the search hides it, not only the line at the bow's last row
+TIE_DIP = (0.3, 0.1, 2.8, 0.15)   # a bow that lies in a staff line for a long part (None: off): its ink shows in this share
+#                         of its columns or more, under TIE_SEEN, and over the longest part where it does not show, the
+#                         curve through the ink that shows lies at most this many staff spaces from the staff line. A bow
+#                         dips into the line and comes out of it; other ink at two heads does not point at the line.
+#                         Only a bow of this many staff spaces or longer: between two near heads a number of the time
+#                         signature, a flat or a stroke of the hand shows as much ink beside a line. And its ink shows
+#                         over this many staff spaces or more at each side of that part: the bow comes out of the line.
 TIE_FROM_LINE = True    # a bow may begin in a staff line beside its head: it is followed from the line (False: off)
 TIE_ROUND = True        # a head between the two heads is of another voice by its place on the staff, not by where its ink lies
 TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff line (None: off): the line is fatter in a
@@ -62,6 +69,12 @@ TIE_BREAK = (3.0, 0.45, 1.8, 1.0, 0.4, 0.6, 1.0, 0.9, 0.5)   # a tie over the en
 #                         down; or a short one (this long, this share of ink, ending this near the end) with a bow
 #                         that comes to the first note of the next line (this long, this share of ink). The first note
 #                         of that staff in the next system stands at the same place.
+
+
+TIE_BREAK_LINE = 0.5     # the long bow over the end of a line may begin in a staff line beside its head: the line hides
+#                         its first part (None: off). Such a bow ends at the end of the staff: its way stops this many
+#                         staff spaces or more before the column to which it is followed, one staff space past the
+#                         staff. Ink that goes on past the lines is no bow that a line hid (a pen lay on one page).
 
 
 def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, space: float) -> dict | None:
@@ -144,6 +157,40 @@ def _is_bow(way: dict, space: float, flat: bool = False) -> bool:
         and rest <= TIE_SMOOTH * high + 0.04 * space
 
 
+def _dips(way: dict, lines: np.ndarray, x: int, space: float) -> bool:
+    """Does the way that was followed from the column `x` lie in a staff line where its ink does not show (see
+    TIE_DIP)? The curve of a bow is laid through the rows where ink was seen; over the longest part without ink it
+    stays at the staff line."""
+    shown = way['shown']
+    count = len(shown)
+    if way['seen'] < 8:
+        return False
+    best, at = (0, 0), 0
+    while at < count:
+        if shown[at]:
+            at += 1
+            continue
+        end = at
+        while end < count and not shown[end]:
+            end += 1
+        if end - at > best[1]:
+            best = (at, end - at)
+        at = end
+    if not best[1]:
+        return False
+    if min(int(np.sum(shown[:best[0]])), int(np.sum(shown[best[0] + best[1]:]))) < TIE_DIP[3] * space:
+        return False
+    along = np.linspace(-1.0, 1.0, count)
+    bend, lean, level = np.polyfit(along[shown], way['rows'][shown], 2)
+    away = []
+    for number in range(best[0], best[0] + best[1]):
+        rows = np.nonzero(lines[:, x + number])[0]
+        if not len(rows):
+            return False
+        away.append(float(np.min(np.abs(rows - (bend * along[number] ** 2 + lean * along[number] + level)))))
+    return float(np.mean(away)) <= TIE_DIP[1] * space
+
+
 def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float,
          core: np.ndarray | None = None) -> bool:
     """Is there a bow from the head `one` to the head `two`? `core` is the thin ink for the flat bow (TIE_FLAT)."""
@@ -189,7 +236,11 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             count = len(way['rows'])
             if way['end'] < last - side or abs(way['rows'][-1] - two['cy']) > high:
                 continue
-            if way['seen'] < TIE_SEEN[0] * count or way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
+            if way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
+                continue
+            if way['seen'] < TIE_SEEN[0] * count and not (TIE_DIP and way['seen'] >= TIE_DIP[0] * count
+                                                         and count >= TIE_DIP[2] * space
+                                                         and _dips(way, lines, column, space)):
                 continue
             flat = low and min(abs(way['rows'][0] - one['cy']), abs(way['rows'][-1] - two['cy'])) >= TIE_FLAT[2] * space
             if not _is_bow(way, space, flat):
@@ -198,11 +249,13 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
     return False
 
 
-def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, last: int, space: float) -> dict | None:
+def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, last: int, space: float,
+          in_line: bool = False) -> dict | None:
     """The longest thin way that begins beside a head and goes right, toward the column `last`: {'long' (staff spaces),
     'seen' (the share of its columns with ink), 'togo' (staff spaces from its end to `last`), 'drift' (how far it
     moves up or down)}. None without one, when the ink goes on at the left of the head too (a slur that passes), or
-    when it lies in the rows of the words (the line after a syllable)."""
+    when it lies in the rows of the words (the line after a syllable). `in_line`: only the ways that begin inside a
+    staff line beside the head (see TIE_BREAK_LINE)."""
     first = int(head['x1']) + 1
     side, high = int(round(TIE_SIDE * space)), int(round(TIE_HIGH * space))
     top, bottom = max(0, int(head['cy']) - high), min(thin.shape[0], int(head['cy']) + high + 1)
@@ -214,6 +267,14 @@ def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, la
             if before is None or row != before + 1:
                 starts.append(row + top)
             before = row
+        if in_line:
+            # A bow that begins in a staff line beside its head: the line hides its first part (as TIE_FROM_LINE).
+            before, hidden = None, []
+            for row in np.nonzero(lines[top:bottom, column])[0] if column == first else []:
+                if before is None or row != before + 1:
+                    hidden.append(row + top)
+                before = row
+            starts = [row for row in hidden if not any(abs(row - other) <= 3 for other in starts)]
         for row in starts:
             way = _follow(thin, lines, column, float(row), last, space)
             if way is None or (best is not None and len(way['rows']) <= best['count']):
@@ -253,9 +314,16 @@ def _over_break(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict)
                                                          if two['x0'] - other['x1'] >= 0.5 * space):
                 continue
             go = _half(thin, lines, words, one, min(width - 1, int(staff['x1'] + space)), space)
-            if go is None:
+            tied = False
+            inside = _half(thin, lines, words, one, min(width - 1, int(staff['x1'] + space)), space, True) \
+                if TIE_BREAK_LINE else None
+            if inside is not None and inside['togo'] < TIE_BREAK_LINE:
+                inside = None
+            for way in (go, inside):
+                tied = tied or (way is not None and way['long'] >= TIE_BREAK[0] and way['seen'] >= TIE_BREAK[1]
+                                and way['togo'] <= TIE_BREAK[2] and way['drift'] <= TIE_BREAK[3])
+            if go is None and not tied:
                 continue
-            tied = go['long'] >= TIE_BREAK[0] and go['seen'] >= TIE_BREAK[1] and go['togo'] <= TIE_BREAK[2] and go['drift'] <= TIE_BREAK[3]
             if not tied and go['long'] >= TIE_BREAK[4] and go['seen'] >= TIE_BREAK[5] and go['togo'] <= TIE_BREAK[6]:
                 mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'])
                 come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - int(staves[target]['x0']), space)

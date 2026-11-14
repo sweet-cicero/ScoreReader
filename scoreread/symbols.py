@@ -163,6 +163,14 @@ SIGN_GLUED = (1.25, 2.3, 1.5, 0.3, 1.4, 0.5, 0.8, 1.3, 0.6, 2.0, 0.95)   # a sha
 #                      of it at the right is from this to this many times as large as a head, has ink in this
 #                      share of its box, and a stem at its right side that goes this many staff spaces past it; the
 #                      other stroke of the sharp stands at most this many staff spaces left of the first
+SLUR_STEM = (1.7, 0.28, 2.5, 0.2, 1.0, 0.5, 0.6, 0.7)   # the end of a bold slur that meets a head is no second stem
+#                       (None: off). Of a stem up and a stem down at one head, the one that goes at most 1.7 staff spaces
+#                       past the head and leans 0.28 staff spaces or more away from the head on that way, where the other
+#                       goes 2.5 staff spaces past the head or more and leans less by 0.2. A printed stem stands upright;
+#                       the slur is steep where it meets the head and bends away. The stroke of a hand bends too, and
+#                       then it goes on upright: over the next 1.0 staff space past the followed end, ink within 0.5
+#                       staff spaces of the end's column in 0.6 of the rows or more is a stem, and it stays. The mark
+#                       is 0.7 staff spaces high or more: a whole head.
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -684,6 +692,18 @@ def _run(ink: np.ndarray, row: int, column: int) -> int:
     return last - first + 1
 
 
+def _on_upright(layers: dict, mark: dict, way: dict) -> bool:
+    """Does the ink of the way go on upright past the end to which it was followed (see SLUR_STEM)? A stem that a hand
+    drew with a bend does; the end of a slur has turned to the side there."""
+    ink, space = layers['bare' if mark.get('room') else 'joined'], layers['space']
+    step = -1 if way['direction'] == 'up' else 1
+    reach, side = int(SLUR_STEM[4] * space), int(SLUR_STEM[5] * space)
+    rows = [way['end'] + step * number for number in range(1, reach + 1)]
+    found = sum(1 for row in rows
+                if 0 <= row < ink.shape[0] and ink[row, max(0, way['x'] - side):way['x'] + side + 1].any())
+    return found >= SLUR_STEM[6] * max(1, reach)
+
+
 def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
     """The upright ink that leaves a thick mark: up or down, from its right half or its left half. Returns
     {'direction', 'x' (the column of its far end), 'mid' (its middle column), 'end' (the row of its far end),
@@ -727,6 +747,12 @@ def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
         columns = [column for row, column in outside]
         one, two = float(np.median(columns[-step - 3:-step + 2])), float(np.median(columns[-2 * step - 3:-2 * step + 2]))
         best['turn'] = (columns[-1] - 2 * one + two) / space
+    # How far the way moves sideways from where it leaves the mark to its end (staff spaces; positive: to the right).
+    # A printed stem stands upright; the end of a slur that meets a head is steep there, and it leans.
+    best['lean'] = 0.0
+    if len(outside) >= 6:
+        columns = [column for row, column in outside]
+        best['lean'] = (float(np.median(columns[-3:])) - float(np.median(columns[:3]))) / space
     return best
 
 
@@ -1492,6 +1518,16 @@ def read_symbols(layers: dict) -> dict:
             for name in ('up_right', 'down_left'):
                 if is_stem(mark['ways'][name], space):
                     mark['stems'].append(mark['ways'][name])
+            if SLUR_STEM and len(mark['stems']) == 2:
+                for own, other in (mark['stems'], mark['stems'][::-1]):
+                    # The end of a bold slur at a head is steep, and it was followed as a second stem: it is short,
+                    # it leans away from the head, and the head's own stem is long and stands upright.
+                    away = own['lean'] if own['direction'] == 'up' else -own['lean']
+                    if own['past'] <= SLUR_STEM[0] * space and away >= SLUR_STEM[1] \
+                            and other['past'] >= SLUR_STEM[2] * space and abs(other['lean']) <= away - SLUR_STEM[3] \
+                            and mark['y1'] - mark['y0'] >= SLUR_STEM[7] * space and not _on_upright(layers, mark, own):
+                        mark['stems'].remove(own)
+                        break
             if not mark['stems'] and SHORT_STEM:
                 # A note on a ledger line under the staff has little room over the words: its stem is short. The
                 # ledger line shows that the mark is a note.
@@ -1971,6 +2007,9 @@ FLAT_STEM = 0.35           # a filled mark as large as a head (FLAT_HEAD of the 
 LOST_STEM = (0.3, 0.45)    # a stem that the copy cut from its thick head stands at most this far past the head's edge
                            # (staff spaces, sideways) and ends at most this far from the head (None: off)
 LOST_ALONE = (0.4, 0.6)    # the same for a mark with no stem at all: it lost its only stem, and the cut may be wider
+LOST_THROUGH = 0.6         # the stroke of a mark with no stem at all may run on for this many staff spaces past the far
+#                            edge of the mark, when it is as long as a stem (THIN_STEM) before the mark: a bold slur begins
+#                            at the head, and the stroke goes on into it (0: off)
 LOST_SHARED = 0.5          # a head that gets such a stem shares it with a mark of its own piece of ink that has no stem
 #                            and stands at the far side of it from the stem, its middle at most this many staff spaces
 #                            sideways: two heads a third apart that the print let run together (0: off)
@@ -2015,9 +2054,16 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             if head['staff'] != staff or head.get('thin'):
                 continue
             ways = []
-            if not any(stem['direction'] == 'up' for stem in head['stems']) and bottom <= head['cy']:
+            # The stroke of a mark with no stem at all may run on past the mark for a little: a slur or a tie begins
+            # at the head there, and the stroke was followed into it (LOST_THROUGH).
+            on = LOST_THROUGH * space if LOST_THROUGH and not head['stems'] else None
+            if not any(stem['direction'] == 'up' for stem in head['stems']) \
+                    and (bottom <= head['cy'] or (on is not None and bottom <= head['y1'] + on
+                                                 and top <= head['y0'] - THIN_STEM * space)):
                 ways.append(('up', x - head['x1'], head['y0'] - bottom, top))
-            if not any(stem['direction'] == 'down' for stem in head['stems']) and top >= head['cy']:
+            if not any(stem['direction'] == 'down' for stem in head['stems']) \
+                    and (top >= head['cy'] or (on is not None and top >= head['y0'] - on
+                                               and bottom >= head['y1'] + THIN_STEM * space)):
                 ways.append(('down', head['x0'] - x, top - head['y1'], bottom))
             # A mark with no stem at all has lost its only stem: the cut may be wider there.
             reach = LOST_ALONE if LOST_ALONE and not head['stems'] else LOST_STEM
