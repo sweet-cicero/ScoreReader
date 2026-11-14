@@ -1318,6 +1318,20 @@ def read_symbols(layers: dict) -> dict:
                                                                     and _into_words(layers, mark, way, WORD_STEM[4]))):
                         mark['stems'].append(way)
                         mark['word_stem'] = True
+    if FLAT_STEM and FLAT_HEAD:
+        for mark in marks:
+            way = mark.get('ways', {}).get('up_left') if mark['kind'] == 'flat' and mark['hole'] < HOLLOW else None
+            if not way or mark['x1'] - mark['x0'] + 1 < FLAT_HEAD * layers['head'][0] \
+                    or mark['y1'] - mark['y0'] + 1 < FLAT_HEAD * layers['head'][1]:
+                continue
+            for other in marks:
+                stem = next((stem for stem in other['stems'] if stem['direction'] == 'down'), None) \
+                    if other is not mark and other['kind'] == 'head' and other['y1'] < mark['y0'] else None
+                if stem and abs(stem['x'] - way['mid']) <= FLAT_STEM * space and abs(way['end'] - other['cy']) <= 1.0 * space \
+                        and mark['y0'] - 0.3 * space <= stem['end'] <= mark['y1'] + 0.5 * space:
+                    mark['kind'] = 'head'
+                    mark['stems'].append(dict(stem))
+                    break
     if FLAG_STEM:
         # The flag of an eighth note with a short stem covers most of the stem, and little of the stem is slim. The
         # loop of the flag was then taken for a hollow head, with the piece of stem between the flag and the head as
@@ -1754,6 +1768,10 @@ FLAT_HEAD = 0.8            # a filled mark with upright ink over its left half i
 #                            its piece of ink (a piece of two marks: the end bar of a hymn is cut into more), right
 #                            over it and this share of its width or more, and the mark is this share of the page's head
 #                            or more: two heads a third apart that the print let run together (0: off)
+FLAT_STEM = 0.35           # a filled mark as large as a head (FLAT_HEAD of the page's head) is no flat either when the
+#                            upright ink over its left half is the stem that comes down from a head over it: that stem
+#                            stands at most this many staff spaces from the stroke and ends at the mark. The lower head
+#                            of a chord whose stem a faint print breaks under it; it shares that stem. (0: off)
 LOST_STEM = (0.3, 0.45)    # a stem that the copy cut from its thick head stands at most this far past the head's edge
                            # (staff spaces, sideways) and ends at most this far from the head (None: off)
 LOST_ALONE = (0.4, 0.6)    # the same for a mark with no stem at all: it lost its only stem, and the cut may be wider

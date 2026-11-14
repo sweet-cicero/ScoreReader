@@ -35,10 +35,18 @@ STEM_OWN = 0.25      # a slim stroke that is much wider than the page's stems, b
 #                      on it (two voices a third apart, each with a short stem to its own beam). None: off
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
-WHOLE_INSIDE = (0.3, 0.3, 0.8, 2.4, 1.5)
+HOLE_SIDE = (1.1, 0.7, 2.0, 4.5)   # closed paper this many staff spaces wide or more is a cell of the staff, and no
+#                    inside of a head, when one of its ends is straight (the outer tenth of its columns is this share
+#                    of its height or more) and lies against an upright stroke this many staff spaces long or more:
+#                    the paper between two staff lines, a bar line or a stem, and the round side of a head. Not in
+#                    the first staff spaces of a staff (this many): the clef is known with the paper that it closes
+#                    in against the line at the left end of the staff. (None: off)
+WHOLE_INSIDE = (0.33, 0.3, 0.8, 2.4, 1.5)
 #                    The inside of a printed whole note is an upright oval, nearly as high as a cell of the staff in its
-#                    middle columns. But paper fills less than this share of its four corners; the sides of the note
-#                    at its left and at its right are both from this to this many staff spaces thick, and as upright
+#                    middle columns. But paper fills less than this share of its four corners (the whole note of a
+#                    heavy print has 5 of 16 corner pixels, 0.31; the flat of a key signature has 0.36 or more); the
+#                    sides of the note at its left and at its right are both from this to this many staff spaces
+#                    thick, and as upright
 #                    ink they are at most this many staff spaces long (two whole notes, one over the other): a stem
 #                    or a bar line at the side of a cell is longer. The inside is at most this many times as high as
 #                    wide. (None: off)
@@ -132,7 +140,8 @@ def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: floa
     return True
 
 
-def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[float] | None = None) -> np.ndarray:
+def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[float] | None = None,
+               clefs: list[tuple[float, float, float, float]] | None = None) -> np.ndarray:
     """1 where paper is closed in by ink and can be the inside of a hollow note head.
 
     The inside of a head is round: it has no dent. Paper that is closed in between two marks has one. A sharp or a
@@ -143,7 +152,8 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
     A thick staff line through a head that a hand drew cuts its inside into two pieces, and each piece has a dent
     where the line is. With `line` (the thickness of the staff lines in px), two such pieces, one over the other
     with a band of ink as thick as a line between them, are one inside when the two and the band are round together.
-    With `rows` (the rows of the page's staff lines), a line that is faint inside a head is seen too: _necked()."""
+    With `rows` (the rows of the page's staff lines), a line that is faint inside a head is seen too: _necked().
+    `clefs` are the boxes (first column, last column, first row, last row) where HOLE_SIDE does not hold."""
     lined = np.array(sorted(rows), float) if rows else None
     count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
     keep = np.zeros(count, bool)
@@ -159,6 +169,10 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
             # most of its columns. The inside of a head is round, so few of its columns have the full height.
             if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5 and not _whole_inside(ink, part, x, y, space):
                 continue
+        if HOLE_SIDE and width >= HOLE_SIDE[0] * space and _straight_side(ink, part, x, y, space) \
+                and not any(left <= x + width / 2 <= right and top <= y + height / 2 <= bottom
+                            for left, right, top, bottom in clefs or []):
+            continue
         dented.append(index)
         if area > HOLE[0] * space * space or width > HOLE[2] * space:
             continue
@@ -189,6 +203,32 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
                 if _round(both, int(both.sum()), LINE_ROUND):
                     keep[upper] = keep[lower] = True
     return keep[labels].astype(np.uint8)
+
+
+def _straight_side(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: float) -> bool:
+    """True when one end of a piece of closed paper is straight and lies against a long upright stroke (see
+    HOLE_SIDE). `part` is the paper in its box, at (x, y) of the page."""
+    share, long = HOLE_SIDE[1], HOLE_SIDE[2]
+    height, width = part.shape
+    columns = part.sum(axis=0)
+    edge = max(1, int(round(0.1 * width)))
+    middle = y + height // 2
+    for straight, start, step in ((columns[:edge].mean() >= share * height, x, -1),
+                                  (columns[-edge:].mean() >= share * height, x + width - 1, 1)):
+        if not straight:
+            continue
+        column = next((start + step * far for far in range(1, 5)
+                       if 0 <= start + step * far < ink.shape[1] and ink[middle, start + step * far]), None)
+        if column is None:
+            continue
+        top = bottom = middle
+        while top > 0 and ink[top - 1, column]:
+            top -= 1
+        while bottom < ink.shape[0] - 1 and ink[bottom + 1, column]:
+            bottom += 1
+        if bottom - top + 1 >= long * space:
+            return True
+    return False
 
 
 def _necked(part: np.ndarray, area: int, line: float, top: int, rows: np.ndarray) -> bool:
@@ -271,13 +311,15 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
         raise ValueError('a page without staves has no layers')
     space = float(np.median([staff['space'] for staff in staves]))
     ink = ink & (1 - blots(ink, space))
-    holes = head_holes(ink, space, max(staff['thick'] for staff in staves), [row for staff in staves for row in staff['rows']])
+    clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
+             for staff in staves] if HOLE_SIDE else None
+    holes = head_holes(ink, space, max(staff['thick'] for staff in staves), [row for staff in staves for row in staff['rows']], clefs)
     # The rim of a hollow head can have a small break, in print and in a copy: the paper inside is closed in again
     # when the break is closed. These open holes are kept apart: they are asked only where a head is missing.
     size = int(max(3, round(HOLE_GAP * space))) | 1
     closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((size, 1), np.uint8)) \
         | cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((1, size), np.uint8))
-    open_holes = head_holes(closed, space) & (1 - ink) & (1 - holes)
+    open_holes = head_holes(closed, space, clefs=clefs) & (1 - ink) & (1 - holes)
     if no_holes is not None:
         count, labels = cv2.connectedComponents(holes, connectivity=4)
         gone = np.isin(labels, np.unique(labels[(no_holes > 0) & (holes > 0)])) & (holes > 0)

@@ -27,6 +27,9 @@ TIE_PARTNER = (0.5, 1.8)  # a whole note has the voice that the note in its colu
 #                         this many (None: a whole note has no voice)
 TIE_COLUMN = 1.0        # a chord is tied note by note: a head in the column of the second head (their middles at most
 #                         this many staff spaces apart) and of its voice is not between the two heads of a tie (0: off)
+TIE_BOTH = 0.5          # a head that two voices share (a stem up and a stem down) is tied twice, with a bow over and a
+#                         bow under: the second bow ends at the other voice's head of the same place, which stands
+#                         beside the first bow's second head, at most this many staff spaces from it (0: off)
 TIE_UNDER = True        # a bow that runs into a staff line and comes out at its other side: while no ink shows, the staff
 #                         line within the reach of the search hides it, not only the line at the bow's last row
 TIE_FROM_LINE = True    # a bow may begin in a staff line beside its head: it is followed from the line (False: off)
@@ -320,6 +323,14 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                 one['tie_start'] = True
                 two['tie_stop'] = True
                 found.append((one, two))
+                if TIE_BOTH and ways == {'up', 'down'} and len(voices[id(two)]) < 2:
+                    for other in own[number + 1:]:
+                        if other is not two and round(other['place']) == place and voices[id(other)] != voices[id(two)] \
+                                and 0 <= other['x0'] - two['x1'] <= TIE_BOTH * space and not other.get('tie_stop'):
+                            if _bow(thin, lines, one, other, space):
+                                other['tie_stop'] = True
+                                found.append((one, other))
+                            break
     if TIE_BREAK:
         every = {}
         for head in heads:

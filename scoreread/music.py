@@ -33,6 +33,8 @@ SECOND_TOUCH = (0.2, 0.95)   # two voices a second apart with the lower voice at
 #                    and heads that touch (at most this many staff spaces of paper between them) begin together. They
 #                    are two whole heads side by side: their middles stand at least the second number apart (the
 #                    slanted stroke of a hand that two voices share is one mark, read as two pieces). (None: off)
+UNISON_LINE = True   # an ison in unison ("Un.") sings every note of the melody's line, also the notes with a stem down,
+#                      which the staff reads as a second voice (False: only the notes of the first voice)
 STACKED = 0.6        # two notes of one voice on two stems begin together when their heads are at most this many staff
 #                      spaces apart (a third voice on a staff: the basses in octaves under the tenors, a part that divides
 #                      with a stem for each note); a note that follows another stands a head's width or more after it
@@ -104,9 +106,17 @@ def held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, s
         bar, at = [], Fraction(0)
         for onset, event in cuts + [(length, None)]:
             if onset > at and state.get('unison'):
-                for note in notes:
-                    if at <= note['onset'] < onset and note['voice'] == min(other['voice'] for other in notes):
-                        bar.append({key: value for key, value in dict(note, tie_start=False, tie_stop=False).items() if key != 'lyric'})
+                free = at
+                for note in sorted(notes, key=lambda note: (note['onset'], note['voice'])):
+                    if UNISON_LINE:
+                        # The melody is one line, but its stems go up and down with its height, and a stem down
+                        # reads as a second voice: the ison sings each note that begins when the last one has ended.
+                        if not (at <= note['onset'] < onset and note['onset'] >= free):
+                            continue
+                        free = note['onset'] + note['length']
+                    elif not (at <= note['onset'] < onset and note['voice'] == min(other['voice'] for other in notes)):
+                        continue
+                    bar.append({key: value for key, value in dict(note, tie_start=False, tie_stop=False).items() if key != 'lyric'})
             elif onset > at and state.get('note') is not None:
                 piece = dict(state['note'], onset=at, length=onset - at, tie_stop=state.get('last') is not None, tie_start=False)
                 if state.get('last') is not None:

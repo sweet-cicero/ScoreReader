@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 85.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.3 % on
-scans; 70 scores at 99 % or more), 94.9 % of the notes on the clean copies (21,432 of 22,589; 16 of the 78 counted
+Not reached yet: 85.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.5 % on
+scans; 75 scores at 99 % or more), 95.0 % of the notes on the clean copies (21,465 of 22,589; 21 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
-words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
-(82.1 % on scans), and 89.5 % on the kit (6175 of 6901).
-On the fresh test set, which no rule was set on: 94.6 % of the notes (39,500 of 41,761; 83 of 214 pieces at 99 %),
+words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.4 % of all syllables with Tesseract
+(82.1 % on scans), and 89.8 % on the kit (6196 of 6901).
+On the fresh test set, which no rule was set on: 94.7 % of the notes (39,559 of 41,761; 85 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -67,7 +67,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   wrongly, the page of two holds another version than the typed hymn). Report them first after each round, and
   change the list only with a reason.
 - Switch one rule at a time and score it alone on all 38 pages, and on the wide test's pages that it changes.
-  Rules scored together hide a rule that costs notes.
+  Rules scored together hide a rule that costs notes. The pages that a round changes are listed by the notes of
+  the page and by its written music: a held note of an ison is written into the music only.
+- A change of the layers is read at the clefs first: the clef, the end of the key signature and the hymn's key
+  come from the solid shapes at the start of a staff, and one cell there that is no longer filled can move the
+  key of a whole hymn.
 - Before a run is spent on a limit, count it against a census: every read note of the clean copies that the scorer
   lines up with a typed note, with the measures that the rule looks at and the typed length (scripts outside git,
   with the wide test). A limit that only moves a border loses as much as it gains; the census shows what separates.
