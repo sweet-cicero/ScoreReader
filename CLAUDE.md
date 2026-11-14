@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 85.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 81.8 % on
-scans; 76 scores at 99 % or more), 95.3 % of the notes on the clean copies (21,517 of 22,589; 22 of the 78 counted
+Not reached yet: 85.9 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.0 % on
+scans; 77 scores at 99 % or more), 95.5 % of the notes on the clean copies (21,572 of 22,589; 23 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
-words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.4 % of all syllables with Tesseract
-(82.1 % on scans), and 89.9 % on the kit (6203 of 6901).
-On the fresh test set, which no rule was set on: 94.8 % of the notes (39,600 of 41,761; 90 of 214 pieces at 99 %),
+words (90.8 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
+(82.1 % on scans), and 89.9 % on the kit (6202 of 6901).
+On the fresh test set, which no rule was set on: 94.9 % of the notes (39,619 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -73,10 +73,18 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   Read such a rule off on every page, with the rest of the round on.
 - A rule whose limits come from a census of the clean copies is read on every page of LitChoir and of the fresh
   set before the final reading: the copies by hand and the fresh set show what the clean copies do not (a rule
-  for a note that fills its bar, and a rule for a flat tie, each lost more than it gained there in its first form).
-- OpenCV's opening with a kernel of an even size is one pixel off: `ink & (1 - open(ink))` then keeps one edge
-  row of every blob (the top row for a kernel that stands). `ties.py` has it by a switch (`TIE_RIM`);
-  `layers.py` and `starts.py` use the same pattern and were not looked at yet.
+  for a note that fills its bar, and a rule for a flat tie, each lost more than it gained there in its first form;
+  a rule for the heads of a chord and a rule for a bar that is too long were each narrowed twice by the copies by hand).
+- On a copy by hand the wide scorer chooses how the staves stand for the parts, and a few changed notes can move
+  that choice: a score then gains or loses 15 to 30 notes that no rule read otherwise. Before a rule is judged by
+  such a score, compare its `layout` in the two results, and count the rule without it.
+- OpenCV's opening and closing with a kernel of an even size are one pixel off: `ink & (1 - open(ink))` then
+  keeps one edge of every blob (the top row for a kernel that stands, the left column for one that lies). Each
+  place of the reader was mended alone and read (14 November 2026). Only the thin ink of the layers gains and is
+  exact now (`layers.THIN_EXACT`, `layers._opened`). The ties (`TIE_RIM`), the staff lines under a mark, the wide
+  ink, the thin ink at the start of a staff and every closing lose notes when they are mended: their limits were
+  set with the fault, so they keep it. Write a new opening or closing exact, with a kernel of an odd size or as
+  `_opened` does.
 - A change of the layers is read at the clefs first: the clef, the end of the key signature and the hymn's key
   come from the solid shapes at the start of a staff, and one cell there that is no longer filled can move the
   key of a whole hymn.

@@ -2274,6 +2274,10 @@ DOT_FLAT = 1.7       # and at most this wide for its height
 DOT_FILL = 0.55      # and its ink fills at least this share of its box
 DOT_SMALL = 0.18     # and each of its sides is at least this many staff spaces: a smaller piece is a speck of the copy
 #                    or the cut end of a ledger line (0.14: as it was)
+DOT_ASK = (0.75, 0.45, 0.8)   # a mark at the right of a head that is nearly a dot: at most this many staff spaces wide,
+#                    its ink at least this share of its box, its middle at most this far over the middle of the head,
+#                    of any shape. It is no dot by itself: music.agree_lengths takes it for one where the sure steps
+#                    under the note add up to one and a half of the note (None: off)
 DOT_CLOSE = (0.15, 0.25, 0.65, 1.5)   # a dot stands this near to its head (less than DOT_NEAR) when each of its sides is
 #                    at least this many staff spaces, it is round (from this to this wide for its height: a piece
 #                    of a broken stem is slim) and no other head has it as its dot: a tight engraving (None: off)
@@ -3051,9 +3055,17 @@ def dots(layers: dict, heads: list[dict]) -> None:
             continue
         found.append((float(centres[index][0]), float(centres[index][1])))
         full.append(bool(DOT_CLOSE) and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
+    nearly = []
+    for index in range(1, count if DOT_ASK else 1):
+        x, y, wide, high, area = stats[index]
+        if DOT_SMALL * space <= wide <= DOT_ASK[0] * space and DOT_SMALL * space <= high <= DOT_HIGH * space \
+                and area >= DOT_ASK[1] * wide * high:
+            nearly.append((float(centres[index][0]), float(centres[index][1])))
     taken = set()
     for head in heads:
         head['dot'] = False
+        head['dot_near'] = any(DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space
+                               and -DOT_ASK[2] * space <= y - head['cy'] <= DOT_UNDER * space for x, y in nearly)
         for number, (x, y) in enumerate(found):
             if DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
                     and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
