@@ -36,6 +36,8 @@ TIE_PARTNER = (0.5, 1.8)  # a whole note has the voice that the note in its colu
 #                         this many (None: a whole note has no voice)
 TIE_COLUMN = 1.0        # a chord is tied note by note: a head in the column of the second head (their middles at most
 #                         this many staff spaces apart) and of its voice is not between the two heads of a tie (0: off)
+TIE_SHARED = True       # ... and so does a head there that two voices share (a stem up and a stem down), beside a head of
+#                         one of them (False: off)
 TIE_BOTH = 0.5          # a head that two voices share (a stem up and a stem down) is tied twice, with a bow over and a
 #                         bow under: the second bow ends at the other voice's head of the same place, which stands
 #                         beside the first bow's second head, at most this many staff spaces from it (0: off)
@@ -49,6 +51,10 @@ TIE_DIP = (0.3, 0.1, 2.8, 0.15)   # a bow that lies in a staff line for a long p
 #                         signature, a flat or a stroke of the hand shows as much ink beside a line. And its ink shows
 #                         over this many staff spaces or more at each side of that part: the bow comes out of the line.
 TIE_FROM_LINE = True    # a bow may begin in a staff line beside its head: it is followed from the line (False: off)
+TIE_TO_LINE = (1.5, 3.5)   # a bow may end in a staff line beside its head too: where its ink runs into a line and the line
+#                         goes on to the head, the bow's last ink may lie this many staff spaces before the head, and the
+#                         way that was followed is this many times as long as the part that the line hides: a short
+#                         stroke beside a head that ends in a line is no bow (None: off)
 TIE_ROUND = True        # a head between the two heads is of another voice by its place on the staff, not by where its ink lies
 TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff line (None: off): the line is fatter in a
 #                         run of columns that is this share of the way between the two heads; fatter by this many
@@ -112,14 +118,17 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
                     break
         rows.append(y)
         kinds.append(kind)
-    # The way ends where its ink was seen last.
+    # The way ends where its ink was seen last. After it, a staff line may hide the bow up to the head ('tail': for
+    # how many columns, when no paper shows there).
+    tail = 0
     while kinds and kinds[-1] != 'seen':
+        tail = tail + 1 if kinds[-1] == 'hidden' and tail is not None else None
         kinds.pop()
         rows.pop()
     if kinds.count('seen') < 2:
         return None
     return {'rows': np.array(rows), 'shown': np.array([kind == 'seen' for kind in kinds]), 'seen': kinds.count('seen'),
-            'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1}
+            'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1, 'tail': tail or 0}
 
 
 def _thin(bare: np.ndarray, height: int) -> tuple[np.ndarray, np.ndarray]:
@@ -234,7 +243,11 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             if row not in hidden:       # a way from a staff line may be another bow's: that bow is still followed from its own start
                 tried.add(int(round(way['rows'][min(len(way['rows']) - 1, 2)])))
             count = len(way['rows'])
-            if way['end'] < last - side or abs(way['rows'][-1] - two['cy']) > high:
+            if way['end'] < last - side and not (TIE_TO_LINE and way['end'] + way['tail'] >= last - side
+                                                 and way['end'] >= last - TIE_TO_LINE[0] * space
+                                                 and count >= TIE_TO_LINE[1] * (last - way['end'])):
+                continue
+            if abs(way['rows'][-1] - two['cy']) > high:
                 continue
             if way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
                 continue
@@ -450,7 +463,8 @@ def read_ties(layers: dict, heads: list[dict]) -> list[tuple[dict, dict]]:
                 # The other note of a chord stands beside the second head, not between the two: it is in its column
                 # and has its stems. (A note of another voice there shows that this voice went on to another place.)
                 if TIE_COLUMN and any(round(head['place']) == place and abs(head['cx'] - other['cx']) <= TIE_COLUMN * space
-                                      and voices[id(head)] == voices[id(other)]
+                                      and (voices[id(head)] == voices[id(other)]
+                                           or (TIE_SHARED and voices[id(other)] and voices[id(other)] < voices[id(head)]))
                                       for head in own[number + 1:] if head is not other):
                     continue
                 # Another note of this voice between the two heads: a bow over it is a slur.

@@ -20,7 +20,7 @@ from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
-    thin_heads, without_flag_loops, without_joints
+    slit_page, thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .triplets import mark_triplets
 from .words import cut_stems, word_bands
@@ -170,6 +170,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                 if sign['staff'] == head['staff'] and 0 <= head['x0'] - sign['x1'] <= 1.5 * space \
                         and abs(sign['place'] - head['place']) <= 1.0 and sign['x0'] > ends[head['staff']]:
                     head['sign'] = {'sharp': 1, 'flat': -1, 'natural': 0}[sign['kind']]
+    slit_page(heads)
     # A tie: a bow from a head to the next head of its pitch.
     ties = read_ties(layers, heads)
     # Choir rule: in a system of three or more staves, a treble staff over the bass staff is the tenors'.

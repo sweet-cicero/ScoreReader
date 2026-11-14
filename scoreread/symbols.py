@@ -153,6 +153,26 @@ WHOLE_SECOND = (0.25, 0.85)   # a whole note a second from a note with a stem, i
 #                      chord the lower head of a second stands left of the stem and the upper head right of it. An oval
 #                      left of a stem down and from this to this many staff spaces over the stem's own head, or
 #                      right of a stem up and as far under it, is the whole note of the other voice (None: off)
+SLIT_ONE = (0.3, 0.01, 0.1, 0.32, 0.5, 0.47)   # a filled head with a stem and a line through it (its middle at most
+#                      this many staff spaces from the line) that holds one speck of paper where the slit of a half
+#                      note lies: the speck is this many square staff spaces or more, its middle from this to this
+#                      many staff spaces over or under the line, over the line in the right part of the head (from
+#                      this share of its width on) or under the line in the left part (up to this share). The head
+#                      may be a half note whose slit the print closed but for the speck: the music decides
+#                      (music.SLIT_SPAN) (None: off)
+SLIT_PAGE = (0.02, 0.35, 0.2, 0.8)   # ... but not on a page of a worn print, whose filled heads hold specks of paper
+#                      anywhere: where more than this share of the page's filled notes with a stem hold a speck that
+#                      is no slit (its middle at most this many staff spaces over or under the middle of the head, and
+#                      from this to this share of its width), a speck says nothing (see slit_page; None: off)
+WHOLE_SLIT = (1.2, 1.5, 0.15, 0.01, 0.1, 0.32, 0.4, 0.6, 0.83, 1.3)   # an oval without a stem on a line, from this to
+#                      this many times as wide as the page's heads, its middle at most this many staff spaces from
+#                      the line: a whole note whose hole the print closed but for a speck of paper of this many
+#                      square staff spaces or more, its middle from this to this many staff spaces over or under the
+#                      line and from this to this share of the oval's width. The oval is full: its ink fills this
+#                      share or more of the middle part of its box (three fifths of its width), and it is at most
+#                      this many times as high as the page's heads. A sharp and a number of the time signature on
+#                      a thick copy close in such specks too, but their strokes leave paper open at the sides and
+#                      fill 0.8 of that part at most (None: off)
 LINE_CHORD = 0.75    # hollow heads that touch, each on a line: the first and the last cell of their insides lie this
 #                      many staff spaces further apart than as many heads less two in the spaces would (0: off)
 SIGN_GLUED = (1.25, 2.3, 1.5, 0.3, 1.4, 0.5, 0.8, 1.3, 0.6, 2.0, 0.95)   # a sharp whose right stroke touches its head is one mark
@@ -253,31 +273,71 @@ def _without_stub(mask: np.ndarray, space: float, usual: float = 0.0) -> np.ndar
     return mask
 
 
-def _line_slit(layers: dict, mark: dict, staff: dict) -> bool:
-    """A half note on a line whose slit a heavy print nearly closed: the staff line (or a ledger line) runs through
-    the head, and of the slit two specks of paper are left, one over the line and one under it. The slit leans as the
-    head does, so the upper speck stands to the right of the lower one. A filled head holds no paper at all."""
+def _line_specks(layers: dict, mark: dict, staff: dict) -> tuple[float, list[tuple[int, float, float]], int]:
+    """The specks of paper that the ink closes in within the box of a mark: the row of the nearest line (a staff
+    line, or the place of a ledger line), the specks as (area, column of the middle from the left edge of the box,
+    rows of the middle under the line), and the width of the box."""
     space, rows = staff['space'], staff['rows']
     lines = list(rows) + [rows[0] - step * space for step in (1, 2, 3)] + [rows[4] + step * space for step in (1, 2, 3)]
     line = min(lines, key=lambda row: abs(row - mark['cy']))
-    if abs(line - mark['cy']) > LINE_SLIT[0] * space:
-        return False
     ink = layers['ink']
     x0, y0 = max(0, mark['x0'] - 1), max(0, mark['y0'] - 1)
     x1, y1 = min(ink.shape[1], mark['x1'] + 2), min(ink.shape[0], mark['y1'] + 2)
     paper = (1 - ink[y0:y1, x0:x1]).astype(np.uint8)
     count, _, stats, middles = cv2.connectedComponentsWithStats(paper, connectivity=4)
-    over, under = None, None
+    specks = []
     for label in range(1, count):
         x, y, wide, high, area = (int(value) for value in stats[label])
-        if x == 0 or y == 0 or x + wide == paper.shape[1] or y + high == paper.shape[0] or area < LINE_SLIT[1]:
+        if x == 0 or y == 0 or x + wide == paper.shape[1] or y + high == paper.shape[0]:
             continue        # the paper around the head
-        speck = (area, float(middles[label][0]))
-        if y0 + middles[label][1] < line:
-            over = max(over, speck) if over else speck
-        else:
-            under = max(under, speck) if under else speck
+        specks.append((area, float(middles[label][0]), float(y0 + middles[label][1] - line)))
+    return line, specks, x1 - x0
+
+
+def _line_slit(layers: dict, mark: dict, staff: dict) -> bool:
+    """A half note on a line whose slit a heavy print nearly closed: the staff line (or a ledger line) runs through
+    the head, and of the slit two specks of paper are left, one over the line and one under it. The slit leans as the
+    head does, so the upper speck stands to the right of the lower one. A filled head holds no paper at all."""
+    space = staff['space']
+    line, specks, _ = _line_specks(layers, mark, staff)
+    if abs(line - mark['cy']) > LINE_SLIT[0] * space:
+        return False
+    over = max(((area, x) for area, x, row in specks if area >= LINE_SLIT[1] and row < 0), default=None)
+    under = max(((area, x) for area, x, row in specks if area >= LINE_SLIT[1] and row >= 0), default=None)
     return bool(over and under and over[1] - under[1] >= LINE_SLIT[2] * space)
+
+
+def _slit_one(layers: dict, mark: dict, staff: dict) -> str | None:
+    """One speck of paper in a filled head: 'slit' when the head is on a line and the speck lies where the slit of a
+    half note does (see SLIT_ONE: over the line in the right part of the head, or under the line in the left part),
+    'other' when a speck lies elsewhere in the middle of the head (see SLIT_PAGE), or None."""
+    space = staff['space']
+    line, specks, wide = _line_specks(layers, mark, staff)
+    other = False
+    for area, x, row in specks:
+        if area < SLIT_ONE[1] * space * space:
+            continue
+        if abs(line - mark['cy']) <= SLIT_ONE[0] * space and SLIT_ONE[2] * space <= abs(row) <= SLIT_ONE[3] * space \
+                and (x >= SLIT_ONE[4] * wide if row < 0 else x <= SLIT_ONE[5] * wide):
+            return 'slit'
+        if SLIT_PAGE and abs(line + row - mark['cy']) <= SLIT_PAGE[1] * space \
+                and SLIT_PAGE[2] * wide <= x <= SLIT_PAGE[3] * wide:
+            other = True
+    return 'other' if other else None
+
+
+def _whole_slit(layers: dict, mark: dict, staff: dict) -> bool:
+    """A speck of paper in the middle of a full oval on a line, over the line or under it: what a heavy print left
+    of the hole of a whole note (see WHOLE_SLIT)."""
+    space = staff['space']
+    line, specks, wide = _line_specks(layers, mark, staff)
+    if abs(line - mark['cy']) > WHOLE_SLIT[2] * space:
+        return False
+    if not any(area >= WHOLE_SLIT[3] * space * space and WHOLE_SLIT[4] * space <= abs(row) <= WHOLE_SLIT[5] * space
+               and WHOLE_SLIT[6] * wide <= x <= WHOLE_SLIT[7] * wide for area, x, row in specks):
+        return False
+    box = layers['bare'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1]
+    return float(box[:, int(0.2 * box.shape[1]):int(0.8 * box.shape[1]) + 1].mean()) >= WHOLE_SLIT[8]
 
 
 def _mark(mask: np.ndarray, holes: np.ndarray, x: int, y: int, blob: int) -> dict | None:
@@ -1683,6 +1743,9 @@ def read_symbols(layers: dict) -> dict:
         if LINE_SLIT and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems'] \
                 and _line_slit(layers, mark, layers['staves'][staff]):
             hollow = True
+        slit = None
+        if SLIT_ONE and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems']:
+            slit = _slit_one(layers, mark, layers['staves'][staff]) or 'none'
         place = pitch_place(layers['staves'][staff], cy)
         if mark['kind'] != 'head':
             if abs(place) <= 7.5:
@@ -1703,6 +1766,11 @@ def read_symbols(layers: dict) -> dict:
                     and WHOLE[2] * layers['head'][1] <= high <= WHOLE[3] * layers['head'][1]
             # No word stands in the staff: there a whole note may be as round as the letter o.
             oval = lying(mark, WHOLE_STAFF if WHOLE_STAFF and abs(place) <= 4.6 else WHOLE[0])
+            if WHOLE_SLIT and not hollow and oval and 'tail_of' not in mark \
+                    and WHOLE_SLIT[0] * layers['head'][0] <= wide <= WHOLE_SLIT[1] * layers['head'][0] \
+                    and high <= WHOLE_SLIT[9] * layers['head'][1] \
+                    and _whole_slit(layers, mark, layers['staves'][staff]):
+                hollow = True       # the print closed the hole of a whole note on a line but for a speck
             if WHOLE_FILLED and not hollow and oval and 'tail_of' not in mark and any(
                     other is not mark and other['blob'] == mark['blob'] and other['kind'] == 'head' and not other['stems']
                     and other['hole'] >= limit and lying(other) and abs(other['cx'] - mark['cx']) <= WHOLE_FILLED * space
@@ -1725,6 +1793,8 @@ def read_symbols(layers: dict) -> dict:
             if abs(place - near) >= PLACE_MASS[0] and round(mass) == near + (1 if place > near else -1) \
                     and abs(mass - round(mass)) <= 0.5 - PLACE_MASS[1]:
                 head['place'] = place = mass
+        if slit:
+            head['speck'] = slit
         if mark.get('loop'):
             head['loop'] = mark['loop']
         if mark.get('room'):
@@ -1748,6 +1818,18 @@ def read_symbols(layers: dict) -> dict:
             head['place'] = found
         (orphans if orphan else heads).append(head)
     return {'heads': heads, 'signs': signs, 'marks': marks, 'orphans': orphans}
+
+
+def slit_page(heads: list[dict]) -> None:
+    """The heads that hold the slit of a half note (see SLIT_ONE) get `slit`, counted over the notes of the page: on
+    a page of a worn print the filled heads hold specks anywhere, and no speck is a slit there (see SLIT_PAGE). The
+    marks before the notes begin are not counted: a flat of the key signature has a stroke and a hole too."""
+    asked = [head for head in heads if head.get('speck')]
+    other = sum(head['speck'] == 'other' for head in asked)
+    worn = SLIT_PAGE and other > SLIT_PAGE[0] * len(asked)
+    for head in asked:
+        if head.pop('speck') == 'slit' and not worn:
+            head['slit'] = True
 
 
 # ----------------------------------------------------------------------------------------------------------------
