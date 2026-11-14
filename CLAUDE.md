@@ -18,12 +18,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.0 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.2 % on
-scans; 79 scores at 99 % or more), 95.9 % of the notes on the clean copies (21,667 of 22,591; 25 of the 78 counted
+Not reached yet: 86.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.2 % on
+scans; 79 scores at 99 % or more), 96.0 % of the notes on the clean copies (21,679 of 22,591; 25 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
-(82.1 % on scans), and 89.9 % on the kit (6204 of 6901).
-On the fresh test set, which no rule was set on: 94.9 % of the notes (39,644 of 41,761; 90 of 214 pieces at 99 %),
+(82.1 % on scans), and 89.9 % on the kit (6206 of 6901).
+On the fresh test set, which no rule was set on: 94.9 % of the notes (39,647 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
 ## Direction
@@ -132,6 +132,18 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   only the pages that the first one changed.
 - Before a helper is added to a module, search the module for its name: a second `def` of one name further down
   wins without a word (14 November 2026, `symbols._goes_on`).
+- A rule that reads a speck of paper in a head is a rule of the page: on a worn print a filled head holds specks
+  anywhere, and one lies where the rule looks (a half note with one speck: 37 gained and 9 lost in its first
+  form, 14 November 2026). Count the page's notes that hold such a speck elsewhere, and switch the rule off for
+  the page over a small share. Count the notes of the page, after the clef and the key signature are taken away:
+  a flat of the key signature has a stroke and a hole and was counted as a head.
+- A tally from a census is made with the rule's own arithmetic (two steps with one vote each add up to a length
+  as well as one step with two), and every new reading of a rule for a whole class of marks (an oval without a
+  stem) is looked at on the page: sharps, the numbers of a time signature and a scribble were among 54.
+- A rule that lets a bow end earlier is read on the fresh set in its first form: LitChoir showed four true ties
+  and no false one, the fresh set 3 notes gained and 12 lost (a short stroke beside a head that runs into a
+  staff line). It was narrowed by the measures of LitChoir's true ties (the way that shows against the part
+  that the line hides), not by the pages of the fresh set, and read there again.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

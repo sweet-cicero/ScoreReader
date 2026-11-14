@@ -79,6 +79,11 @@ CHORD_ONE = 2        # the heads of a chord on one stem are as long as each othe
 #                      and the shortest of them is as long as the steps, a head of its kind (hollow or filled) that
 #                      was read up to this many times as long (a dot that is none, a missed flag) is as long too
 #                      (0: off)
+SLIT_SPAN = 2        # a quarter note (with a dot or without) whose head on a line holds a speck of paper where the slit
+#                      of a half note lies (symbols.SLIT_ONE), and whose voice goes on only after several steps: where
+#                      every one of these steps has a voice that says its length, and the lengths that most voices say
+#                      add up to this many times the note's length or more, the note is a half note whose slit the
+#                      print closed (0: off)
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -413,6 +418,19 @@ def _bar_steps(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[fl
                         del resting[number][length]
                     resting[number][short] = resting[number].get(short, 0) + 1
                 spans[at] = (number, following, events, short, pause)
+        if SLIT_SPAN:
+            for at, (number, following, events, length, pause) in enumerate(spans):
+                # A half note on a line whose slit the print closed but for a speck (see SLIT_SPAN).
+                if following > number + 1 and not pause and length in (Fraction(1), Fraction(3, 2)) \
+                        and all(event['head'].get('slit') and event['length'] == length for event in events) \
+                        and all(votes[step] for step in range(number, following)) \
+                        and sum((max(votes[step], key=votes[step].get) for step in range(number, following)),
+                                Fraction(0)) >= SLIT_SPAN * length:
+                    for event in events:
+                        event['length'] = 2 * length
+                        event['head']['hollow'] = True
+                        event['agreed'] = True
+                    spans[at] = (number, following, events, 2 * length, pause)
         sure = [None] * count
         for number in range(count):
             if votes[number]:
