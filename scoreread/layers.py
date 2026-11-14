@@ -62,6 +62,10 @@ HOLE_NECK = 0.05     # a staff line that is faint inside a head leaves the two p
 CROSS = 0.2          # a mark goes through a staff line when its ink over and under the line is this near, sideways
 WEAK = (0.05, 0.2)   # the share of long strokes with gaps: a whole copy has at most the first, a weak copy the second
 WHOLE_GAP = 0.3      # on a whole copy, the gaps that are bridged are this share of the gaps bridged on a weak copy
+THIN_EXACT = True    # the thin ink that is joined over gaps is the ink that no run of the reach goes through, to the pixel.
+#                      OpenCV's opening lies one pixel to the right for a reach of an even number of pixels: the left
+#                      column of every head, beam and letter was thin ink then, and was joined to what stands over or
+#                      under it (False: as it was)
 BLOT = 1.8           # solid ink that a disc of this many staff spaces fits in is a blot, not music
 
 
@@ -262,6 +266,16 @@ def _round(part: np.ndarray, area: int, least: float | None = None) -> bool:
     return area >= (ROUND if least is None else least) * full
 
 
+def _opened(image: np.ndarray, kernel: np.ndarray, exact: bool) -> np.ndarray:
+    """The opening of an image. OpenCV's own opening is one pixel off for a kernel of an even size (down for a kernel
+    that stands, to the right for one that lies); the exact one is not."""
+    if not exact:
+        return cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+    high, wide = kernel.shape
+    worn = cv2.erode(image, kernel, anchor=(wide // 2, high // 2))
+    return cv2.dilate(worn, kernel, anchor=(wide - 1 - wide // 2, high - 1 - high // 2))
+
+
 def staff_lines(solid: np.ndarray, staves: list[dict]) -> np.ndarray:
     """1 on the pixels of the staff lines that nothing else stands on."""
     out = np.zeros_like(solid)
@@ -353,7 +367,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     lines = lines & (1 - crossing)
     free = free | crossing
     # A weak copy breaks a thin stem into dashes. Thin ink is joined over small gaps in its own column.
-    thin_ink = free & (1 - cv2.morphologyEx(free, cv2.MORPH_OPEN, np.ones((1, reach), np.uint8)))
+    thin_ink = free & (1 - _opened(free, np.ones((1, reach), np.uint8), THIN_EXACT))
     gap = int(max(4, round(DASH_GAP * space)))
     # A thin stroke that crosses a staff line was cut there when the line was taken away, if the copy had weakened
     # it at the line. Where a staff line has thin ink close over it and close under it, the stroke goes through.
