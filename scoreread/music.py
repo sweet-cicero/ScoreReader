@@ -39,6 +39,28 @@ STACKED = 0.6        # two notes of one voice on two stems begin together when t
 #                      spaces apart (a third voice on a staff: the basses in octaves under the tenors, a part that divides
 #                      with a stem for each note); a note that follows another stands a head's width or more after it
 #                      (0: off)
+SPAN_VOTE = True     # a note that reaches over several steps votes too: where all of its steps but one are sure, it says
+#                      that the last one is the rest of its length. With the voices of that step AGREE or more must say
+#                      the same, and more than say anything else. A long note in one voice is a witness for the short
+#                      notes of another. (False: only the voices that move together vote)
+SPAN_SIDE = True     # ... but it only takes a side: the length that it says for the step is one that a voice of that step
+#                      says too. Its other steps can be wrong, and then what is left of it is no length of the step; and
+#                      on a staff with one line of melody the stems go up and down with the height, each direction
+#                      reads as a voice, and a note with its stem down seems to last until the next stem down
+#                      (False: it can say a length that no voice of the step says)
+SPAN_SUM = True      # and where several of its steps are open, each with one length said, and these lengths with the
+#                      sure steps make its own length, it says each of them too (False: off)
+REST_SPAN = (0.75, 1.0)   # a note with a rest of its staff after it (the rest's middle this many staff spaces or more past
+#                           the note and before the next note of its voice) is shorter than the way to that next note.
+#                           It still votes on its step: the voices that begin together and rest together are as long
+#                           as each other. But a length that fewer than AGREE voices without a rest say is the length
+#                           of the resting voices, not of the step: it makes no note without a rest shorter (that
+#                           voice sings on while the others rest), it can make one longer (its own rest was not
+#                           found), and it is no part of the sum of a long note (see SPAN_VOTE). A note with a rest
+#                           after it is made longer only by such a length, and it is no witness over several steps.
+#                           On a staff of two voices a rest that stands this many staff spaces or more over the
+#                           middle line is the upper voice's alone, and one as far under it the lower voice's
+#                           (None: the rests are not looked at)
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
 
 
@@ -210,7 +232,8 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
     return out
 
 
-def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[float]], space: float) -> int:
+def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list[float]], space: float,
+                  rests: list[dict] | None = None) -> int:
     """A music check for the staves of one system: notes that begin together and whose next notes begin together are
     as long as each other. Returns the number of lengths that were changed.
 
@@ -219,7 +242,10 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
     that has a note in both columns says how long that step is. Where two or more voices agree and outnumber the
     others, the step is sure, and a note that says something else is changed: a flag or a dot was missed, a slur
     was taken for a beam, or the hole of a half note was filled by the copy. A note that reaches over several
-    columns is only made shorter, never longer: a note can be missing after it, or a rest can stand there."""
+    columns is only made shorter, never longer: a note can be missing after it, or a rest can stand there.
+
+    `rests` holds the rests of the page (scoreread.rests.quarter_rests): a note with a rest after it is silent for
+    a part of the way to the next note of its voice (see REST_SPAN)."""
     xs = sorted(x for index in plans for x in bars.get(index, []))
     groups = []
     for x in xs:
@@ -235,8 +261,9 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                 x = sorted(event['x'] for event in column)[len(column) // 2]
                 cells.setdefault(sum(1 for edge in edges if edge < x), []).append((x, index, column))
     changed = 0
-    for group in cells.values():
+    for bar, group in cells.items():
         group.sort(key=lambda cell: cell[0])
+        pauses = [rest for rest in rests or [] if REST_SPAN is not None and sum(1 for edge in edges if edge < rest['x']) == bar]
         clusters = []
         for x, index, column in group:
             best = None
@@ -256,23 +283,38 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                     where.setdefault((index, voice), []).append((number, [event for event in column if event['voice'] == voice]))
         count = len(clusters)
         votes = [dict() for _ in range(count)]
+        resting = [dict() for _ in range(count)]      # of these votes, the ones of the voices with a rest after the note
         spans = []
-        for sequence in where.values():
-            for (number, events), (following, _) in zip(sequence, sequence[1:] + [(count, None)]):
+        for (index, voice), sequence in where.items():
+            for (number, events), (following, after) in zip(sequence, sequence[1:] + [(count, None)]):
                 length = min(event['length'] for event in events)
-                spans.append((number, following, events, length))
+                # A rest of this voice between the note and the voice's next note (or the end of the bar).
+                apart = REST_SPAN[0] * space if pauses else 0
+                begin = max(event['x'] for event in events) + apart
+                end = min(event['x'] for event in after) - apart if after else float('inf')
+                pause = any(rest['staff'] == index and begin < rest['x'] < end
+                            and not (voice == 1 and rest['middle'] >= REST_SPAN[1])
+                            and not (voice == 2 and rest['middle'] <= -REST_SPAN[1]) for rest in pauses)
+                spans.append((number, following, events, length, pause))
                 if following == number + 1:
                     votes[number][length] = votes[number].get(length, 0) + 1
+                    if pause:
+                        resting[number][length] = resting[number].get(length, 0) + 1
         sure = [None] * count
         for number in range(count):
             if votes[number]:
                 best = max(votes[number], key=votes[number].get)
                 if votes[number][best] >= AGREE and votes[number][best] > sum(votes[number].values()) - votes[number][best]:
                     sure[number] = best
-                elif AGREE_HOLLOW and len(votes[number]) == 2 and votes[number].get(Fraction(1), 0) >= AGREE \
-                        and votes[number].get(Fraction(1)) == votes[number].get(Fraction(2)):
-                    sure[number] = Fraction(2)
-        for number, following, events, length in spans:
+        if SPAN_VOTE:
+            _span_votes(votes, spans, sure, resting)
+        for number in range(count):
+            if sure[number] is None and AGREE_HOLLOW and len(votes[number]) == 2 and votes[number].get(Fraction(1), 0) >= AGREE \
+                    and votes[number].get(Fraction(1)) == votes[number].get(Fraction(2)):
+                sure[number] = Fraction(2)
+        if SPAN_VOTE:
+            _span_votes(votes, spans, sure, resting)
+        for number, following, events, length, pause in spans:
             for event in events:      # for the record: how the voices voted on this note's steps
                 event['votes'] = [{str(value): votes[step][value] for value in votes[step]} for step in range(number, following)]
             if any(sure[step] is None for step in range(number, following)):
@@ -280,12 +322,61 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
             total = sum(sure[number:following], Fraction(0))
             if total == length or not (total in TYPES or total / Fraction(3, 2) in TYPES or total / TRIPLET in TYPES):
                 continue
-            if following == number + 1 or length > total:
+            leaning = any(_leans(votes, resting, sure, step) for step in range(number, following))
+            if length > total:
+                change = pause or not leaning
+            else:
+                change = following == number + 1 and (leaning or not pause)
+            if change:
                 for event in events:
                     event['length'] = total
                     event['agreed'] = True
                 changed += 1
     return changed
+
+
+def _leans(votes: list[dict], resting: list[dict], sure: list, step: int) -> bool:
+    """Whether the sure length of a step leans on voices that rest after their note (see REST_SPAN): they are as long
+    as each other, and the step is longer."""
+    value = sure[step]
+    return resting[step].get(value, 0) > 0 and votes[step].get(value, 0) - resting[step][value] < AGREE
+
+
+def _span_votes(votes: list[dict], spans: list[tuple], sure: list, resting: list[dict]) -> None:
+    """The long notes vote too (see SPAN_VOTE): fills `sure` for the steps that they decide. `spans` holds for each
+    note of a voice (first step, the step of the voice's next note, the events, the length, whether a rest follows),
+    and `resting` for each step the votes of the voices with a rest after the note."""
+    while True:
+        more = {}
+        for number, following, events, length, pause in spans:
+            open_steps = [step for step in range(number, following) if sure[step] is None]
+            if following == number + 1 or not open_steps or pause:
+                continue
+            if any(sure[step] is not None and _leans(votes, resting, sure, step) for step in range(number, following)):
+                continue
+            rest = length - sum((sure[step] for step in range(number, following) if sure[step] is not None), Fraction(0))
+            if len(open_steps) == 1:
+                if rest > 0 and (rest in TYPES or rest / Fraction(3, 2) in TYPES or rest / TRIPLET in TYPES) \
+                        and (not SPAN_SIDE or rest in votes[open_steps[0]]):
+                    more.setdefault(open_steps[0], {}).setdefault(rest, 0)
+                    more[open_steps[0]][rest] += 1
+            elif SPAN_SUM and all(len(votes[step]) == 1 for step in open_steps) \
+                    and sum((next(iter(votes[step])) for step in open_steps), Fraction(0)) == rest:
+                for step in open_steps:       # the long note is as long as its open steps say together
+                    value = next(iter(votes[step]))
+                    more.setdefault(step, {}).setdefault(value, 0)
+                    more[step][value] += 1
+        found = False
+        for step, extra in more.items():
+            tally = dict(votes[step])
+            for value, voices in extra.items():
+                tally[value] = tally.get(value, 0) + voices
+            best = max(tally, key=tally.get)
+            if tally[best] >= AGREE and tally[best] > sum(tally.values()) - tally[best] and best in extra:
+                sure[step] = best
+                found = True
+        if not found:
+            return
 
 
 def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, key: int, space: float,

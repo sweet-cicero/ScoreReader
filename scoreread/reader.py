@@ -15,6 +15,7 @@ from .drone import letter_marks
 from .layers import read_layers
 from .meter import mid_signs
 from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
+from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, read_symbols, \
@@ -46,7 +47,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
               clefs_before: list[str] | None = None, key_hymn: int | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
-    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times') for pictures and checks.
+    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests') for pictures and checks.
     `key_before` is the key of the page before in the same hymn: a page that shows no key signature has that key.
     `clefs_before` are the clefs of the staves of a system on that page, and `key_hymn` is the key that the staves
     of all pages of the hymn voted for together (see scoreread.starts).
@@ -65,7 +66,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
         return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'part_notes': [], 'title': title, 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
-                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'triplets': [], 'times': []}
+                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'triplets': [], 'rests': [], 'times': []}
     layers = read_layers(grey, places)
     # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
     words = layers['words'] = word_bands(layers)
@@ -87,6 +88,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     key, clefs, ends, keys = begin['key'], list(begin['clefs']), begin['ends'], begin['keys']
     # Notes begin after the clef and the key signature.
     heads = [head for head in heads if head['cx'] > ends[head['staff']] + 0.3 * space]
+    # A printed quarter rest is no note: its thick middle was read as a head and its thin strokes as a stem.
+    rests = quarter_rests(layers, ends)
+    heads = [head for head in heads if not in_rest(head, rests, space)]
     bars = bar_lines(layers, heads)
     # A stem can cross the whole staff as a bar line does, but a head hangs on it.
     for index in bars:
@@ -111,7 +115,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     for index, found in faint_bars(layers, heads, bars).items():
         bars[index] = sorted(bars[index] + found)
     lost_stems(layers, heads, bars, ends,
-               [head for head in symbols['orphans'] if head['cx'] > ends[head['staff']] + 0.3 * space])
+               [head for head in symbols['orphans'] if head['cx'] > ends[head['staff']] + 0.3 * space
+                and not in_rest(head, rests, space)])
     heads = without_joints(heads, space)
     heads += thin_heads(layers, heads, bars, ends)
     # A hollow head read from its hole; where the copy broke its rim, it replaces the pieces of the rim.
@@ -129,6 +134,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
              if not any(sign['staff'] == head['staff'] and sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space
                         and sign['top'] - 0.3 * space <= head['cy'] <= sign['bottom'] + 0.3 * space and head is not sign['head']
                         for sign in at_bars)]
+    # (The other finders of heads can find a rest again.)
+    heads = [head for head in heads if not in_rest(head, rests, space)]
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
@@ -199,7 +206,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     if CHECK:
         for system in sorted({staff['system'] for staff in staves}):
             own = {index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
-            agreed += agree_lengths(own, bars, space)
+            agreed += agree_lengths(own, bars, space, rests)
     # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scoreread.drone).
     # It is a part of its own after the melody; its notes are in no list of notes, so no syllable is set under them.
     drone, holding = [], {}
@@ -240,5 +247,5 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words, 'triplets': triplets,
-            'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
+            'rests': rests, 'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
                       for index, start in enumerate(begin['starts'])]}
