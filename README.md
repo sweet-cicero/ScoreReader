@@ -54,7 +54,7 @@ ink); the thick copies and the copies by hand come after it.
 | 3. Clean page | `scoreread/page.py` | No | Makes each system level and puts the systems on a white page. The shadow of the binding and the page number stay behind. |
 | 4. Layers | `scoreread/layers.py` | No | Splits the ink into staff lines, upright strokes (stems and bar lines), thick marks (note heads, beams, flags), the holes of hollow heads, and the rest. `layers` draws them in colours. |
 | 5. Symbols | `scoreread/symbols.py`, `starts.py`, `meter.py`, `signs.py`, `ties.py`, `words.py`, `triplets.py`, `drone.py`, `rests.py` | No | Reads the note heads (filled, hollow, and the thin slanted heads of a hand), their stems, flags, beams and dots, the ledger lines, the bar lines, the clef and key signature of each staff, the sharps, flats and naturals before a note, and the ties. The key of a page is a vote of its staves (a copy loses signs more easily than it gains them), and a page without a key signature has the key of the page before. Finds the time signatures, so that their numbers are no notes and no sharps. Finds the rows of the words, so that a stem ends where they begin and a letter is no note. Finds the brackets of triplets: two flat arms with a hook at each outer end and a number in the break between them. Reads the small 8 under a treble clef (the tenors' clef, an octave lower) by its two holes. On a chant page, reads the letters over the staff that name the ison (the held note), and "Un." where the ison joins the melody. Finds the printed quarter rests by their shape, so that a rest is no note. |
-| 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed; a long note in one voice is a witness for the short notes of the others, and a voice with a rest after its note makes no voice that sings on shorter. A note under the bracket of a triplet has two thirds of its drawn length. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
+| 6. Music | `scoreread/music.py`, `reader.py` | No | Pitch from the clef, the key and the signs of the bar. Two voices on a staff from the stem direction. Notes that begin together stand in one column. The voices of a system must agree on the length of each step, and a note that disagrees is changed; a long note in one voice is a witness for the short notes of the others, and a voice with a rest after its note makes no voice that sings on shorter. Where most bars of a page are as long as each other, a bar with one open step is as long too. A note under the bracket of a triplet has two thirds of its drawn length. Choir rule: a treble staff over the bass staff is the tenors'. Writes MusicXML. |
 | Words of a scan | `scoreread/letters.py`, `lyrics.py` | No | Cuts the rows of the words into letters and groups the letters of the whole hymn by shape (one copyist or one type draws a letter the same way each time). Names the groups with the list of words: the same shape is the same letter in every word, and the names under which the page reads most like the words of the list stay. The height of a letter, its dot and its holes say what a shape can be. Sets each syllable under its note. |
 | Words of a scan, by choice | `scoreread/ocr.py` | Yes: Tesseract, when `--tesseract` is given | Cuts each row of the words out of the scan and gives it to Tesseract as one line of text. Takes the lines of held syllables out of the row first, and reads the row at three sizes. Cuts the line into syllables at its hyphens, cuts two words that Tesseract read as one at a wide gap, drops a row that Tesseract is not sure of (stray ink under a staff), and sets the syllables under the notes as the own letter reader does. With a list of words it mends a word that is one letter away from a word of the list, sets where the words end, keeps a short word and a row that Tesseract was not sure of when the list holds them, keeps the reading of a row that the list holds the most letters of, and parts a word into its syllables as the list parts it where the scan shows no hyphen. |
 | Drawing | `scoreread/vector.py` | No | A PDF that notation software wrote holds each sign as a character of a music font at its exact place, and its words as text. Such a page is read from that drawing, with its words; no image is read. |
@@ -173,7 +173,7 @@ flowchart LR
         a2["Flags and beams at the far end of each stem. A beam that goes on past a stem is one beam: its piece at the left of the stem and its piece at the right lie less than its thickness apart, and two beams lie farther apart. The page shows the thickness of its own beams: on a page without thick beams, slim straight ink from one stem to the next is a beam. A thin beam meets a stem that the words cut at the stem's own end. Where a stem was followed into a slur, its thin beam leaves it before the end that was found: long ink at the side of the stem, half as thick as the page's beams or more. A slur from the end of one stem to the end of the next is no beam: both stems bend toward each other there, and the stroke is thin and round at both ends. The flag of a stem down can be a bow that comes back to the stem: ink at the right of the stem with paper between."]
         a3["Dots at the right of a head: round pieces of ink of a dot's size. A speck is no dot. A full dot can stand close against its head, when no other head has it."]
         a4["Sharps, flats and naturals before a head (signs.py). The cut end of the clef at the start of the notes is no sign. A flat whose bowl has a second stroke down at its right is a natural. The right stroke of a natural can stand against the stem of its note. A natural can be 1.9 staff spaces high; two nearly level strokes are a natural and no sharp when the right one stands lower at both ends and no bar sticks out at the left. A flat or a natural against a bar line is no half note with the bar line as its stem: the line goes through the whole staff, the mark is narrower than a head, and its note follows at once. A heavy sharp whose middle closed is no hollow head, at any size when its stems are the sharp's own strokes. Two strokes that touch are a pair, unless they lie on a full head. On a faint print the two bars of a sharp can be all that is left: two thin marks of one width, one over the other, before a head."]
-        a5["Ties (ties.py): a thin bow from a head to the next head of its pitch, also where it begins in a staff line or runs through one. A tie can go over the end of a line: a bow leaves the last note of its voice for the end of the staff, and the voice begins the next line at the same place. A chord is tied note by note: the other heads of the second chord are not in the way. A head of two voices is tied to both heads where the next moment prints the two voices side by side. The paper that a tie closes in where it crosses a bar line is no head, and its line stays a bar line."]
+        a5["Ties (ties.py): a thin bow from a head to the next head of its pitch, also where it begins in a staff line or runs through one. A tie can go over the end of a line: a bow leaves the last note of its voice for the end of the staff, and the voice begins the next line at the same place. A short tie between two heads that stand close hides its ends under the heads: what shows of it is flat, and it is a bow where all of it shows and it begins and ends under or over the heads. A chord is tied note by note: the other heads of the second chord are not in the way. A head of two voices is tied to both heads where the next moment prints the two voices side by side. The paper that a tie closes in where it crosses a bar line is no head, and its line stays a bar line."]
         a6["On a chant page (drone.py): a capital letter that stands alone close over the staff names the ison, and 'Un.' ends it: from there the held part sings one line through the notes of the staff. A letter far over the staff is a section letter."]
         a7["The result: heads with place, stems, flags or beams, dots, signs and ties, in bars."]
         a1 --> a2 --> a3 --> a4 --> a5 --> a6 --> a7
@@ -263,7 +263,7 @@ From the symbols to the notes:
 flowchart TD
     heads["Heads of a staff, with their lengths"] --> voices["<b>Voices</b><br/>A stem up is voice 1, a stem down is voice 2. A head with both stems is in both voices."]
     voices --> columns["<b>Bars and columns</b><br/>The notes between two bar lines are a bar. Notes that begin together stand in one column. Two voices a second apart stand side by side: with their stems on one line, or with the lower voice at the left and heads that touch. Two notes of one voice on two stems close together begin together: a part that divides, or a third voice on the staff."]
-    columns --> check["<b>Music check</b><br/>For the staves of one system: from one column to the next, every voice says how long the step is. Where two or more voices agree and outnumber the others, a note that says something else is changed. A long note over several steps is a witness: where its other steps are sure, it says that the last one is the rest of its length, if a voice of that step says so too. A voice with a rest after its note is shorter than its step: it makes no voice that sings on shorter."]
+    columns --> check["<b>Music check</b><br/>For the staves of one system: from one column to the next, every voice says how long the step is. Where two or more voices agree and outnumber the others, a note that says something else is changed. A long note over several steps is a witness: where its other steps are sure, it says that the last one is the rest of its length, if a voice of that step says so too. A voice with a rest after its note is shorter than its step: it makes no voice that sings on shorter. The bars of a page whose steps are all sure have a sum each: where half of them or more have the same sum, a bar with one open step is as long, and the last note of a voice that ends where such a bar ends is not cut short."]
     check --> onsets["<b>Onsets</b><br/>In a bar, each column begins when the voices that sing in it are free."]
     onsets --> pitch["<b>Pitch</b><br/>The clef names each pitch place. The key of the staff and the signs of the bar give its sharp or flat."]
     clefs["Clefs and key of the page"] --> tenor["<b>Choir rule</b><br/>In a system of three or more staves, a treble staff over the bass staff is the tenors'. It sounds an octave lower. It is not the tenors' when its notes would then sound under the notes of the bass staff: the altos have it."]
@@ -364,8 +364,8 @@ order, with one vote for its key.
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.3 % (20,016 of 20,163) | 53 | 70 | 0 |
-| Scans | 294 | 81.6 % (56,799 of 69,579) | 23 | 103 | 22 |
-| All | 364 | 85.6 % (76,815 of 89,742) | 76 | 173 | 22 |
+| Scans | 294 | 81.8 % (56,900 of 69,579) | 23 | 106 | 22 |
+| All | 364 | 85.7 % (76,916 of 89,742) | 76 | 176 | 22 |
 
 The first milestone is 99 % on clean copies: the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
@@ -374,36 +374,36 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 95.1 % (21,490 of 22,589) | 22 | 70 | 49.9 % (3,286 of 6,584) | 92.6 % (5,779 of 6,240) | 90.8 % (4,115 of 4,531) |
-| Thick or grey print | 26 | 79.4 % (6,687 of 8,426) | 0 | 7 | 32.9 % (658 of 2,000) | 81.4 % (1,619 of 1,990) | 81.2 % (1,118 of 1,377) |
-| By hand | 190 | 74.2 % (28,622 of 38,564) | 1 | 26 | 37.7 % (5,401 of 14,345) | 77.7 % (11,155 of 14,357) | 74.7 % (7,722 of 10,344) |
+| Clean print | 78 | 95.3 % (21,517 of 22,589) | 22 | 72 | 49.9 % (3,286 of 6,584) | 92.6 % (5,779 of 6,240) | 90.8 % (4,115 of 4,531) |
+| Thick or grey print | 26 | 79.6 % (6,711 of 8,426) | 0 | 7 | 32.9 % (658 of 2,000) | 81.5 % (1,621 of 1,990) | 81.3 % (1,120 of 1,377) |
+| By hand | 190 | 74.3 % (28,672 of 38,564) | 1 | 27 | 37.7 % (5,401 of 14,345) | 77.7 % (11,155 of 14,357) | 74.7 % (7,722 of 10,344) |
 
-- The figures count every typed note of a part since four rounds before the last, the notes of a chord too; until
+- The figures count every typed note of a part since five rounds before the last, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
-  count of their time. Of the clean scores, 48 are at 95 % or more. About 930 more notes are needed
-  for 99 % of each clean copy; 9 scores lack one to three notes. The mistakes that are left are many small causes;
+  count of their time. Of the clean scores, 49 are at 95 % or more. About 900 more notes are needed
+  for 99 % of each clean copy; 10 scores lack one to three notes. The mistakes that are left are many small causes;
   the largest that was found
   since, two voices a second apart that the print sets as one blot of ink, brought 41 notes on the clean copies
-  three rounds before the last. The reader also writes 944 notes on the clean copies that are not there (5,726 on
-  all scores); the last three rounds took 49, 67 and 35 of them away. Of 30 mistakes drawn by lot and looked at
-  on the page ten rounds ago,
+  four rounds before the last. The reader also writes 941 notes on the clean copies that are not there (5,742 on
+  all scores); the three rounds before the last took 49, 67 and 35 of them away; the last round took 3 more away on the clean copies and added 16 on all scores, on three scores that gain 31 notes. Of 30 mistakes drawn by lot and looked at
+  on the page eleven rounds ago,
   8 are a hollow head and a filled head mixed up, 4 a dot, 4 a tie or a slur, 4 a beam, 4 a sign, and 6 one of a
   kind (a note that a pencil crossed out, a typed hymn that differs from its page). Two fine engravings held about
-  240 of the 1,269 notes that were lost then (1,099 now, with the notes of chords counted). An earlier count said that a quarter of the mistakes are
+  240 of the 1,269 notes that were lost then (1,072 now, with the notes of chords counted). An earlier count said that a quarter of the mistakes are
   the scorer lining a staff up with the wrong part: the tool behind that count lined the notes up in its own way,
   and it is not held any more.
-- Words with the optional Tesseract step and a list of words: 24,206 of 28,692 syllables are right (84.4 %):
+- Words with the optional Tesseract step and a list of words: 24,208 of 28,692 syllables are right (84.4 %):
   92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 82.1 % on
-  the scans (18,553 of 22,587). These are 11 syllables fewer than five rounds ago with the same words read: the
+  the scans (18,555 of 22,587). These are 9 syllables fewer than six rounds ago with the same words read: the
   words are compared in the layout that the count of the notes chooses for a score, and the scorer sets a few
   scores in another layout or on another part of their pages now. On the clean copies 92.6 % of the syllables and 90.8 % of the whole words are
-  right, and 19 of the 78 scores have 99 % of their syllables (15 twelve rounds ago, 4 thirteen rounds ago). The
+  right, and 19 of the 78 scores have 99 % of their syllables (15 thirteen rounds ago, 4 fourteen rounds ago). The
   list of words is made from the typed hymns of the app without the hymn that is read and its other scores, so no
   score is read with its own text. Without a list the scans have about 910 fewer of these syllables and
   about 1,170 fewer whole words (quick count, see the rounds of the words below).
   With the own letter reader, which uses no model, the scans have about 40 %; its column in the table was measured
-  fifteen rounds ago and not again since.
-- The count of the syllables changed twelve rounds ago, and that alone moved the figures: the syllables of a refrain
+  sixteen rounds ago and not again since.
+- The count of the syllables changed thirteen rounds ago, and that alone moved the figures: the syllables of a refrain
   that the page prints once and the typed hymn writes out again are listed apart now, as the notes of such a
   refrain already were (150 syllables on 2 scores). Counted the new way, the clean copies stood at 85.0 % before
   that round (5,302 of 6,240; 83.3 % by the old count) and all scores at 78.2 % (22,449 of 28,697).
@@ -426,11 +426,110 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   can turn that choice: one hymn lost 16 notes in an earlier round because one wrong note was no longer
   read, and the scorer then took its staff for one part and not for two.
 - The figures count parts, not staves. A staff that holds two parts is split: the top note of each chord goes to
-  the upper part and the bottom note to the lower. Until five rounds ago that was all: of a typed part that
+  the upper part and the bottom note to the lower. Until six rounds ago that was all: of a typed part that
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
-- The last round: the lengths that the voices say to each other, and the printed quarter rest. Of the 1,124
+- The last round: the length of a full bar, the short tie, and an old fault of the tie reader. Of the 1,099 notes that the clean copies
+  lacked after the round before it, 428 had only a wrong length, 257 only a wrong pitch and 99 both. The wrong
+  lengths were listed by how the voices of their step had voted: 133 are notes over several steps, 157 stand
+  where only the note itself says a length, 43 where one voice says one length and one voice another, 26 where
+  two stand against two, and 36 where the larger side is wrong. The voices cannot decide these among
+  themselves. Four rules were written and stand, and an old fault of the tie reader was found. The clean copies went from 21,490 to
+  21,517 of 22,589 notes (95.3 %; 28 notes gained, 1 lost; 22 scores at 99 %, 22 before; 49 at 95 %, 72 at
+  90 %), all scores from 76,815 to 76,916 of 89,742 (85.7 %; 113 gained, 12 lost; 76 scores at
+  99 %, 76 before), and the fresh test set from 39,576 to 39,600 of 41,761 (94.8 %; 24 gained, none lost;
+  90 pieces at 99 %, 86 before). The reader writes 941 notes that are not there on the clean copies (944 before), 5,742 on all scores
+  (5,726 before: 7 more on each of the two scores of ascension-antiphon, which gain 8 notes each, and 8 on
+  wedding-come-bless, which gains 15) and 5,019 on the fresh test set (5,032 before).
+
+  | Rule, switched off alone in the final reading; notes gained, lost by parts | Clean copies | All of LitChoir | Fresh test set |
+  |---|---:|---:|---:|
+  | A bar with one open step is as long as the full bars of its page (`music.BAR_FULL`, with the rule under it) | 23, 1 | 107, 12 | 11, 0 |
+  | ... and the last note of a voice that ends where a full bar ends is not cut short (`music.BAR_KEEP`) | 4, 1 | 21, 6 | 4, 0 |
+  | A beam that is thick at one stem and slim at the next (`symbols.BEAM_EDGE`) | 2, 0 | 3, 0 | 0, 0 |
+  | A short tie whose ends lie under the heads (`ties.TIE_FLAT`) | 4, 1 | 4, 1 | 13, 0 |
+
+  Counted staff by staff the round gains 28 and loses 1 on the clean copies, 106 and loses 18 on all scores, and
+  22 and loses none on the fresh set.
+- The first rule: the full bar. Most pages have no time signature that the reader could trust (the chant
+  pages have none at all), but the bars of one page are mostly as long as each other. Every bar whose steps
+  are all sure has a sum. Where half of these bars of a page or more, and four at least, have the same sum,
+  that sum is the full bar of the page. A bar with one open step is then as long, and the open step is what is
+  left of the sum, if a voice of that step says that length. The census of the clean copies, with the typed
+  length of every note: with one open step the rule mends 14 notes and breaks 1; with two or more open steps it
+  would mend 6 more and break 8, so it stops at one. The share of bars that must agree changes nothing between
+  0.4 and 0.6, and the sum of the page serves as well as a sum of the whole hymn. The rule is asked twice: when
+  the voices have voted, and again before a tie of quarters against halves is settled for the halves (a rule of
+  an earlier round for heads whose hole the copy filled). At a tie the full bar decides first: on the census
+  that only gains. Read with and without it, that order gains 13 notes on LitChoir (7 on the clean copies,
+  most on one print whose filled heads are pale) and loses 4, all in one bar: the last bar of a hymn holds three
+  half notes on a page whose bars hold two, and the full bar makes one of them a quarter.
+- The second rule: a note that fills the bar. A long note over several sure steps was made shorter where the
+  steps add up to less than it. But at the end of a bar the other voices often rest, the rest is not read, and
+  the long note is right. A note that ends where the full bar ends is left as it is. On the census 5 notes that
+  were cut wrongly are kept, and 1 right cut is lost. Read on every page the rule first gained 22 notes and lost
+  26 on LitChoir, most on copies by hand (4 and 2 on the clean copies; 9 and none on the fresh set). The lost
+  notes were looked at on the page: an eighth before two sixteenths whose second beam is not read, an eighth
+  with a flag read as a quarter, a natural sign read as a hollow head. Each has another note of its voice
+  after it in the same bar, so it cannot reach the end of the bar. The rule now holds for the last note of a
+  voice in its bar only, and for a whole note whatever follows: a whole note has no stem to show its voice,
+  and a note that comes after it on its staff need not be of its voice (on a clean page a speck at the end of
+  a slur is read as a note after two whole notes of the basses, and cut them to dotted halves). In this form
+  the rule gains 21 notes on LitChoir and loses 6 (4 and 1 on the clean copies), and 4 and none on the fresh set.
+- The third rule: the edge of a beam. A beam is told from a slur between two stems by its thickness, taken at
+  each stem. One beam can be just thick enough at one stem and slimmer at the next, and was then no beam at the
+  second, and its notes were quarters. A beam under 0.3 staff space that the next stem does not show as a thick
+  beam is now looked at as a slim beam too, with the tests that a slim beam has to pass.
+- The fourth rule: the short tie. Two eighths of one pitch under one beam stand so close that the ends of their
+  tie lie under the heads, and the part that shows is flatter than a bow had to be (0.2 staff space). Every
+  pair of heads of the clean copies that could be tied was listed again with the ways that the reader follows
+  from head to head: 7,594 pairs. A way whose ink shows in 0.9 of its columns or more and that is 0.15 to 0.2
+  high stands at three pairs, all three of them ties; the flat ways between notes that are not tied (lines
+  under words, the edge of a beam) are under 0.06, or show in under 0.7 of their columns. Such a way is a bow
+  from 0.15 on. Read on every page of LitChoir that gained the 3 ties and made 2 false ones, on a thick print
+  and on a copy by hand: the ledger lines of two neighbours touch and sag, and the way runs from head to head
+  at the height of the heads (0.3 and 0.4 staff space from their middles; the ends of the three ties lie 0.8
+  to 1.3 from them). The flat bow now has to begin and end 0.6 staff space or more over or under the middles
+  of the heads.
+- What the fresh test set showed. There the rule for the short tie first gained 13 notes and lost 4, all 4 in
+  one piece: eighths with flags, two voices a second apart, and a tie from each lower head to the next. The way
+  that was followed is the upper edge of the next upper head. The tie reader follows thin ink: the ink without
+  its thick blobs (every run of ink higher than 0.4 staff space, column by column). The blobs are found by an
+  opening of OpenCV, and where the limit is an even number of pixels its result lies one pixel low: the top row
+  of every head, beam and stem is left over as thin ink. That holds on about half of the pages, by their size,
+  since ties were first read. A way along the top of a head is short and curved like a flat bow. Mended for
+  every bow (thin ink is the ink that is no blob, to the pixel) and read on every page of LitChoir, it gained
+  5 notes and lost 5, 4 of them on the clean copies: a bold tie is thicker than the limit in its middle, and it
+  was followed along that top row. The fault is also a rule that nobody wrote. So it stays as it is for the
+  bows that were read before (`ties.TIE_RIM`: on those pages, on every page, or on none), and the flat bow of
+  the new rule is followed on thin ink without that row. With that the rule gains 13 notes on the fresh set and loses none, and 13 notes that are not there are
+  gone. On LitChoir the exact thin ink shows three more bows of the old height: one is a tie, one is not, and
+  one changes no count. Left for a next round: a rule of its own
+  for the bold tie, on every page.
+- What the round loses on LitChoir: 12 notes in 8 scores, 6 of them second scores of their
+  hymn. Four in the last bar of liturgy-holy-holy (second score), told above. Two in koinonikon-black-long,
+  where a bar of one open step is filled and its eighths are made whole notes. Two whole notes that are kept at their
+  length where the typed hymn has them shorter (megalynarion-bortniansky and pascha-thy-resurrection, second
+  scores). One on the clean copies (non-liturgical-o-pure-virgin, second score: an eighth in an open step is
+  made a quarter). The other three were not traced. The two counts part on one score by hand,
+  wedding-come-bless: its whole notes are kept now, as the page shows them; by parts it gains 15 notes, and
+  staff by staff it loses 7, because the scorer then takes its other layout. That is why the round gains 106
+  and loses 18 on all scores staff by staff, and why the rule for the note that fills the bar, which gains 21
+  notes and loses 6 by parts, reads 11 gained and 16 lost staff by staff.
+- Counted and left without a rule. The 37 ties of the clean copies that are not read have a cause each (a bow
+  over the end of a line, a bow that a stem cuts, a bow in a staff line). A hollow head with a flag or a beam
+  is no half note: 11 notes would be mended and 17 broken, because one print (cherubic-lvovsky) leaves its
+  filled heads pale. The heads on ledger lines that are read a step off on three scores have the same
+  measures as the right ones of their page: there the typed hymn seems to differ from the print. Making a long
+  note as long as its sure steps: 14 notes to gain and 25 to lose. Making the last note of a voice fill the
+  bar: 26 and 565.
+- The words. On the clean copies they did not change (5,779 of 6,240 syllables). Over all scores 2 more syllables
+  are right (24,208 of 28,692), on thick prints. On the fresh set they did not change.
+- Left for the next rounds: the scores that lack most (cherubic-lvovsky 129 notes, with pale filled heads;
+  the Rachmaninov "Rejoice, O Virgin" 84, where beams and slurs run together), the rests that are no printed
+  quarter rest, and a bar with two open steps.
+- The round before it: the lengths that the voices say to each other, and the printed quarter rest. Of the 1,124
   notes that the clean copies lacked after the round before it, 452 had only a wrong length, 259 only a wrong
   pitch and 101 both. The largest kinds of wrong lengths: an eighth read as a quarter (55), a quarter read as an
   eighth (42), a quarter read as a half (40), a half read as a quarter (36), a dotted half read as a half (34)
@@ -532,7 +631,8 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 - Left for the next rounds: a quarter rest that touches a bar line or a slur (it is no piece of ink of its
   own), eighth, half and whole rests, the rests of a hand, a letter of the dynamics and a pencil mark that are
   read as notes and then vote on lengths, and the long note that could be made longer where no rest follows.
-- The round before it: the clean scores that lack one to three notes. After the round before it, 14 of the 78 clean
+  The figures of this round are of its time.
+- Two rounds before: the clean scores that lack one to three notes. After the round before it, 14 of the 78 clean
   scores lacked one to three notes for 99 % (5 lacked one, 4 two, 5 three). Their mistakes were looked at on the
   page, one by one. Five rules were written, and all five stand. 21 clean scores are at 99 % now (16 before), and
   9 lack one to three notes. The clean copies went from 21,432 to 21,465 of 22,589 notes (95.0 %; 38 gained, 5
@@ -629,7 +729,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   an ison that stands right at the clef, with a breve that is not read (pascha-hypakoe; 16 marks of an ison are
   missed on the clean copies). A typed hymn in four parts with divided voices against a page of two staves
   (liturgy-what-shall-i-render, 13 notes).
-- Two rounds before: notes that are not there. The reader wrote 1,095 notes on the clean copies that the typed
+- Three rounds before: notes that are not there. The reader wrote 1,095 notes on the clean copies that the typed
   hymns do not hold. 80 of them were drawn by lot and looked at on the page. About 4 of 10 are true notes that
   the count cannot place: the second half of a long note whose tie is not read, or a note that the scorer lines
   up with another. Of the rest the numbers and signs of time signatures are the largest kind (12 to 22 of 100),
@@ -698,7 +798,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   slur that ends at the end of a stem and is read as a flag (43 notes on the clean copies), a slur between two
   beamed stems that is read as a hollow head and takes the stem, filled heads of a speckled print that are read
   as hollow, and a dot of the lower voice that is given to the upper head.
-- Three rounds before: notes of a chord that are not read on the clean copies. A new tool lists every typed note that
+- Four rounds before: notes of a chord that are not read on the clean copies. A new tool lists every typed note that
   the reader has no note for while it has another note of the same moment on that staff: 160 on the clean
   copies. The largest shape among them is two voices a second apart with their stems back to back on one line.
   The head of the upper voice stands at the left of the stem and the head of the lower voice at its right, half
@@ -760,7 +860,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   head), two whole notes a third apart that touch and look like an 8, a head under a faint ledger line, and
   one heavy print whose half notes have nearly closed holes and are read as quarters (44 notes are missing for
   99 % of that score).
-- Four rounds before: the count itself, and a third voice on a staff. The round before that one wrote a rule
+- Five rounds before: the count itself, and a third voice on a staff. The round before that one wrote a rule
   that reads two notes on two stems side by side as notes that begin together, and the count of parts hid what
   the rule does. Since this round every typed note of a part is counted, and the rule is on.
 
@@ -819,7 +919,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   moment costs nothing by itself; counted staff by staff, where the notes of two parts are one row in the order
   of their moments, the rule gains far more than by parts. The kit's own scorer, which compares the reader with
   the network on 31 hymns, counts as before: there the rule costs 3 notes (6159, from 6162).
-- Five rounds before: notes of the clean copies with a wrong pitch. Six rules were written. Four stand, and two are
+- Six rounds before: notes of the clean copies with a wrong pitch. Six rules were written. Four stand, and two are
   switched off with their counts. The clean copies stay at 94.7 % of the notes (5 gained, none lost: 21,110 of
   22,293; 14 scores at 99 % and 48 at 95 % as before) and have 8 fewer notes that are not there (1,082, from 1,090).
   All scores stay at 85.1 % (14 gained, none lost: 75,898 of 89,147). The fresh test set has 38,548 of 40,906
@@ -893,7 +993,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   of the head against a limit of 0.04), heavy sharps that are one blot (three pages), the upper head of two
   touching heads a second apart, the middle of a sharp read as a head with the true stem of its note, and false
   notes inside chords.
-- Six rounds before: long notes of the clean copies that are read in two parts, because their tie is not read. Two
+- Seven rounds before: long notes of the clean copies that are read in two parts, because their tie is not read. Two
   rules stand. The clean copies went from 94.6 % to 94.7 % of the notes (10 gained, none lost: 21,105 of 22,293;
   14 scores at 99 % and 48 at 95 % as before) and have 36 fewer notes that are not there (1,090, from 1,126). All
   scores stay at 85.1 % (17 gained, 2 lost: 75,884 of 89,147). The fresh test set has 38,547 of 40,906 notes
@@ -954,7 +1054,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   clean copies, 22 and 22 on the other scans.
 - Not solved: the bows that are not found (about 20, each cause 1 to 4 ties), the ties over the end of a line
   whose bow lies in a staff line, and a false dot on one whole note of a tied chord, which makes its bar too long.
-- Seven rounds before: the lengths of the notes of the clean copies. Seven ideas were counted and one rule stands. The
+- Eight rounds before: the lengths of the notes of the clean copies. Seven ideas were counted and one rule stands. The
   clean copies stay at 94.6 % of the notes (8 gained, none lost: 21,095 of 22,293; 14 scores at 99 % as before, 48
   at 95 %, 47 before), all scores at 85.1 % (16 gained, 2 lost), and the fresh test set does not change: none of
   its pages reads differently. The words did not change.
@@ -1003,7 +1103,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   counted the ties from the scorer's own comparison and found 45).
 - A caution from that round: a gain on a copy by hand is checked staff by staff on the scorer's comparison before
   it is counted.
-- Eight rounds before: the sharps, flats and naturals before the notes of the clean copies, with four rules. The
+- Nine rounds before: the sharps, flats and naturals before the notes of the clean copies, with four rules. The
   clean copies went from 94.5 % to 94.6 % of the notes (29 gained, none lost; 14 scores at 99 % as before, 47 at
   95 %, 46 before), all scores from 85.0 % to 85.1 % (44 gained, none lost), the fresh test set from 93.7 % to
   94.2 % (208 gained, 1 lost). The words did not change. Each rule was counted alone, switched off with the
@@ -1062,7 +1162,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 - Seen in that round and not solved: the sharp of a sloppy print that is read as a head; a flat glued to its
   head; the sharps of one faint engraving; a sharp before two heads a second apart that is given to the wrong
   head (4 notes); the letters of a dynamic mark under a staff read as a thin head.
-- Nine rounds before: the notes of the clean copies again, with four rules for lengths that were read wrongly. The
+- Ten rounds before: the notes of the clean copies again, with four rules for lengths that were read wrongly. The
   clean copies went from 94.3 % to 94.5 % of the notes (28 gained, none lost; 14 scores at 99 % as before, 46 at
   95 %, 44 before), all scores from 84.8 % to 85.0 % (203 gained, none lost), the fresh test set from 93.3 % to
   93.7 % (157 gained, none lost). The words did not change. Most of the gain stands on one thick copy
@@ -1117,7 +1217,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   of one hymn); a dot drawn as a slanted dash; a deep slur at one stem that is counted as a beam; a beam and a
   slur that are counted as two beams; the short second beam of a sixteenth; two eighths a third apart with
   their flags, which are one blot (the upper head gets the lower stem); a final bar line read as a note.
-- Ten rounds before: the notes of the clean copies, with three rules. The clean copies went from 94.2 % to 94.3 %
+- Eleven rounds before: the notes of the clean copies, with three rules. The clean copies went from 94.2 % to 94.3 %
   of the notes (31 gained, 1 lost; 14 scores at 99 %, 12 before), all scores from 84.7 % to 84.8 % (118 gained, 16
   lost), the fresh test set from 93.2 % to 93.3 % (50 gained, 2 lost). The words did not change, but for 3
   syllables of one copy by hand whose notes moved. Each rule was counted alone, switched off with the others on,
@@ -1167,7 +1267,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   (the Lord's Prayer, 4 times); the end of a tie that closes in paper at a head with its stem down and is read as
   a flag; a dot of the lower voice that is given to the head over it; plain eighths read as a triplet; 236 single
   notes that are not read, with no one cause.
-- Eleven rounds before: the words with Tesseract again, six rules with the list of words and no note rule. The clean
+- Twelve rounds before: the words with Tesseract again, six rules with the list of words and no note rule. The clean
   copies went from 90.6 % to 92.6 % of the syllables (131 gained, 2 lost) and from 89.6 % to 90.8 % of the
   whole words (57 gained, none lost); all scores from 82.7 % to 84.4 % (510 gained, 9 lost). No note
   changed. Each rule was counted alone, switched off with all others on (syllables gained and lost by the rule):
@@ -1206,7 +1306,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   Romanian words (whole words 20 gained, 38 lost by the cut into three): both cuts are made only on a page whose
   language the list holds, the test that the mending by the list already used. On LitChoir's pages that test
   changes two syllables, one for the better (a Spanish hymn) and one for the worse (an Arabic one).
-- Twelve rounds before: the words with Tesseract. Five rules of our own stand around Tesseract since then, three of them with
+- Thirteen rounds before: the words with Tesseract. Five rules of our own stand around Tesseract since then, three of them with
   the list of words, and one new note rule. Each word rule was counted alone, switched off with all others on, on
   the clean copies, on all 482 scan pages and on the fresh test set (syllables gained and lost by the rule):
 
@@ -1243,7 +1343,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   the line of a held syllable; one other size alone gains about 80 syllables and loses about 80 (the gain comes
   from choosing between the sizes); a limit on the distance of the letters at every cut cost 389 syllables on the
   fresh set; a test of the list's language row by row cost 84 on LitChoir's pages.
-- Thirteen rounds before: 5 rules for signs, ledger lines and ties, each scored alone on the clean copies, then alone on
+- Fourteen rounds before: 5 rules for signs, ledger lines and ties, each scored alone on the clean copies, then alone on
   all pages, and then together. Together they gain 24 notes on the clean copies and lose none (94.1 % to 94.2 %),
   and gain 78 and lose 11 over all pages. Each alone, on the clean copies and on all pages: a heavy sharp whose
   middle closed, which was read as a hollow head with a stem, 7 and 26 (none lost); a tie over the end of a line 7
@@ -1262,7 +1362,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   too (6 and 4: the rim of a large hollow half note became a flat), and two looser limits for a flat tie (2 and
   2, 3 and 3). About 20 ties inside a line are still not read on the clean copies: a bow far under its heads, or a
   bow that lies along a staff line.
-- Fourteen rounds before: 8 rules for dots, flags, beams and signs, each scored alone on the clean copies and then
+- Fifteen rounds before: 8 rules for dots, flags, beams and signs, each scored alone on the clean copies and then
   together on all pages. Together they gain 67 notes on the clean copies and lose 1 (93.8 % to 94.1 %), and gain
   164 and lose 16 over all pages (one copy by hand fell under 50 %: 29 of its 59 notes, before 31). Each alone on
   the clean copies: a printed flag that reaches a little over half a staff space from its stem 16; the slim beams
@@ -1359,9 +1459,10 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After the round of notes that are not there (2 rules) | 214 | 94.6 % (39,500 of 41,761) | 83 | 173 | 72.2 % (8,187 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
 | After the round of the clean scores that lack one to three notes (5 rules) | 214 | 94.7 % (39,559 of 41,761) | 85 | 176 | 72.2 % (8,187 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
 | After the round of the long note as a witness and the quarter rest (5 rules) | 214 | 94.8 % (39,576 of 41,761) | 86 | 177 | 72.2 % (8,187 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
+| After the round of the full bar and the short tie (4 rules) | 214 | 94.8 % (39,600 of 41,761) | 90 | 177 | 72.2 % (8,187 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
 | of these, English (Orthodox Liturgics) | 109 | 95.4 % (13,759 of 14,415) | 49 | 86 | 89.8 % | 91.4 % | 96.9 % |
-| Romanian | 88 | 93.1 % (17,027 of 18,288) | 33 | 75 | 66.8 % | 87.6 % | 98.7 % |
-| Church Slavonic | 17 | 97.0 % (8,790 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
+| Romanian | 88 | 93.2 % (17,050 of 18,288) | 37 | 75 | 66.8 % | 87.6 % | 98.7 % |
+| Church Slavonic | 17 | 97.1 % (8,791 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
 
 - These are crisp engraved pages, not scans: they say how well the rules hold on print they were not made for,
   and nothing about thick or faded copies.
@@ -1477,12 +1578,22 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
   not traced. The rule for the voice that rests changes no page. The net gain is 6 notes in the English pieces,
   10 in the Romanian and 1 in the Church Slavonic. One more piece is at 99 % and one more at 90 %. The words
   did not change.
-- Almost no note is missed (166 of 40,906 by the old count). What is lost, counted on the comparison of each piece thirteen rounds ago: a sixteenth
+- The round of the full bar and the short tie was read here in full before it was committed, and that
+  changed the round twice. The rule for the note that fills a bar gained 9 notes here and lost none in its
+  first form, which lost notes on LitChoir's copies by hand; narrowed on LitChoir's pages it gains 4 here. The
+  rule for the short tie gained 13 notes here and lost 4, in one piece, and the cause was an old fault of the
+  tie reader that is told in the round above; with the flat bow followed on exact thin ink it gains 13 and
+  loses none, and 13 notes that are not there are gone (5,019, from 5,032): most are in the short pieces of
+  the Romanian liturgy, where a tied pair of eighths was read as two notes. In its final form the round gains
+  24 notes and loses none (22 and none staff by staff): the rule for the full bar with the rule under it 11,
+  the tie rule 13, the beam rule none. The net gain is 23 notes in the Romanian pieces and 1 in the Church
+  Slavonic; the English pieces did not change. Four more pieces are at 99 %. The words did not change.
+- Almost no note is missed (166 of 40,906 by the old count). What is lost, counted on the comparison of each piece fourteen rounds ago: a sixteenth
   note read as an eighth (about 420: the second beam or flag), an eighth read as a quarter or a half (about 360;
   the rule for a flag drawn as a bow mended 157 of these since then),
   the long reciting note (a breve) read as a whole note (about 240), a triplet with no bracket (about 60), and
   about 1,200 notes with a wrong pitch.
-- The reader writes 5,032 notes that are not there, most of them rests: these pages have many rests, and the
+- The reader writes 5,019 notes that are not there, most of them rests: these pages have many rests, and the
   reader of scans knows only the printed quarter rest, by a shape whose limits were set on LitChoir's prints.
 - The words: Tesseract reads the letters (97 % in order), and since the rounds of the words most whole words are
   right (87 %). The syllables stay behind (72.2 %), because the engraving prints a word whole where its syllables
@@ -1504,17 +1615,18 @@ typed hymns, of all typed notes.
 | By hand | 5 | 65 % | 70 % | 79 % | 87 % |
 | Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 80 % |
 | Digital PDF | 3 | 81 % | 72 % | 81 % | 100 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 89.8 % (6199 notes) |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 89.9 % (6203 notes) |
 
-- Over all hymns the own rules read more notes right than the network they replaced: 89.8 % against 81 %.
+- Over all hymns the own rules read more notes right than the network they replaced: 89.9 % against 81 %.
 - They are behind the network on two kinds: old copies (86 % against 88 %) and the two poor pages (80 % against 95 %).
 - 11 of the 31 hymns are at 95 % or more, and 18 are at 90 % or more. 6 are under 80 %.
-- The kit gained 3 notes in the last round (6196 to 6199), in two hymns, where a long note is a witness for
-  the length of a short one. It gained 21 notes in the round before it (6175 to 6196): 19 where a cell of the staff was read as the inside
+- The kit gained 4 notes in the last round (6199 to 6203), in two hymns, where a bar with one open step is
+  as long as the full bars of its page. It gained 3 notes in the round before it (6196 to 6199), in two hymns, where a long note is a witness for
+  the length of a short one. It gained 21 notes two rounds ago (6175 to 6196): 19 where a cell of the staff was read as the inside
   of a head (15 of them on one copy by hand), and 2 where a head of two voices is tied to two heads. It gained 3
-  notes two rounds ago (6172 to 6175): three notes of one hymn that were read as a triplet
-  because the hyphens of the words under them look like a bracket. It gained 13 notes three rounds ago
-  (6159 to 6172), most of them where two voices a second apart are one blot at a stem. It lost 3 notes four
+  notes three rounds ago (6172 to 6175): three notes of one hymn that were read as a triplet
+  because the hyphens of the words under them look like a bracket. It gained 13 notes four rounds ago
+  (6159 to 6172), most of them where two voices a second apart are one blot at a stem. It lost 3 notes five
   rounds ago (6162 to 6159): its scorer counts one note of a chord for each part of a staff, and the rule of
   that round sets notes into chords; the wide test, which counts every note of a chord since then, gained 13
   notes more than it lost with that rule.
@@ -1528,7 +1640,7 @@ typed hymns, of all typed notes.
   case. On the fresh test set, crisp engraved pages that no rule was set on, the reader has 94.8 % of the notes.
 - The wide test compares with typed hymns that were made for singing, not for testing. Some differ from the page
   (another key, an octave, a repeat written out). Known cases are told to the scorer; others count as wrong.
-- About 12,800 drawn notes of the scans are wrong (a note can be wrong in two ways; the parts were counted some
+- About 12,700 drawn notes of the scans are wrong (a note can be wrong in two ways; the parts were counted some
   rounds ago, when 13,700 were wrong): about 4,800 are not read at all, about 5,100 have a wrong pitch (a wrong key or clef, or one or two places off; no single cause stands out),
   and about 5,500 a wrong length (a half note read as a quarter because the copy filled its hole, an eighth read as
   a quarter because its flag or beam was not seen, dots). A rule of the bar length does not mend the filled half
@@ -1558,7 +1670,12 @@ typed hymns, of all typed notes.
 - Time signatures are
   found so that they are no notes (the numbers, and the C of common time; not the sign of cut time, and not a small
   C), but they are not read into the result. A tie is read when its bow runs from head to
-  head on one line of the page, or over the end of a line to the next line of the same page. A tie over a page
+  head on one line of the page, or over the end of a line to the next line of the same page. The length of a
+  full bar is taken from the bars of the page itself, where half of the bars that the voices agree on are as
+  long as each other; on a page of chant with bars of many lengths it says nothing. A bold tie, thicker
+  than 0.4 staff space in its middle, is read only on the pages where that limit is an even number of pixels
+  (its upper edge is followed there, by a fault of the first tie reader that was found in the last round); a rule
+  of its own for the bold tie is not written yet. A tie over a page
   break is not read, and a slur between two equal notes cannot be told from a tie.
 - The reader also writes notes that are not there (about 490 on the kit), from rests, letters of the words,
   ornaments and slurs. They are counted apart and do not lower notes right, but a singer would see them.
@@ -1589,7 +1706,7 @@ typed hymns, of all typed notes.
    is read as a flag, a dot of the lower voice that is given to the upper head, and paper closed in by a slur, a
    stem and a staff line that is read as a hollow head where it is narrower than 1.1 staff spaces or has no
    straight end (a limit on the size of a hole alone lost more than it gained).
-   Of the notes lost on the clean copies nine rounds ago, 486 had only a wrong length, 346 only a wrong
+   Of the notes lost on the clean copies ten rounds ago, 486 had only a wrong length, 346 only a wrong
    pitch (118 a semitone off, by a sign) and about 300 were not read. Words
    (460 syllables are missing on the clean copies): a row that is read only from its second word on, stray ink
    read as a row, the letters that Tesseract reads wrongly on heavy pages, score under which note a syllable
@@ -1602,9 +1719,11 @@ typed hymns, of all typed notes.
    is read.
 3. Score the joined hymn of the `hymn` command, and let the hymn teach the page more (parts, time).
 4. Half notes whose hole the copy filled, by the notes that sound with them. Flags and beams that are not seen.
-5. The other rests (a quarter rest that touches a bar line, eighth, half and whole rests, the rests of a hand),
-   with a check of each bar's length. A long note can then be made longer where the steps under it are sure
-   and no rest follows it (counted in the last round: 16 notes to gain on the clean copies, and 114 right notes
+5. The other rests (a quarter rest that touches a bar line, eighth, half and whole rests, the rests of a hand).
+   The length of a full bar is known from the page since the last round and fills a bar with one open step; with
+   the rests read it can fill a bar with two (counted: 6 notes to gain on the clean copies and 8 to lose
+   without them). A long note can then be made longer where the steps under it are sure
+   and no rest follows it (counted two rounds ago: 16 notes to gain on the clean copies, and 114 right notes
    that only a rest protects).
 6. The app's hymn format.
 
@@ -1674,4 +1793,5 @@ looked at on the page, gave the rule for the numbers of a time signature that to
 for a bracket that is made of the hyphens of the words. The clean scores that lacked one to three notes, looked
 at one by one, gave five rules; the largest says that a cell of the staff beside a bar line or a stem is no
 inside of a hollow head. Then the lengths: a long note became a witness for the short notes that sound under
-it, and the first rest was read, the printed quarter rest.
+it, and the first rest was read, the printed quarter rest. The page then gave the length of its own full bar,
+which settles a step that the voices leave open.

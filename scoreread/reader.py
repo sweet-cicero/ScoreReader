@@ -14,7 +14,7 @@ import numpy as np
 from .drone import letter_marks
 from .layers import read_layers
 from .meter import mid_signs
-from .music import MIDDLE, agree_lengths, build_staff, held, musicxml, staff_columns
+from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, musicxml, staff_columns
 from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
@@ -204,9 +204,12 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # Music check: the voices of a system agree on the length of each step from column to column.
     agreed = 0
     if CHECK:
-        for system in sorted({staff['system'] for staff in staves}):
-            own = {index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
-            agreed += agree_lengths(own, bars, space, rests)
+        systems = [{index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
+                   for system in sorted({staff['system'] for staff in staves})]
+        # The sum that most bars of the page have: a bar with one open step is as long (scoreread.music.BAR_FULL).
+        full = full_sum([value for own in systems for value in bar_sums(own, bars, space, rests)])
+        for own in systems:
+            agreed += agree_lengths(own, bars, space, rests, full)
     # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scoreread.drone).
     # It is a part of its own after the melody; its notes are in no list of notes, so no syllable is set under them.
     drone, holding = [], {}
