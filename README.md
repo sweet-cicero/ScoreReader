@@ -360,13 +360,14 @@ and length both right. The count is of the notes that the pages show: 5,971 type
 listed apart. Most are recited syllables and the held notes of an ison that the page does not mark; 357 are a
 refrain or a repeat that the page prints once and the typed hymn writes out again. 218 typed notes that a part
 sings from another part's staff are not compared. Each score is read as the `hymn` command reads it: its pages in
-order, with one vote for its key.
+order, with one vote for its key. Where a typed hymn gives a note otherwise than its page prints, the note counts as
+the page prints it (since 15 November 2026, see below; 47 notes of the clean copies so far).
 
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.3 % (20,016 of 20,163) | 53 | 70 | 0 |
-| Scans | 294 | 82.3 % (57,250 of 69,569) | 30 | 107 | 22 |
-| All | 364 | 86.1 % (77,266 of 89,732) | 83 | 177 | 22 |
+| Scans | 294 | 82.4 % (57,297 of 69,569) | 30 | 107 | 22 |
+| All | 364 | 86.2 % (77,313 of 89,732) | 83 | 177 | 22 |
 
 The first milestone is 99 % on clean copies: the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
@@ -375,13 +376,13 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 96.0 % (21,694 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 92.6 % (5,781 of 6,240) | 90.9 % (4,119 of 4,531) |
+| Clean print | 78 | 96.2 % (21,741 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 92.6 % (5,781 of 6,240) | 90.9 % (4,119 of 4,531) |
 | Thick or grey print | 26 | 80.8 % (6,814 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 81.5 % (1,621 of 1,990) | 81.3 % (1,120 of 1,377) |
 | By hand | 190 | 74.6 % (28,742 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 77.6 % (11,141 of 14,357) | 74.6 % (7,714 of 10,344) |
 
 - The figures count every typed note of a part since thirteen rounds before the last, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
-  count of their time. Of the clean scores, 59 are at 95 % or more. About 734 more notes are needed
+  count of their time, and as typed (see the count by the page below). Of the clean scores, 61 are at 95 % or more. About 689 more notes are needed
   for 99 % of each clean copy; 9 scores lack one to three notes. The mistakes that are left are many small causes;
   the largest that were found
   since: two voices a second apart that the print sets as one blot of ink brought 41 notes on the clean copies
@@ -439,6 +440,47 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- The count by the page (15 November 2026). Some notes that counted as lost on the clean copies are read as the
+  page prints them: the typed hymn gives another note there. They were found in three ways. The scans of one hymn
+  were compared: a mistake that every scan of a hymn shares is a mistake of the print, of the reader on that
+  print, or of the typed hymn. Every column of the clean copies where a typed note is not read as typed (about
+  630) was laid out with the typed notes and the read notes beside the ink, and about 450 of them were looked at.
+  And a census of every head beside the staff (11,459, each with the distance of its ledger line from the staff
+  and of its middle from that line) showed how a print sets each note. On the print of a music typewriter one
+  dash is the first ledger line wherever it stands (1.2 to 1.65 staff spaces from the staff): the dash runs
+  through a head on that line and lies under a head over it. On one engraving the middle of a head on the first
+  ledger line lies at most 0.2 staff space past the line (51 heads) and that of a head over the line 0.36 to 0.5
+  past it (34 heads).
+- What goes on the list. A note is counted by the page only when its head is unmistakable at four times the size
+  (on the line or in the space, a ledger line through it or under it), or stands exactly as the same note stands
+  elsewhere on its pages, and when the notes before it and after it line up as right. A line-up that has slipped
+  shows the column of a neighbour, and five candidates were dropped for it: in each the reader was wrong (a chord
+  that was missed, a sharp of the key that was read as a note, a natural that was read as a half note). So far
+  47 notes in 14 scans of 10 hymns are on the list. 42 have another pitch, most of them a step off beside the
+  staff: a head on top of a ledger line that is typed as on the line, or the other way. 9 are tenor notes of the
+  typewriter print, and 6 are tenor notes of the engraving that stand as its notes over the line do; three of
+  these are the first eighth of a step down where the typed hymn holds one pitch. 5 are a last chord of whole
+  notes under a fermata that is typed three quarters long.
+- The decision. The owner was asked and answered: trust the page. The reader is asked to read the page, so these
+  notes count as the page prints them, and the typed hymns stay as they are. The list is kept with the wide test,
+  outside this repository, with the place on the page for each note, so that the typed hymns can be mended from
+  it. By the page the clean copies stand at 21,741 of 22,591 notes (96.2 %; as typed 21,694, 96.0 %), with 61
+  scores at 95 % or more (as typed 59) and 689 notes lacking for 99 % of each score (as typed 734); 29 scores are
+  at 99 %, as before. All scores stand at 77,313 of 89,732 (86.2 %; as typed 77,266). No rule of the reader
+  changed: the notes that are not there, the words, the kit and the fresh test set stand as after the last round,
+  and the fresh set has exact answers and no such list. Asked to count as typed, the scorer gives the figures of
+  the last round exactly. The rounds below give their figures as typed.
+- What was measured and got no rule. The print of one cherubic hymn (cherubic-lvovsky, 109 notes lacking by the page) left
+  the middle of its filled heads pale, and 20 quarters and eighths are read as half notes. Every hollow head with
+  a stem on the clean copies was listed (5,234). The share of the hole does not part them: a higher limit for a
+  print with large holes gains 6 notes there and loses 32 true half notes on other prints. The grey of the middle
+  of the head does part them on its four pages (every one of 233 true half notes is paler than 14 of the false
+  ones), but other prints hold true half notes on both sides of that limit, and the page shows no sure sign that
+  it is such a print. These notes need the music: the lengths of the other voices of the bar. A second print draws
+  the dot of five dotted half notes as a short dash. The 288 marks of the clean copies that stand where a dot
+  stands and are no dot were listed: beside notes without a dot there are dashes of the same shape, and a wider
+  limit gains 3 notes and loses 2 or 3. A tie's bow that is read as a short stem at a whole note costs 2 notes.
+  One print draws its ledger lines no longer than its heads, and one head on the second line is lost for it.
 - The last round: the clean scores that lack few notes for 99 %, a second time. After the round before it the clean
   copies lacked 744 notes for 99 % of each score, and 13 of the 78 scores lacked one to three. The five scores
   that lack most (240 notes together) were lined up by part again and show many small causes each, as before. The
@@ -2542,7 +2584,10 @@ typed hymns, of all typed notes.
 - The rules and their limits were set on the same pages that test them. Those figures are therefore the best
   case. On the fresh test set, crisp engraved pages that no rule was set on, the reader has 94.9 % of the notes.
 - The wide test compares with typed hymns that were made for singing, not for testing. Some differ from the page
-  (another key, an octave, a repeat written out). Known cases are told to the scorer; others count as wrong.
+  (another key, an octave, a repeat written out). Known cases are told to the scorer; others count as wrong. A single
+  note that a typed hymn gives otherwise than its page counts by the page where it was found and looked at (47 notes
+  of the clean copies). The thick copies and the copies by hand were not searched, and a place where the reader and
+  the typed hymn are both off stays a lost note.
 - About 12,300 drawn notes of the scans are wrong (a note can be wrong in two ways; the parts were counted some
   rounds ago, when 13,700 were wrong): about 4,800 are not read at all, about 5,100 have a wrong pitch (a wrong key or clef, or one or two places off; no single cause stands out),
   and about 5,500 a wrong length (a half note read as a quarter because the copy filled its hole, an eighth read as
@@ -2721,4 +2766,6 @@ a half note where the bar has room for it, and one in the middle of an oval with
 that is held over the end of a page is tied where the page before shows the bow that leaves it: that page tells the
 next one where to look, because the ink before a first note looks like a short bow on every page. A slur that lies on
 a beam is no second beam, since the page knows how thick its beams are; one dot between two heads of a column is the
-lower head's; and the slit of a half note on a ledger line is measured from the line that the ink shows.
+lower head's; and the slit of a half note on a ledger line is measured from the line that the ink shows. Since
+15 November 2026 the wide test counts a note as its page prints it where the typed hymn gives it otherwise (the owner:
+"trust the page"); each such note was looked at on the page first.
