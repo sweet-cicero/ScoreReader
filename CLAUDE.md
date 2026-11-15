@@ -18,8 +18,8 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.2 % on
-scans; 79 scores at 99 % or more), 96.0 % of the notes on the clean copies (21,683 of 22,591; 25 of the 78 counted
+Not reached yet: 86.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.3 % on
+scans; 83 scores at 99 % or more), 96.0 % of the notes on the clean copies (21,694 of 22,591; 29 of the 78 counted
 scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
 (82.1 % on scans), and 89.9 % on the kit (6206 of 6901).
@@ -156,6 +156,16 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   figures. A change of the scorer that the fresh set shows to be wrong is mended in the scorer, never by a limit
   of the reader. The count staff by staff can move by the line-up of a clean copy too (two staves of two parts,
   then four voices, in non-liturgical-jesus-prayer: 62 notes that no rule read otherwise).
+- A count of the page that switches a rule off (the share of heads with a speck that is no slit) is made as it
+  was when a new measure changes what is counted. A new measure for the slit on a ledger line turned two specks
+  of one worn page into slits, the share fell under the limit, the older speck rule came on for that page, and 8
+  notes were lost (15 November 2026). Keep the old verdict for the count, and let the new one act on its heads.
+- The thin line between the ends of two stems is also what reads a thick beam that no stem shows as its own (a
+  stem that was followed into a slur over its beam). A rule that takes such a line for a slur asks for the shape
+  of the slur, a bow at both stem ends that bends away from the heads, and not for the kind of the page: by the
+  kind of the page it gained 4 notes on the fresh set and lost 4.
+- A level of flags or beams at a stem is as thick as its thickest piece, at either side of the stem. Measured at
+  one side, a beam under a bow was as slim as the bow.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
