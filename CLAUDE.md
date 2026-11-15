@@ -18,9 +18,9 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.3 % on
-scans; 83 scores at 99 % or more), 96.0 % of the notes on the clean copies (21,694 of 22,591; 29 of the 78 counted
-scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
+Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
+scans; 83 scores at 99 % or more), 96.2 % of the notes on the clean copies (21,741 of 22,591, counted by the page;
+21,694 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
 (82.1 % on scans), and 89.9 % on the kit (6206 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
@@ -152,6 +152,24 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A half that stands alone moves no count: the 55 false halves gained and lost nothing, on LitChoir and on the
   fresh set. A rule that marks something for a later step (the hymn, the scorer) is judged by looking at every
   mark on the page.
+- The wide test counts by the page (the owner, 15 November 2026: "trust the page"). Where a typed hymn gives a
+  note otherwise than its page prints, the note counts as the page prints it; the typed hymns stay as they are. The
+  list of such notes is kept with the wide test, outside git, with the place on the page for each. A note goes on
+  it only when its head is unmistakable at four times the size, or stands exactly as the same note stands elsewhere
+  on its pages, and when the notes before and after it line up as right. A line-up that has slipped shows the
+  column of a neighbour: there the reader is wrong, not the typed hymn (5 of the first 24 candidates). The scorer
+  counts as typed when asked (`AS_TYPED=1`) and must then give the figures of the round before exactly; report
+  the figure as typed once beside the figure by the page.
+- A mistake that every scan of one hymn shares is a mistake of the print, of the reader on that print, or of the
+  typed hymn. Compare the scans of a hymn before a rule is written from one of them.
+- A print has its own way to set a note beside the staff: the dash of a music typewriter is the first ledger line
+  wherever it stands, and one engraver sets the line low in the head. Before a rule is written from heads that are
+  typed a step off, list every such head of the print with its distance from the staff and from its ledger line,
+  by typed pitch. Heads that stand exactly as another note of the print stands are the typed hymn's, not the reader's.
+- A measure that separates on the pages of one print is counted on every clean page before a rule: the grey of the
+  middle of a head parts the filled heads of a pale print from its half notes, and other prints hold true half
+  notes on both sides of that limit. Such a print needs a sign of its own that the page shows (its flagged notes
+  with a hole did not give one: 16 % on a pale page, 12 to 14 % on pages of two other prints). Without one, no rule.
 - When the wide scorer is changed, the reading before the round is scored again with it and must give the same
   figures. A change of the scorer that the fresh set shows to be wrong is mended in the scorer, never by a limit
   of the reader. The count staff by staff can move by the line-up of a clean copy too (two staves of two parts,
