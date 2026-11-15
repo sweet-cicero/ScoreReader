@@ -160,6 +160,9 @@ SLIT_ONE = (0.3, 0.01, 0.1, 0.32, 0.5, 0.47)   # a filled head with a stem and a
 #                      this share of its width on) or under the line in the left part (up to this share). The head
 #                      may be a half note whose slit the print closed but for the speck: the music decides
 #                      (music.SLIT_SPAN) (None: off)
+SLIT_LEDGER = (0.3, 0.45, 0.4)   # the line through a head beside the staff is the ledger line as the ink shows it: within
+#                     this many staff spaces of its place, the row that sticks out this far at both sides of the head, with
+#                     ink on this share of that way. The speck of SLIT_ONE is measured from it (None: from the place)
 SLIT_PAGE = (0.02, 0.35, 0.2, 0.8)   # ... but not on a page of a worn print, whose filled heads hold specks of paper
 #                      anywhere: where more than this share of the page's filled notes with a stem hold a speck that
 #                      is no slit (its middle at most this many staff spaces over or under the middle of the head, and
@@ -307,12 +310,33 @@ def _line_slit(layers: dict, mark: dict, staff: dict) -> bool:
     return bool(over and under and over[1] - under[1] >= LINE_SLIT[2] * space)
 
 
-def _slit_one(layers: dict, mark: dict, staff: dict) -> str | None:
+def _ledger_seen(layers: dict, mark: dict, line: float, space: float) -> float | None:
+    """The row of the ledger line through a head, as the ink shows it at both sides of the head (see SLIT_LEDGER), or
+    None where no line sticks out there."""
+    ink = layers['ink']
+    reach = int(SLIT_LEDGER[1] * space)
+    first, last = max(0, int(line - SLIT_LEDGER[0] * space)), min(ink.shape[0] - 1, int(line + SLIT_LEDGER[0] * space))
+    shown = {row: min(int(ink[row, max(0, mark['x0'] - reach):max(0, mark['x0'] - 1)].sum()),
+                      int(ink[row, mark['x1'] + 2:mark['x1'] + reach + 1].sum())) for row in range(first, last + 1)}
+    most = max(shown.values(), default=0)
+    if most < SLIT_LEDGER[2] * reach:
+        return None
+    return float(np.mean([row for row, count in shown.items() if count >= 0.5 * most]))
+
+
+def _slit_one(layers: dict, mark: dict, staff: dict, ledger: bool = True) -> str | None:
     """One speck of paper in a filled head: 'slit' when the head is on a line and the speck lies where the slit of a
     half note does (see SLIT_ONE: over the line in the right part of the head, or under the line in the left part),
-    'other' when a speck lies elsewhere in the middle of the head (see SLIT_PAGE), or None."""
+    'other' when a speck lies elsewhere in the middle of the head (see SLIT_PAGE), or None. With `ledger` False a
+    ledger line is taken at its place, as the count of the page takes it."""
     space = staff['space']
     line, specks, wide = _line_specks(layers, mark, staff)
+    if ledger and SLIT_LEDGER and specks and not staff['rows'][0] - 0.5 * space <= line <= staff['rows'][4] + 0.5 * space:
+        # The place of a ledger line is counted from the staff; the line itself is seen beside the head.
+        seen = _ledger_seen(layers, mark, line, space)
+        if seen is not None:
+            specks = [(area, x, row + line - seen) for area, x, row in specks]
+            line = seen
     other = False
     for area, x, row in specks:
         if area < SLIT_ONE[1] * space * space:
@@ -1743,9 +1767,10 @@ def read_symbols(layers: dict) -> dict:
         if LINE_SLIT and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems'] \
                 and _line_slit(layers, mark, layers['staves'][staff]):
             hollow = True
-        slit = None
+        slit = slit_place = None
         if SLIT_ONE and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems']:
             slit = _slit_one(layers, mark, layers['staves'][staff]) or 'none'
+            slit_place = (_slit_one(layers, mark, layers['staves'][staff], False) or 'none') if SLIT_LEDGER else slit
         place = pitch_place(layers['staves'][staff], cy)
         if mark['kind'] != 'head':
             if abs(place) <= 7.5:
@@ -1794,7 +1819,7 @@ def read_symbols(layers: dict) -> dict:
                     and abs(mass - round(mass)) <= 0.5 - PLACE_MASS[1]:
                 head['place'] = place = mass
         if slit:
-            head['speck'] = slit
+            head['speck'], head['speck_place'] = slit, slit_place
         if mark.get('loop'):
             head['loop'] = mark['loop']
         if mark.get('room'):
@@ -1825,7 +1850,8 @@ def slit_page(heads: list[dict]) -> None:
     a page of a worn print the filled heads hold specks anywhere, and no speck is a slit there (see SLIT_PAGE). The
     marks before the notes begin are not counted: a flat of the key signature has a stroke and a hole too."""
     asked = [head for head in heads if head.get('speck')]
-    other = sum(head['speck'] == 'other' for head in asked)
+    # (The page is counted with each ledger line at its place: SLIT_LEDGER moves no page over the limit or under it.)
+    other = sum(head.pop('speck_place', head['speck']) == 'other' for head in asked)
     worn = SLIT_PAGE and other > SLIT_PAGE[0] * len(asked)
     for head in asked:
         if head.pop('speck') == 'slit' and not worn:
@@ -2565,6 +2591,8 @@ BEAM_STRAIGHT = (1.5, 0.25)   # a beam without a witness at the next stem is str
 #                      this many staff spaces or more and bends this far from the line between its two ends is a slur
 #                      (None: off)
 BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least this share as thick as the page's beams
+BEAM_SECOND = 0.6    # a second beam or flag at a stem is one of its own when it is at least this share as thick as the
+#                    page's usual beam (None: off): slimmer ink beside a beam is a bow that lies on the beam
 BEAM_SIDES = 0.8     # a piece of a beam at the left of a stem and one at its right are one beam when their rows are
 #                      less than this share of the thicker one's thickness apart (0: off; before: 0.35 staff spaces)
 BEAM_PAIR = (0.14, 0.6, 0.65, 0.75)   # a slim beam of a fine engraving: long ink under TAIL_THICK but this thick, at most
@@ -2599,6 +2627,10 @@ DOT_NEAR = 0.3       # and at least this many
 DOT_UNDER = 0.6      # its middle lies at most this many staff spaces under the middle of the head (and 0.7 over it)
 DOT_BETWEEN = None   # and not from this to this many staff spaces under it: a dot stands in a space, at the height of
 #                    the head or half a staff space from it (None: off)
+DOT_UPPER = 0.3      # one dot between two heads of a column (None: off): a dot that stands this many staff spaces or
+#                    more under the middle of a head, and as much over the middle of a head below that takes it too, is
+#                    the dot of the lower head. The upper head keeps it when it is a note of the same kind (hollow or
+#                    filled, as many flags or beams): then one dot can stand for both. A dot of its own it has anyway.
 DOT_HIGH = 0.9       # a dot is at most this high, in staff spaces
 DOT_SLIM = 0.38      # and at least this wide for its height: a hand draws a dot as a short stroke
 DOT_FLAT = 1.7       # and at most this wide for its height
@@ -2636,6 +2668,11 @@ STEM_SLUR = (0.2, 0.4, 0.25, 0.03, 0.2)   # a slur that joins the ends of two st
                                 # each other do not turn), and the stroke is round at both stems: its outer edge lies
                                 # this far toward the heads at each, and this far at both together, from the straight
                                 # line through its middle half (a beam has square corners) (None: off)
+THIN_PRINT = 0.45               # a page whose usual beam is this many staff spaces thick or more is a print with thick beams:
+#                                 a line from the end of a stem to the end of the next is a slur there when the ink that
+#                                 leaves each of the two ends is a bow that bends away from the heads (BEAM_STRAIGHT), and
+#                                 none of its stems shows a beam of its own. (A thick beam that no stem shows as its own
+#                                 is found as such a line too, and it is straight.) (None: off)
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
@@ -2932,6 +2969,13 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                         continue
                     kept.append(row)
                 levels = kept
+            if BEAM_SECOND and usual is not None and len(levels) > 1:
+                # A bow that lies on a beam is no second beam (see BEAM_SECOND).
+                # (A level is as thick as its thickest piece, at either side of the stem.)
+                full = [row for row in levels
+                        if max(piece['thick'] for piece in pieces if abs(piece['row'] - row) <= 0.35 * space) >= BEAM_SECOND * usual]
+                if full:
+                    levels = full
             if levels:
                 head['tails'][stem['direction']] = min(len(levels), 3)
                 if BOW_THIN and FLAG_BOW and stem['direction'] == 'down' and not beams and not head.get('thin'):
@@ -3086,8 +3130,17 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 bends = ((run[0][0][1]['x'] - run[0][0][1].get('mid', run[0][0][1]['x'])) / space,
                          (run[-1][0][1].get('mid', run[-1][0][1]['x']) - run[-1][0][1]['x']) / space)
                 turns = (run[0][0][1].get('turn', 0.0), -run[-1][0][1].get('turn', 0.0))
-                if not THIN_BEAM_PAST or not (_goes_on(layers, run[1][0][1], run[0][0][1])
-                                              or _goes_on(layers, run[-2][0][1], run[-1][0][1])):
+                # (On a print with thick beams a thin line between the ends of two stems is a slur: see THIN_PRINT.)
+                printed = False
+                if THIN_PRINT and BEAM_STRAIGHT and usual is not None and usual >= THIN_PRINT \
+                        and not any(piece['beam'] for entry in run for head, stem in entry for piece in stem['marks']):
+                    one, two = run[0][0][1], run[-1][0][1]
+                    bows = (_bow(layers, one['x'], one.get('thin_right', one['end']), True),
+                            _bow(layers, two['x'], two.get('thin_left', two['end']), False))
+                    printed = all(bow is not None and bow[0] >= BEAM_STRAIGHT[0] * space
+                                  and (-bow[1] if direction == 'up' else bow[1]) >= BEAM_STRAIGHT[1] * space for bow in bows)
+                if not printed and (not THIN_BEAM_PAST or not (_goes_on(layers, run[1][0][1], run[0][0][1])
+                                                               or _goes_on(layers, run[-2][0][1], run[-1][0][1]))):
                     for entry in run:
                         for head, stem in entry:
                             stem['thin_before'] = head['tails'].get(direction, 0)
@@ -3490,6 +3543,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
             nearly.append((float(centres[index][0]), float(centres[index][1])))
     taken = set()
     first = {}
+    takers, took = {}, {}
     for head in heads:
         head['dot'] = False
         head['dot_near'] = any(DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space
@@ -3499,8 +3553,21 @@ def dots(layers: dict, heads: list[dict]) -> None:
                     and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
                 head['dot'] = True
                 taken.add(number)
+                takers.setdefault(number, []).append(head)
+                took.setdefault(id(head), []).append(number)
                 if id(head) not in first or x < found[first[id(head)]][0]:
                     first[id(head)] = number
+    for number, group in takers.items() if DOT_UPPER else []:
+        # One dot between two heads of a column is the dot of the lower one (see DOT_UPPER).
+        y = found[number][1]
+        for head in group:
+            if y - head['cy'] < DOT_UPPER * space or any(found[other][1] - head['cy'] < DOT_UPPER * space for other in took[id(head)]):
+                continue
+            below = [other for other in group if other is not head and other['cy'] - y >= DOT_UPPER * space]
+            kind = (bool(head.get('hollow')), max(head['tails'].values(), default=0))
+            if below and not any((bool(other.get('hollow')), max(other['tails'].values(), default=0)) == kind for other in below):
+                head['dot'] = False
+                first.pop(id(head), None)
     for head in heads if DOT_TWO else []:
         # A second dot at the right of the first (see DOT_TWO).
         if id(head) not in first:
