@@ -25,6 +25,10 @@ STAGGER = (5, 0.12, 0.6, 0.3, 1.0)   # rows of words that stand staggered (a ref
 BESIDE = True              # a row of such a stretch that stands beside the first row under the staff, with no letter
 #                            over or under a letter of it, goes on that row: the refrain that every verse sings is
 #                            printed once, at the middle of the rows of the verses (band['with']: the number of the first row)
+SPARSE = 4                 # a stretch between two staves, or under the last, with no band: a row that crosses this many
+#                            letters or more is a row of few words all the same (a word that is held over a long
+#                            melody: 'A - men', 'Al - le - lu - i - a'), for the step that reads the words only
+#                            (band['few']: every word of its reading must be a word of the list). None: off
 WORDS_FAR = 9.0            # the words stand at most this many staff spaces over the first staff or under the last
 STEM_MID = True            # the stem's column is that of its middle when its far end lies in a letter beside it
 WORDS_NEAR = 0.3           # a stem's end this many staff spaces before the band lies in the band (a letter's top)
@@ -79,7 +83,8 @@ def _staggered(letters: list[tuple], space: float, left: int, right: int) -> lis
 def word_rows(layers: dict) -> list[dict]:
     """The rows of the words of a page for the step that reads the words: the bands of word_bands(), and with them
     the rows of a stretch where the rows stand staggered (STAGGER; 'own': True) and the row that each such row
-    goes on ('with', see BESIDE). The notes are read with the bands alone, as they were."""
+    goes on ('with', see BESIDE), and the row of few words of a stretch with no band ('few': True, see SPARSE). The
+    notes are read with the bands alone, as they were."""
     return word_bands(layers, True)
 
 
@@ -103,6 +108,7 @@ def word_bands(layers: dict, staggered: bool = False) -> list[dict]:
             if y >= top and y + h <= bottom:
                 cover[y - top:y + h - top] += 1
         high_stretch = False
+        whole = cover.copy()
         while True:
             peak = int(cover.argmax())
             if cover[peak] < LINE[0]:
@@ -120,6 +126,19 @@ def word_bands(layers: dict, staggered: bool = False) -> list[dict]:
                 high_stretch = True
             edge = int(0.3 * space)
             cover[max(0, first - edge):last + edge + 1] = 0
+        if (SPARSE and staggered and not high_stretch and top >= upper['rows'][4] and whole.size
+                and not any(top <= band['top'] < bottom for band in bands)):
+            peak = int(whole.argmax())
+            if whole[peak] >= SPARSE:
+                floor = max(2, LINE[1] * whole[peak])
+                first = last = peak
+                while first > 0 and whole[first - 1] >= floor:
+                    first -= 1
+                while last + 1 < len(whole) and whole[last + 1] >= floor:
+                    last += 1
+                if LINE[2] * space <= last - first + 1 <= LINE[3] * space:
+                    bands.append({'top': top + first, 'bottom': top + last, 'few': True,
+                                  'x0': int(min(upper['x0'], lower['x0'])), 'x1': int(max(upper['x1'], lower['x1']))})
         if STAGGER and staggered and high_stretch:
             # The letters between these two staves that stand in no row: with the stretch, the short rows beside it.
             found = [band for band in bands if top <= band['top'] < bottom]

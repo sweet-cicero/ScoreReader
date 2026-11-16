@@ -155,6 +155,8 @@ def page_glyphs(layers: dict | None, page: int = 0) -> list[dict]:
     if not layers:
         return found
     for number, band in enumerate(layers.get('words') or []):
+        if band.get('few'):
+            continue                                   # a row of few words (words.SPARSE) is read with Tesseract only
         glyphs = row_glyphs(layers, band)
         if len(glyphs) < ROW_LEAST:
             continue

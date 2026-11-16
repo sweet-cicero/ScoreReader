@@ -20,11 +20,11 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
 scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,749 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 93.8 % with Tesseract and a list of
-words (5,856 of 6,240, counted by the page; 5,832 as typed; 91.5 % of the whole words; 25 scores at 99 % of the syllables);
-85.5 % of all syllables with Tesseract (83.6 % on scans), and 89.9 % on the kit (6207 of 6901).
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 95.2 % with Tesseract and a list of
+words (5,956 of 6,259, counted by the page; 5,930 as typed; 92.7 % of the whole words; 28 scores at 99 % of the syllables);
+87.1 % of all syllables with Tesseract (85.7 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
-72.2 % of the syllables and 87.5 % of the whole words.
+72.5 % of the syllables and 87.9 % of the whole words.
 
 ## Direction
 
@@ -238,6 +238,36 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   confirm on the page (the sign of a copyright line, a note head, a dot).
 - The replay of the words runs the clean copies, all scan pages and the fresh set side by side in two minutes.
   Each rule of a round is counted with that rule off against all rules on, and the full runs are read at the end.
+- A change of the picture that Tesseract gets moves its reading of words that the change did not touch: with one
+  bar line taken out at the left of a row, a word in the middle of the row was read otherwise. Taking the ink that
+  crosses a row out of every picture gained 59 syllables on the clean copies and lost 40. Such a picture is a
+  second look: it is read only where no reading of the picture as it is holds only words of the list, and the
+  reading that fits the list best is kept (57 gained and 9 lost).
+- A second look gives stray ink a second chance to be read as a row of words. Where no reading of the picture as
+  it is was a row of words, the second look is tested as a row that Tesseract is not sure of.
+- A rule that chooses by the list of words cannot choose on a page in another language than the list. The fresh
+  set showed it (Romanian: 12 syllables gained and 24 lost by the second look), and LitChoir's three hymns in
+  Arabic and Greek lost two syllables each. The guard was set on LitChoir's pages, in three forms. No second look
+  on a page whose words do not fit the list: 9 gained and 21 lost, because a page whose rows are read as stray
+  ink does not fit the list either. The second look is kept only where it holds more letters in words of the
+  list, on every page: level on all scans (25 and 27) and 3 lost on the clean copies, because on a page in the
+  list's language how sure Tesseract is chooses as well as it does among the three sizes. That test on the pages
+  that do not fit the list alone: 3 gained and 1 lost, and the clean copies as without it. Count a guard alone
+  on every page, not only on the pages that it was written for.
+- The band of a row of words is as high as its small letters where few letters have tops or tails. A measure of
+  how high a letter can be comes from the staff space, not from the band: a first form took the tops of d, h and
+  H for stems.
+- The line of a held syllable joins letters into one long piece of ink. A rule for a slur asks for the stroke
+  itself (one thin stroke in each column, over a long way, that rises or falls), not for a long piece of ink.
+- A row of few words under a long melody ("A - men", "Al - le - lu - i - a") crosses fewer letters than a row of
+  words must, and was no row at all. A stretch between two staves with no row gives its best row of four letters
+  or more to the step of the words alone (`words.SPARSE`); its reading must hold only words of the list and be
+  no label (one word with a colon). The typed syllables of such a row were counted apart before, as words that
+  no page prints: the count of the syllables grows with the rule. Before a score's lost syllables are blamed on
+  Tesseract, look whether the row is a row at all.
+- The stored rows hold the readings of the second look too (the sizes under 0) and the mark of a row of few
+  words. A rule that chooses among the stored readings is counted by the replay; a rule that changes the picture
+  or the rows needs a new census of the rows.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
