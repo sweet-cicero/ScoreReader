@@ -337,13 +337,13 @@ flowchart TD
     rowheld -- "no, or no list" --> drop["No row of words: stray ink under a staff"]
     rowheld -- "yes" --> gap
     rowsure -- "yes" --> gap["<b>Two words read as one</b><br/>Where each sign of a word is one piece of ink, the gaps between the pieces are counted. A gap twice as wide as the usual one, and a third of the row's height, parts the word. A gap beside a hyphen does not count. In a row from a typewriter (its letters stand evenly apart, centre to centre) the gap beside a thin letter is wide in any word: there two words are parted only where their letters stand further apart than a letter's box."]
-    gap --> syl["<b>Syllables</b><br/>A hyphen joins two syllables. A dash after a comma or a full stop is the line of a held syllable. A 0 or a 1 among letters is the letter that it stands for (O, I, l). A word of one or two letters that Tesseract is not sure of is left out, unless the list of words holds it."]
+    gap --> syl["<b>Syllables</b><br/>A hyphen joins two syllables. A dash after a comma or a full stop is the line of a held syllable. A 0 or a 1 among letters is the letter that it stands for (O, I, l), and a 0 with a hyphen beside it is the syllable o. With a list that holds the word O, a lone Q, QO or Oo is that word, and a © that is as wide as a letter with no number after it. A word of one or two letters that Tesseract is not sure of is left out, unless the list of words holds it."]
     syl --> list{{"Is there a list of words?"}}
     list -- "yes" --> ends["<b>Where the words end</b><br/>A word that the list does not hold is parted at the one place where the list holds both sides ('Thy-church', 'thelord'), a word of one letter being one of them only when it is a common word of the list ('odrink'). On a page in the list's language three common words that were read as one are parted too ('mercyonus'). Two words are joined that the list holds only as one ('re joice')."]
-    ends --> mend["<b>One wrong letter</b><br/>A word of four letters or more that the list does not hold, and that Tesseract was not sure of, becomes the one word of the list that is a letter away ('tnose' is 'those'). A missing vowel between two syllables is a syllable of its own. Only on a page of whose letters a fifth or more stands in words of the list: else the page is in another language than the list."]
-    mend --> again{{"Does the list hold every word of the row?"}}
+    ends --> mend["<b>One wrong letter</b><br/>A word of four letters or more that the list does not hold, and that Tesseract was not sure of, becomes the one word of the list that is a letter away ('tnose' is 'those'). A word that Tesseract was sure of is mended all the same when two of its runs of three letters are in no word of the list ('lotd'), or when the word that it becomes is one of the list's commonest ('thov' is 'thou'). A missing vowel between two syllables is a syllable of its own. Only on a page of whose letters a fifth or more stands in words of the list: else the page is in another language than the list."]
+    mend --> again{{"Does the list hold every word of the row, with no word mended?"}}
     list -- "no" --> again2["<b>A second look</b><br/>The row is read again with the letters 32 and 50 px high. The reading that Tesseract is surest of stays."]
-    again -- "no" --> look["<b>A second look</b><br/>The row is read again with the letters 32 and 50 px high. The reading of which the list holds the most letters stays."]
+    again -- "no" --> look["<b>A second look</b><br/>The row is read again with the letters 32 and 50 px high. The reading of which the list holds the most letters stays. A word of it that the list does not hold becomes the list's word that another size read at the same place."]
     again -- "yes" --> whole["<b>Pieces of one word</b><br/>A word that the page parts with a hyphen where the list never parts it, and of which a piece holds no vowel, is one syllable that the page spreads under its notes ('wi-th', 'sha-ll'). Two or three read words side by side, one of them no word of the list, are one word of the list that a wide gap cut ('mer ciful'). A piece of one letter that is no vowel is never joined, and a word that the page parts as the list does stays."]
     whole --> parts["<b>Syllables that the scan does not show</b><br/>A list that writes its words with hyphens between their syllables knows how each word is parted. A word that was read in fewer syllables than the list parts it into ('mercy' under two notes, 'glo-rious' under three) is parted as the list parts it most often. Each letter keeps its place in the row."]
     look --> whole
@@ -379,9 +379,9 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 96.3 % (21,749 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 93.2 % (5,814 of 6,240) | 91.2 % (4,132 of 4,531) |
-| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 81.5 % (1,621 of 1,990) | 81.3 % (1,120 of 1,377) |
-| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 77.8 % (11,171 of 14,357) | 74.7 % (7,732 of 10,344) |
+| Clean print | 78 | 96.3 % (21,749 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 93.8 % (5,856 of 6,240) | 91.5 % (4,148 of 4,531) |
+| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 83.6 % (1,664 of 1,990) | 81.9 % (1,128 of 1,377) |
+| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 79.1 % (11,363 of 14,357) | 75.8 % (7,841 of 10,344) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
@@ -406,13 +406,15 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   240 of the 1,269 notes that were lost then (1,017 now, with the notes of chords counted). An earlier count said that a quarter of the mistakes are
   the scorer lining a staff up with the wrong part: the tool behind that count lined the notes up in its own way,
   and it is not held any more.
-- Words with the optional Tesseract step and a list of words: 24,259 of 28,692 syllables are right (84.5 %):
-  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 82.4 % on
-  the scans (18,606 of 22,587; round 34 brought 63 of them). Before round 34 these were 21 syllables fewer than in round 17 with the same words read: the
+- Words with the optional Tesseract step and a list of words: 24,536 of 28,692 syllables are right (85.5 %,
+  counted by the page since round 35; 24,395 as typed):
+  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 83.6 % on
+  the scans (18,883 of 22,587; the rules of round 35 brought 138 of them and the count by the page 139, round 34
+  brought 63). Before round 34 these were 21 syllables fewer than in round 17 with the same words read: the
   words are compared in the layout that the count of the notes chooses for a score, and the scorer sets a few
-  scores in another layout or on another part of their pages now. On the clean copies 93.2 % of the syllables and 91.2 % of the whole words are
-  right, and 20 of the 78 scores have 99 % of their syllables (19 before round 34, 15 in round 10, 4 in round 9); 408 syllables
-  are lacking for 99 % of each clean score (441 before round 34). The
+  scores in another layout or on another part of their pages now. On the clean copies 93.8 % of the syllables and 91.5 % of the whole words are
+  right, and 25 of the 78 scores have 99 % of their syllables (20 before round 35, 15 in round 10, 4 in round 9); 366 syllables
+  are lacking for 99 % of each clean score (408 before round 35). The
   list of words is made from the typed hymns of the app without the hymn that is read and its other scores, so no
   score is read with its own text. Without a list the scans have about 910 fewer of these syllables and
   about 1,170 fewer whole words (quick count, see the rounds of the words below).
@@ -445,6 +447,89 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 35 (16 November 2026): single misread words on the clean copies, and the hyphens counted by the page.
+  No note changed in this round, on LitChoir, on the fresh set and on the kit. After round 34, 27 clean scores
+  lacked 1 to 4 syllables for 99 %. What they lacked were single words that Tesseract misread ("thov" for
+  "thou", the word O read as Q, as © or as a 0), and hyphens that the page sets at another place than the
+  typed hymn. Six rules were kept, and the scorer counts such a hyphen by the page. The clean copies went from
+  5,814 to 5,856 of 6,240 syllables (93.8 %): 24 by the count and 18 by the rules, none lost; counted as typed
+  they are 5,832. The whole words went from 4,132 to 4,148 of 4,531 (91.5 %). 25 scores have 99 % of their
+  syllables (20 before; 22 as typed), and 366 syllables are lacking for 99 % of each score (408 before). All
+  scores went from 24,259 to 24,536 of 28,692 syllables (85.5 %): 139 by the count, and 143 gained and 5 lost
+  by the rules; as typed they are 24,395. Each rule alone, switched off against the five others on, counted
+  from the stored rows (syllables gained and lost):
+
+  | Rule | Clean copies | All scan pages | Fresh test set |
+  |---|---:|---:|---:|
+  | A sure word with two runs of three letters that no word of the list holds is mended (`ocr.MEND_ODD`) | 0 and 0 | 7 and 2 | 0 and 0 |
+  | A sure word that is one letter from one of the list's commonest words is mended (`ocr.MEND_OFTEN`) | 3 and 0 | 17 and 3 | 4 and 3 |
+  | A reading with a mended word is not whole: the other sizes are read too (`ocr.MEND_WHOLE`) | 3 and 0 | 8 and 0 | 0 and 1 |
+  | A word that the list does not hold becomes the word that another size read at its place (`ocr.OTHER_SIZE`) | 1 and 0 | 64 and 2 | 0 and 0 |
+  | A 0 with a hyphen beside it is the syllable o (`ocr.DIGIT_JOIN`) | 3 and 0 | 5 and 0 | 0 and 0 |
+  | The word O read as Q, QO or © (`ocr.ROUND`) | 8 and 0 | 26 and 0 | 0 and 0 |
+  | All six, from the stored rows | 18 and 0 | 144 and 5 | 4 and 3 |
+  | All six, in the full runs | 18 and 0 | 143 and 5 | 4 and 3 |
+  | the same, in whole words | 16 and 0 | 133 and 0 | 4 and 2 |
+
+- Hyphens by the page, round 35 (the owner, 16 November 2026: "Count by the page"). The wide test counts a
+  syllable as right when its letters are those of the typed syllable. A page that prints "scend-ed" where the
+  hymn is typed "scen-ded" then loses two syllables that it reads exactly as they are printed: 14 words on the
+  clean copies, each from the page's own hyphens. A typed word that was read with the same
+  letters in the same number of syllables now counts as the page parts it. The scorer tries this staff by
+  staff and keeps it only where the staff counts higher; the typed hymns stay as they are. It brings 139
+  syllables on all scores (24 on the clean copies) and loses none; whole words and notes do not change.
+  Counted as typed (`AS_TYPED=1`) the reading of round 34 gives its figures exactly. The fresh set is not
+  counted so: its answers are the engraver's own files, and they stay exact. Not counted so either: a word
+  that the page parts into more syllables than the typed hymn has (12 on the clean copies).
+- Sure words that are misread (`ocr.MEND_ODD`, `ocr.MEND_OFTEN`), round 35. The list of words mends a word
+  that is one letter from a word of the list, but only where Tesseract was not sure of it: a sure word that
+  the list lacks is most often a true word ("banner" beside "manner"). Mending every sure word gained 42
+  syllables on all scans and lost 32. A census of every word that this would change, each labelled by the
+  typed hymn (the new word is typed and the read one is not: right; the read word is typed: wrong), showed two
+  things that separate. A word with two runs of three letters that no word of the list holds, its beginning
+  and its end counted, is no word of the list's language: 71 right and none wrong, where one such run gave 34
+  and 21. And a word that becomes one of the list's commonest words (held 6 % as often as the commonest one)
+  is right at the end of the word too, where the language itself changes a word ("stones", "stone"): 38 right
+  and none wrong among the words that were not mended before. Two guards came from the pages: a piece of a
+  word whose hyphen was not read is no misread word ("glori ous" is no "glory"), and a word that goes on in
+  the next row is not whole. What the second rule loses on LitChoir (3 syllables): the last syllable of a
+  word whose first syllable was misread too (the "thor" of "au-thor" is "thou" now), and two rows of which
+  another reading is kept now. The fresh set showed its limit: LitChoir's hymns share their words, so the list
+  lacks few true words there, and the pieces of the fresh set have words of their own. Of the 9 words that
+  the rule changes there, 6 are right, 2 are true words that the list lacks, each one letter from a common
+  word, and 1 is a syllable that the page spreads under its notes with its vowel doubled. A narrower form
+  (only a word with a run of three letters that the list does not hold) did not part them, because the runs
+  come from the same list, and it gained 9 syllables on LitChoir where the kept form gains 17: not kept.
+- A mended reading is not whole (`ocr.MEND_WHOLE`), round 35. The first form of the rule before changed 60
+  words on all scans, all of them rightly, and lost 6 syllables all the same. A row is read at 40 px first,
+  and at 32 and 50 px only when the list does not hold each of its words. With one more word mended, the first
+  reading held every word, the other sizes were not read, and a syllable that only they had read stayed lost
+  beside the mended word. A reading with a mended word is a reading with a mistake in it, so the other sizes
+  are read as well and the one that fits the list best is kept. It costs no time that the full run shows (22
+  minutes for LitChoir, as before). Taking letters off the fit of a reading for each mended word was counted
+  too and lost more than it gained (24 and 14 on all scans): not kept. On the fresh set this rule and the
+  rule before lose one syllable together that neither loses alone.
+- A word from another size (`ocr.OTHER_SIZE`), round 35. One reading of the three is kept whole, and each
+  reading has its own misread words. A word of the kept reading that the list does not hold becomes the word
+  that another size read at the same place (the two share 70 % of their width), when the list holds that word
+  and it is as long, or a letter longer or shorter. Of 129 words that this changes on all scans, 85 are right
+  by the typed hymn, 40 are neither, and 4 were right before. Two of the 4 were a word of the list with an "s"
+  behind it, a form that the list need not hold: such a word stays, and the clean copies lose nothing.
+- The word O (`ocr.DIGIT_JOIN`, `ocr.ROUND`), round 35. 15 times the clean copies lost the word O, which the
+  hymns begin many lines with. A 0 with a hyphen beside it was thrown out as a number: it is the syllable o
+  ("The-0-to-kos"). And Tesseract reads the round letter as Q, as QO or Oo, or as the sign ©. With a list that
+  holds the word O, such a word that stands alone is O. The signs were counted one by one by the line-up with
+  the typed hymn: QO, OQ and Oo are an O 16 times of 16, a lone Q 2 of 8 (it was a wrong syllable before, and
+  is one now), @ once in 11 (not taken). The sign © was right 17 times of 50: none of the 21 that are narrower
+  than 0.7 of the row's height (a dot, a piece of a note), and two of the others stood before the year of a
+  copyright line. So a © counts when it is as wide as a letter and no number follows it: 15 right, 10 not
+  confirmed (a note head that hangs into the row is as round as an O). The count of right syllables cannot see
+  a syllable too many; these 10 on all scans are the cost of the rule.
+- Counted in round 35 and left. A typed word of one syllable that the page parts in two with a vowel in each
+  piece ("low-ed", "bless-ed"; 12 on the clean copies), a misread word of three letters or fewer (the mending
+  starts at four letters), a syllable that the page spreads under its notes with its vowel doubled (the fresh
+  set showed one that the mending shortens; LitChoir's pages hold no such case, so no guard was written), and
+  the mended word that counts as a read one when the three sizes are compared.
 - Round 34 (16 November 2026): the words of the clean copies. No note changed in this round, on LitChoir, on
   the fresh set and on the kit: three causes of lost notes were counted first and gave no rule (see below), and
   the round turned to the words, which lack more. Three rules were kept. The clean copies went from 5,781 to
@@ -2483,6 +2568,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After the round of the tie over the end of a page (1 rule) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,187 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
 | After the round of the clean scores that lack few notes, a second time (4 rules) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,187 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
 | After round 34 (3 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,190 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
+| After round 35 (6 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,191 of 11,341) | 87.5 % (5,818 of 6,647) | 97.4 % |
 | of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 89.8 % | 91.4 % | 96.9 % |
 | Romanian | 88 | 93.4 % (17,083 of 18,288) | 37 | 76 | 66.8 % | 87.6 % | 98.7 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -2668,6 +2754,14 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
   "raphim" in the next, became "these". A piece with a hyphen after it is joined to nothing now; the guard is
   what the page prints, not a limit, and LitChoir's pages read the same with it. Two pages of the set hold rows
   of words that stand staggered; the rule for them changes no syllable here.
+- Round 35 was read here in full before it was committed: no note changes, 4 syllables gained and 3 lost
+  (8,191 of 11,341), 4 whole words gained and 2 lost (5,818 of 6,647). The rule for a sure word that is one
+  letter from one of the list's commonest words makes all seven: it mends 6 misread words here (4 syllables by
+  the count), turns 2 true
+  words that LitChoir's list lacks into common ones, and shortens a syllable that a page spreads under its
+  notes with its vowel doubled. The rule gains more than it loses here and stays; the limit is the list, which
+  knows the words of LitChoir's hymns and not those of a new one. The five other rules change nothing here but
+  for one syllable (see the round). The hyphens are not counted by the page here.
 - Almost no note is missed (166 of 40,906 by the old count). What is lost, counted on the comparison of each piece in round 9: a sixteenth
   note read as an eighth (about 420: the second beam or flag), an eighth read as a quarter or a half (about 360;
   the rule for a flag drawn as a bow mended 157 of these since then),
@@ -2700,7 +2794,7 @@ typed hymns, of all typed notes.
 - Over all hymns the own rules read more notes right than the network they replaced: 89.9 % against 81 %.
 - They are behind the network on two kinds: old copies (86 % against 88 %) and the two poor pages (80 % against 95 %).
 - 11 of the 31 hymns are at 95 % or more, and 18 are at 90 % or more. 6 are under 80 %.
-- The kit did not change in rounds 33 and 34 (6207 notes). It gained 1 note in round 31 (6206 to 6207 notes): a dot between two heads that is the lower head's, in pascha-receive-long. It did not change in the round before it: no hymn of the kit holds a note over the end of a page. It gained 2 notes in round 29 (6204 to 6206): a half note on a line whose hole holds one speck, in pascha-receive-long and in nativity-troparion. It did not change in round 28. It gained 1 note in round 27 (6203 to 6204): a head on top of a near ledger line, in nativity-troparion. It did not change in round 26. It gained 1 note in round 25 (6202 to 6203): the head that a sharp touched, in all-saints-troparion,
+- The kit did not change in rounds 33 to 35 (6207 notes). It gained 1 note in round 31 (6206 to 6207 notes): a dot between two heads that is the lower head's, in pascha-receive-long. It did not change in the round before it: no hymn of the kit holds a note over the end of a page. It gained 2 notes in round 29 (6204 to 6206): a half note on a line whose hole holds one speck, in pascha-receive-long and in nativity-troparion. It did not change in round 28. It gained 1 note in round 27 (6203 to 6204): a head on top of a near ledger line, in nativity-troparion. It did not change in round 26. It gained 1 note in round 25 (6202 to 6203): the head that a sharp touched, in all-saints-troparion,
   which has all its 142 notes now. It lost 1 note in round 24 (6203 to 6202): two hymns gain a note each by the rules for lengths,
   and two lose 3 by the exact thin ink (lamentations-troparia 2, all-saints-koinonikon 1). It gained 4 notes in round 23 (6199 to 6203), in two hymns, where a bar with one open step is
   as long as the full bars of its page. It gained 3 notes in round 22 (6196 to 6199), in two hymns, where a long note is a witness for
@@ -2801,9 +2895,10 @@ typed hymns, of all typed notes.
    straight end (a limit on the size of a hole alone lost more than it gained).
    Of the notes lost on the clean copies in round 13, 486 had only a wrong length, 346 only a wrong
    pitch (118 a semitone off, by a sign) and about 300 were not read. Words
-   (426 syllables are missing on the clean copies after round 34, 408 for 99 % of each score; no cause holds
+   (384 syllables are missing on the clean copies after round 35, 366 for 99 % of each score; no cause holds
    more than a dozen): the first syllable of a refrain that stands alone between two rows, a one-syllable word
-   that the page parts with a hyphen and whose pieces each hold a vowel ("tho-u"), a row that is read only from its second word on, stray ink
+   that the page parts with a hyphen and whose pieces each hold a vowel ("tho-u"), a misread word of three
+   letters or fewer, a true word that the list lacks beside a common one, a row that is read only from its second word on, stray ink
    read as a row, the letters that Tesseract reads wrongly on heavy pages, score under which note a syllable
    stands, and bring the own letter reader up to Tesseract (name each letter by its nearest known shape, taught
    by hymns whose text is typed).
@@ -2910,4 +3005,7 @@ lower head's; and the slit of a half note on a ledger line is measured from the 
 where another head of the chord has a dot, a bold tie that is one piece of ink with its whole notes is taken off
 them, and paper closed in between a bar line and a stem is no whole note. Round 34 was for the words: a syllable that
 the page spreads under its notes with a hyphen is one syllable again, and a refrain that is printed once beside
-the rows of four verses is read with the first verse.
+the rows of four verses is read with the first verse. Round 35 was for single misread words: a word that Tesseract
+was sure of is mended where it cannot be a word of the list or is one letter from one of its commonest words, the
+word O is read where it came out as Q or ©, and a hyphen that the page sets at another place than the typed hymn
+counts as the page sets it (the owner, 16 November 2026).
