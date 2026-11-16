@@ -20,9 +20,9 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
 scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,749 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 93.2 % with Tesseract and a list of
-words (5,814 of 6,240; 91.2 % of the whole words; 20 scores at 99 % of the syllables); 84.5 % of all syllables with Tesseract
-(82.4 % on scans), and 89.9 % on the kit (6207 of 6901).
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 93.8 % with Tesseract and a list of
+words (5,856 of 6,240, counted by the page; 5,832 as typed; 91.5 % of the whole words; 25 scores at 99 % of the syllables);
+85.5 % of all syllables with Tesseract (83.6 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
@@ -213,6 +213,31 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the words is compared on its pages note by note, field by field, before the words are counted.
 - The replay of the words from stored rows cannot count a rule that changes which rows there are. A census
   names the pages that such a rule changes, and they are read with Tesseract, with the rule off and on.
+- The words count by the page too (the owner, 16 November 2026). A typed word that was read with the same
+  letters in the same number of syllables, with its hyphen at another place, counts as the page parts it. The
+  scorer tries this staff by staff and keeps it only where the staff counts higher; `AS_TYPED=1` gives the
+  figures of the round before exactly, and the fresh set stays exact. A word that the page parts into more
+  syllables than the typed hymn has is not counted so.
+- A word that Tesseract is sure of can still be misread. Mending every such word loses as much as it gains. A
+  census of every word that a mending rule would change, each labelled by the typed hymn (the new word is typed
+  and the read one is not: right; the read word is typed: wrong), finds what separates: two runs of three
+  letters that no word of the list holds, or a new word that is one of the list's commonest. The list leaves out
+  the hymn that is read, but LitChoir's hymns share their words, so LitChoir shows few true words that the list
+  lacks. The fresh set shows them: the rule for the commonest words changed 9 words there, and 2 were true words
+  one letter from a common one. A limit by the unseen runs of letters does not part them (the runs come from the
+  same list). A guard for a case that only a fresh page shows, with no case on LitChoir's pages, is not written.
+- A mending rule changes more than its words. A row is read at three sizes, the reading that fits the list best
+  is kept, and a mended word counts as held. A rule that mended 60 words rightly and none wrongly lost 6
+  syllables: the first reading was whole with the mended word, the other sizes were not read, and a syllable
+  beside the word stayed lost. Trace a lost syllable to its row at each size before a guard is added to the
+  rule. A reading with a mended word is not whole now (`ocr.MEND_WHOLE`); taking letters off its fit as well
+  lost more than it gained.
+- A rule that brings in a syllable that was left out before (a sign that is read as the word O) is not judged by
+  the right syllables alone: a syllable too many costs nothing in the count. Count what the rule adds against
+  what it gains, sign by sign, by the line-up with the typed hymn, and look at the ones that the hymn does not
+  confirm on the page (the sign of a copyright line, a note head, a dot).
+- The replay of the words runs the clean copies, all scan pages and the fresh set side by side in two minutes.
+  Each rule of a round is counted with that rule off against all rules on, and the full runs are read at the end.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

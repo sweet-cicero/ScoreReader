@@ -28,6 +28,11 @@ AGAIN = (32, 50)         # a second look: the row is read again at these sizes, 
 #                          again (an empty tuple: each row is read once)
 ROOM = (0.6, 2.0)        # the room kept over and under the band, and at its sides, in staff spaces
 DIGITS = True            # a 0 or a 1 that Tesseract read in the place of a letter is read as that letter (O, I, l)
+DIGIT_JOIN = True        # a 0 with a hyphen beside it is the syllable o too ('The-0-to-kos')
+ROUND = (('Q', 'QO', 'OQ', 'Qo', 'Oo'), '©', 0.7)   # with a list of words that holds the word O: a word that is read
+#                          as one of these and stands alone is the word O. And the sign after them is, where it is this
+#                          share of the row's height wide or more (a narrow one is a dot or a piece of a note) and no
+#                          number follows it (the sign of a copyright line). (None: off)
 SURE = (20, True)        # a word that Tesseract is less sure of than this (of 100) and that has under three letters is
 #                          left out; with a list of words it stays when the list holds it (True)
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
@@ -56,6 +61,21 @@ MEND = (4, 2, 80, 50, 0.2)   # with a list of words: a word of this many letters
 #                          sure of it than the fourth number. And only on a page of whose letters this share or more
 #                          stands in words that the list holds: else the page is in another language than the list
 #                          (None: off)
+MEND_ODD = 2             # a word that Tesseract is sure of is mended all the same when it holds this many runs of
+#                          three letters, its beginning and its end counted, that no word of the list holds: it is no
+#                          word of the list's language ('thov', 'lotd'), where 'banner' and 'jews' are (None: off)
+MEND_OFTEN = (0.06, 0.012)   # and it is mended all the same when the word that it becomes is one of the list's
+#                          commonest: the list holds it this share as often as its commonest word ('thov' is
+#                          'thou', at the end of the word too; not a piece of a word whose hyphen was not read,
+#                          'glori ous'), or the second share where one such run of three letters is in no word of
+#                          the list and the letter is not the word's last ('mishty' is 'mighty') (None: off)
+MEND_WHOLE = True        # a reading with a mended word is not whole: the row is read at the other sizes too, and
+#                          the reading that fits best is kept ('Theel' mended, and a syllable left out beside it)
+OTHER_SIZE = (0.7, 2)    # with a list of words: the row is read at three sizes and one reading is kept. A word of it
+#                          that the list does not hold becomes the word that another size read at its place (the two
+#                          share this much of their width), when the list holds that word this often or more and it
+#                          is as long, or a letter longer or shorter. A word of the list with an s behind it
+#                          stays: the list need not hold that form (None: off)
 HELD = (1.2, 0.25, 0.35)   # the line of a held syllable is taken out of the picture before Tesseract
 #                          reads the row: a level line this many times as long as the band is high or longer, this
 #                          share of the band's height thick at most, that lies this near the band's lower edge
@@ -115,7 +135,7 @@ def _no_digits(text: str, first: bool = False) -> str:
     """A word in which Tesseract read a letter as a digit: a 0 that stands alone is the word O, a 1 that stands
     alone is the word I (not at the start of a row or before a full stop: the number of a verse), and among letters
     a 0 is an o and a 1 is an I between capitals and an l between small letters. Other digits stay."""
-    core = text.strip(STOPS + '\'"‘’“”')
+    core = text.strip(STOPS + '\'"‘’“”' + (JOINS + LINES if DIGIT_JOIN else ''))
     if core == '0':
         return text.replace('0', 'O')
     if core == '1':
@@ -127,7 +147,8 @@ def _no_digits(text: str, first: bool = False) -> str:
     return text.replace('0', 'O' if capitals else 'o').replace('1', 'I' if capitals else 'l')
 
 
-def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None) -> list[dict]:
+def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None,
+               high: float | None = None) -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows), 'sure'} each. A hyphen
     stands alone between two syllables, or inside a word that the reader took for one; the line after a held
     syllable is no letter, and a dash after a comma or a full stop is such a line too."""
@@ -138,6 +159,11 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
             continue
         if DIGITS:
             text = _no_digits(text, first=number == 0)
+        if ROUND and known and known.get('o', 0) >= 2:
+            core = text.strip(STOPS + '\'"‘’“”')
+            if core in ROUND[0] or (core == ROUND[1] and high and right - left >= ROUND[2] * high and not (
+                    number + 1 < len(words) and words[number + 1][0][:1].isdigit())):
+                text = text.replace(core, 'O')
         if all(sign in JOINS + LINES + '.,' for sign in text):
             if found and any(sign in JOINS for sign in text) and found[-1]['text'][-1] not in STOPS:
                 found[-1]['join'] = True
@@ -459,16 +485,30 @@ def _ends(syllables: list[dict], known: dict[str, int], fits: bool = False) -> l
     return found
 
 
-def _mend(syllables: list[dict], known: dict[str, int]) -> list[dict]:
+_RUNS: list = [None, frozenset(), 0]
+
+
+def _odd(word: str, known: dict[str, int]) -> int:
+    """How many runs of three letters of a word no word of the list holds (see MEND_ODD). '^' stands before the
+    word and '$' after it."""
+    if _RUNS[0] is not known:
+        _RUNS[:] = [known, frozenset(text[at:at + 3] for held in known for text in ('^' + held + '$',)
+                                    for at in range(len(text) - 2)), max(known.values(), default=0)]
+    text = '^' + word + '$'
+    return sum(text[at:at + 3] not in _RUNS[1] for at in range(len(text) - 2))
+
+
+def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None) -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
     there ('tnose', 'orlent', 'trinty'); the hymns of one church use the same words again and again, and the list
     tells which word was meant. A word is the syllables that hyphens join. Only letters count: capitals, commas and
     apostrophes stay as they were read. A word that the list holds is never changed, and a letter that is a whole
     syllable is never taken away (it is a word of its own whose hyphen was read wrongly: 'O-joy'). A vowel that is
     missing between two syllables becomes a syllable of its own ('Trin-ty' is 'Trin-i-ty'), unless the syllable
-    before it has no vowel yet ('Gl-ry' is 'Glo-ry')."""
+    before it has no vowel yet ('Gl-ry' is 'Glo-ry'). `mended` takes each word that was mended, as it was read."""
     found: list[dict] = []
     word: list[dict] = []
+    ahead = ''
     for number, syllable in enumerate(syllables):
         word.append(dict(syllable))
         if syllable['join'] and number + 1 < len(syllables):
@@ -478,7 +518,12 @@ def _mend(syllables: list[dict], known: dict[str, int]) -> list[dict]:
         sure = min(part.get('sure', 0.0) for part in word)
         found.extend(word)
         parts, word = word, []
-        if len(read) < MEND[0] or read in known or sure >= MEND[2]:
+        before, ahead = ahead, read
+        if len(read) < MEND[0] or read in known:
+            continue
+        odd = _odd(read, known) if MEND_ODD or MEND_OFTEN else 0
+        firm = sure >= MEND[2] and not (MEND_ODD and odd >= MEND_ODD)
+        if firm and (not MEND_OFTEN or parts[-1]['join']):     # a word that goes on in the next row is not whole
             continue
         near = set()
         for at in range(len(read) + 1):
@@ -490,10 +535,26 @@ def _mend(syllables: list[dict], known: dict[str, int]) -> list[dict]:
         if len(meant) != 1:
             continue
         (new, (at, how)), = meant.items()
-        if at >= len(read) - 1 + (how == 'more') and sure >= MEND[3]:
+        last = at >= len(read) - 1 + (how == 'more')
+        often = bool(MEND_OFTEN) and known[new] >= MEND_OFTEN[0] * _RUNS[2]
+        if often and parts[-1]['join']:
+            often = False
+        if often:
+            # A piece of a word whose hyphen was not read ('glori ous') is no misread word.
+            after = ''
+            for other in syllables[number + 1:]:
+                after += ''.join(sign for sign in other['text'].lower() if sign.isalpha())
+                if not other['join']:
+                    break
+            often = before + read not in known and read + after not in known
+        if firm and not often and not (odd and not last and known[new] >= MEND_OFTEN[1] * _RUNS[2]):
+            continue
+        if last and sure >= MEND[3] and not often:
             continue
         part, place = places[min(at, len(places) - 1)]
         text = part['text']
+        if mended is not None and (how != 'less' or sum(sign.isalpha() for sign in text) > 1):
+            mended.append(read)
         if how == 'less':
             if sum(sign.isalpha() for sign in text) > 1:
                 part['text'] = text[:place] + text[place + 1:]
@@ -556,17 +617,18 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     sure = sum(number * sure for number, sure in letters) / count if count else 0.0
     if CUT:
         words = _cut_wide(words, grey, band)
-    row = _syllables(words, known)
+    row = _syllables(words, known, band['bottom'] - band['top'])
     if not known:
         return row, sure, False
     if ENDS:
         row = _ends(row, known, mend)
+    mended: list[str] = []
     if MEND and mend:
-        row = _mend(row, known)
+        row = _mend(row, known, mended)
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
         return [], -1.0, False
-    return row, held + total * sure / 5000.0, 0 < total == held
+    return row, held + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE)
 
 
 def _fits(rows: list[tuple[list[tuple[str, float, float, float]], dict]], grey: np.ndarray, known: dict[str, int]) -> bool:
@@ -595,18 +657,63 @@ def _held(row: list[dict], known: dict[str, int], least: int = 1) -> tuple[int, 
     return held, total
 
 
+def _read_words(row: list[dict]) -> list[list[dict]]:
+    """The words of a row: the syllables that hyphens join."""
+    words: list[list[dict]] = [[]]
+    for number, part in enumerate(row):
+        words[-1].append(part)
+        if not part['join'] and number + 1 < len(row):
+            words.append([])
+    return [word for word in words if word]
+
+
+def _other_size(row: list[dict], others: list[list[dict]], known: dict[str, int]) -> list[dict]:
+    """A word of the reading that was kept that the list of words does not hold, where the reading at another size
+    holds a word of the list at the same place, is that word (see OTHER_SIZE)."""
+    share, least = OTHER_SIZE
+
+    def letters(word: list[dict]) -> str:
+        return ''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
+
+    found: list[dict] = []
+    for word in _read_words(row):
+        text = letters(word)
+        choice = None
+        if text and text not in known:
+            left, right = word[0]['x0'], word[-1]['x1']
+            for other in others:
+                for there in _read_words(other):
+                    new = letters(there)
+                    first, last = there[0]['x0'], there[-1]['x1']
+                    if known.get(new, 0) >= least and len(new) >= 2 and abs(len(new) - len(text)) <= 1 \
+                            and text != new + 's' \
+                            and min(right, last) - max(left, first) >= share * max(right - left, last - first, 1e-6) \
+                            and (choice is None or known[new] > known[letters(choice)]):
+                        choice = there
+        if choice is not None:
+            found.extend(dict(part) for part in choice[:-1])
+            found.append(dict(choice[-1], join=word[-1]['join']))
+        else:
+            found.extend(word)
+    return found
+
+
 def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True,
           ways: dict[str, tuple[str, ...]] | None = None) -> list[dict]:
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
     With `ways` the words are parted into syllables as the list of words parts them."""
     best: tuple[list[dict], float] | None = None
+    rows: list[list[dict]] = []
     for size in (HIGH,) + tuple(AGAIN or ()):
         row, fit, whole = _text_row(read(size), grey, band, known, mend)
+        rows.append(row)
         if best is None or fit > best[1]:
             best = (row, fit)
         if whole:
             break
     row = best[0] if best else []
+    if OTHER_SIZE and known and mend and len(rows) > 1:
+        row = _other_size(row, [other for other in rows if other is not row], known)
     if ONE and ways and mend:
         row = _whole(row, known, ways)
     return _parted(row, ways) if ways else row
