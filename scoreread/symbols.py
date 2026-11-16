@@ -98,6 +98,15 @@ PAIR_STEM = (1.3, 2.3, 1.25, 0.65, 0.4, 0.08, 1.85, 0.25)   # two filled heads a
 #                     heads a second apart, where two voices on one note or a third lean less (None: off)
 STUB = 0.3           # a thick stem that is this long (staff spaces) at the top or the bottom of a mark is cut off (0: off)
 STUB_HIGH = 1.25     # when the mark is this many times as high as the heads of the page
+ARM = (0.75, 5.0, 2.3, 0.25, 0.65, 0.3, 0.4)   # a bold bow that touches a hollow head is one piece of thick ink with it, far too
+#                    wide for a head. In a mark with a hole that is over [2] times as wide as the heads of the page, the
+#                    ink that holds no disc of [0] times the height of the page's heads (a head with its hole does, a
+#                    bow that lies on a staff line does not) is such a bow where it goes on for [1] staff spaces or
+#                    more, is at most [3] times as high as it is long and at most [4] staff spaces thick on the
+#                    whole, and it is the bow of a tie: its middle lies [5] staff spaces or more off the straight way
+#                    between its ends, and its ends are at most [6] apart in height. It is taken off the mark, with
+#                    the crumbs of it that hold no such disc. A flag and the stroke of a hand are shorter or
+#                    thicker, and a beam is straight and leans. The ink stays on the page, for the ties (None: off).
 WINGS = 0.25         # a ledger line shows this far at both sides of a head's body, in staff spaces (0: off)
 WHOLE_BESIDE = (0.35, 0.2, 0.2, 0.2)   # a whole note that touches the head of the other voice has no stem: the stem
 #                    of a filled head, at most this many staff spaces from the stem the hollow oval was given, is not its
@@ -105,6 +114,15 @@ WHOLE_BESIDE = (0.35, 0.2, 0.2, 0.2)   # a whole note that touches the head of t
 #                    wider than the filled head by this much (None: off)
 RIM_STEM = 0.3       # upright ink that ends in the box of another head of its piece of ink, or this many staff spaces
 #                    past it, is the rim of that head and no stem (0: off)
+RIM_BOW = None       # (0.7, 0.2): ... or the first number past it where both heads are hollow, that head has no stem and the ink
+#                    runs inside its box, the second number or more from its edges: the side of a whole note is thick,
+#                    and a bow that leaves the note goes on from it. A stem that two heads share runs along their
+#                    edge. Off: it mends one page of the clean copies (1 note), and on 13 other pages it takes the
+#                    stem from a head beside a sharp, from a rest drawn by hand and from a letter.
+CELL = (0.27, 1.0)   # paper that is closed in between two upright strokes and two staff lines is no whole note: at both
+#                    sides of the hole the ink is at most the first number wide (staff spaces; a whole note is thick at
+#                    its sides), and both strokes go on for the second number or more past the hole, up or down (a bar
+#                    line, the stem of another note) (None: off)
 LEDGER_DOT = (2.0, 0.9, 0.6, 0.8)   # the dot of a head on a ledger line stands at the end of the line or past it: the
 #                    line is followed for this many staff spaces to the right of the head, the dot is at most this far
 #                    past its end, the line is at least this long past the head (a shorter one that thickens is the end
@@ -475,6 +493,43 @@ def _pair_at_stem(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: 
     return [_mark(upper, holes, x, y, blob), _mark(lower, holes, x, y, blob)]
 
 
+def _without_arm(mask: np.ndarray, holes: np.ndarray, space: float, usual: float, tall: float) -> np.ndarray:
+    """A mark without the bold bows that touch it (see ARM). A bow is slim along its whole way; a head with its hole
+    is as high as a head in all of its columns but the outermost."""
+    if not ARM or not usual or not tall or mask.shape[1] <= ARM[2] * usual or not (mask & holes).any():
+        return mask
+    size = max(3, int(round(ARM[0] * tall)) | 1)        # an odd size: the opening is exact
+    # A round kernel: a bow that rises is as high as a head in its columns, but no disc of that size lies in it.
+    # The mask ends at the edge of the mark, and OpenCV takes what lies past the edge of a picture for ink: paper is
+    # set around the mask first.
+    solid = cv2.morphologyEx(np.pad(mask.astype(np.uint8), size), cv2.MORPH_OPEN,
+                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))[size:-size, size:-size] > 0
+    count, labels, stats, _ = cv2.connectedComponentsWithStats((mask & ~solid).astype(np.uint8), connectivity=8)
+    def bends(index: int) -> bool:
+        # The bow of a tie bends and ends at the height where it began. A beam is straight, and it leans.
+        x, wide = stats[index][0], stats[index][2]
+        rows = []
+        for share in (0.0, 0.5, 1.0):
+            column = x + int(share * (wide - 1))
+            inked = np.nonzero(labels[:, max(x, column - 2):column + 3] == index)[0]
+            if not len(inked):
+                return False
+            rows.append(float(inked.mean()))
+        return abs(rows[1] - (rows[0] + rows[2]) / 2) >= ARM[5] * space and abs(rows[0] - rows[2]) <= ARM[6] * space
+
+    bows = [index for index in range(1, count) if stats[index][2] >= ARM[1] * space
+            and stats[index][3] <= ARM[3] * stats[index][2] and stats[index][4] <= ARM[4] * space * stats[index][2]
+            and bends(index)]
+    if not bows:
+        return mask
+    # What is left of the mark are its pieces that hold such a disc: a crumb of the bow beside a head is no head.
+    left = mask & ~np.isin(labels, bows)
+    count, labels, _, _ = cv2.connectedComponentsWithStats(left.astype(np.uint8), connectivity=8)
+    kept = np.unique(labels[solid & left])
+    left &= np.isin(labels, kept[kept > 0])
+    return left if (left & holes).any() else mask
+
+
 def thick_marks(layers: dict) -> list[dict]:
     """The thick marks of the page, cut where two heads touch. Each: its box (x0, y0, x1, y1), area, the middle
     (cx, cy), 'hole' (the share of its area that was the inside of a hollow shape), 'hole_cy' and 'blob' (the
@@ -509,6 +564,10 @@ def thick_marks(layers: dict) -> list[dict]:
     for mark, mask, holes, x, y in pieces:
         if STUB:
             part = _without_stub(mask, space, high)
+            if part is not mask:
+                mask, mark = part, _mark(part, holes, x, y, mark['blob']) or mark
+        if ARM:
+            part = _without_arm(mask, holes, space, wide, high)
             if part is not mask:
                 mask, mark = part, _mark(part, holes, x, y, mark['blob']) or mark
         own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
@@ -1323,6 +1382,42 @@ def _rim(layers: dict, mark: dict) -> float:
     return float((ring & own).sum()) / max(1, int(ring.sum()))
 
 
+def _cell(layers: dict, mark: dict) -> bool:
+    """Is the hole of a mark paper between two upright strokes (see CELL)? At the left and at the right of the hole, in
+    its middle rows, the ink is thin, and each of the two strokes goes on past the hole, upward or downward."""
+    space = layers['space']
+    y0, y1, x0, x1 = max(0, mark['y0'] - 2), mark['y1'] + 3, max(0, mark['x0'] - 2), mark['x1'] + 3
+    hole = layers['holes'][y0:y1, x0:x1]
+    if not hole.any():
+        return False
+    ink = layers['ink']
+    rows = np.nonzero(hole.any(axis=1))[0]
+    top, bottom = int(rows.min()), int(rows.max())
+    most, on = CELL[0] * space, int(round(CELL[1] * space))
+    sides = {-1: [], 1: []}
+    for row in range(int(top + 0.3 * (bottom - top)), int(top + 0.7 * (bottom - top)) + 1):
+        columns = np.nonzero(hole[row])[0]
+        if not len(columns):
+            continue
+        for way, column in ((-1, x0 + int(columns.min()) - 1), (1, x0 + int(columns.max()) + 1)):
+            wide = 0
+            while 0 <= column + way * wide < ink.shape[1] and ink[y0 + row, column + way * wide] and wide <= 2 * most:
+                wide += 1
+            sides[way].append((wide, column + way * (wide // 2)))
+    for way in (-1, 1):
+        if not sides[way]:
+            return False
+        wide, column = sorted(sides[way])[len(sides[way]) // 2]
+        if wide == 0 or wide > most:
+            return False
+        # The stroke goes on past the hole: ink in its column for all of the rows over the hole, or under it.
+        over = ink[max(0, y0 + top - on):y0 + top, max(0, column - 1):column + 2].any(axis=1)
+        under = ink[y0 + bottom + 1:y0 + bottom + 1 + on, max(0, column - 1):column + 2].any(axis=1)
+        if not ((len(over) == on and over.all()) or (len(under) == on and under.all())):
+            return False
+    return True
+
+
 def _places(staff: dict, mark: dict) -> dict:
     """Other measures of a mark's place on its staff, for the record: 'mass' (the middle of its ink), 'bare' (the
     middle of its ink outside the rows of the staff lines), 'box' (the middle of its box), 'top' and 'bottom' (its
@@ -1722,11 +1817,18 @@ def read_symbols(layers: dict) -> dict:
         # Two whole notes a third apart touch, and the side of the one is upright ink that leaves the other. But a
         # stem goes on past the heads that hang on it: upright ink that ends in the box of another head is its rim.
         heads = [mark for mark in marks if mark['kind'] == 'head']
+        whole = {id(mark) for mark in heads if not mark['stems'] and mark['hole'] >= HOLLOW}
         for mark in heads:
             for stem in list(mark['stems']):
+                def reach(other: dict) -> float:
+                    # The side of a whole note with a bow that leaves it: the ink goes on a little past the note.
+                    if RIM_BOW and id(other) in whole and mark['hole'] >= HOLLOW \
+                            and other['x0'] + RIM_BOW[1] * space <= stem['x'] <= other['x1'] - RIM_BOW[1] * space:
+                        return RIM_BOW[0] * space
+                    return RIM_STEM * space
                 if any(other is not mark and other['blob'] == mark['blob']
                        and other['x0'] - 2 <= stem['x'] <= other['x1'] + 2
-                       and other['y0'] - RIM_STEM * space <= stem['end'] <= other['y1'] + RIM_STEM * space
+                       and other['y0'] - reach(other) <= stem['end'] <= other['y1'] + reach(other)
                        and (other['cy'] < mark['cy']) == (stem['direction'] == 'up') for other in heads):
                     mark['stems'].remove(stem)
     _share_stems(marks, space)
@@ -1801,7 +1903,8 @@ def read_symbols(layers: dict) -> dict:
                     and other['hole'] >= limit and lying(other) and abs(other['cx'] - mark['cx']) <= WHOLE_FILLED * space
                     and min(abs(other['y0'] - mark['y1']), abs(mark['y0'] - other['y1'])) <= 0.3 * space for other in marks):
                 hollow = True       # the print filled the hole of a whole note that touches the whole note of the other voice
-            elif not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM):
+            elif not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM
+                      and not (CELL and _cell(layers, mark))):
                 # A mark as large as a head with no stem: the copy may have cut its stem off (see lost_stems()).
                 if not (ORPHANS and 'tail_of' not in mark
                         and ORPHANS[0] * layers['head'][0] <= wide <= ORPHANS[1] * layers['head'][0]
@@ -2650,6 +2753,16 @@ DOT_ASK = (0.75, 0.45, 0.8)   # a mark at the right of a head that is nearly a d
 DOT_CLOSE = (0.15, 0.25, 0.65, 1.5)   # a dot stands this near to its head (less than DOT_NEAR) when each of its sides is
 #                    at least this many staff spaces, it is round (from this to this wide for its height: a piece
 #                    of a broken stem is slim) and no other head has it as its dot: a tight engraving (None: off)
+DOT_BESIDE = (0.5, 12.0, 0.4, 0.3)   # a dot that a print drew as a short dash or a hand as a stroke: a mark that is nearly a dot (DOT_ASK)
+#                    and no dot by its shape, beside a head without a dot, is its dot when another head of the column
+#                    has a dot: the right edges of the two heads at most [0] staff spaces apart, their middles at most
+#                    [1] (on one staff or on two staves next to each other), the dash and that dot at most [2] apart
+#                    sideways, the dash at most [3] over or under the middle of its head, and the two notes of one
+#                    kind (hollow or filled, as many flags or beams). Notes that sound together agree (None: off)
+DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger line is this many times as wide as the
+#                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
+#                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
+#                    notes on all of LitChoir and lost 32 (none and 8 on the clean copies).
 SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
 RING_FLAG = (0.45, 0.75, 0.25, 0.5, 0.4)   # a hollow head with the ink of a printed flag at its stem: one piece at the right
 #                      of the stem's end and none at its left, from this to this many staff spaces far, from this to this
@@ -3541,6 +3654,18 @@ def dots(layers: dict, heads: list[dict]) -> None:
         if DOT_SMALL * space <= wide <= DOT_ASK[0] * space and DOT_SMALL * space <= high <= DOT_HIGH * space \
                 and area >= DOT_ASK[1] * wide * high:
             nearly.append((float(centres[index][0]), float(centres[index][1])))
+    dashes = [place for place in nearly if place not in found]
+    usual = (layers.get('head') or (0, 0))[0]
+
+    def edge(head: dict, x: float, y: float) -> float:
+        # The right edge of a head for a dot at (x, y): see DOT_BODY.
+        if not (DOT_BODY and usual and abs(head['place']) > 4.6 and head['x1'] - head['x0'] + 1 >= DOT_BODY * usual
+                and head['y0'] <= y <= head['y1']):
+            return head['x1']
+        row = layers['bare'][max(0, int(y) - 1):int(y) + 2, head['x0']:max(head['x0'], int(x - 0.2 * space))].any(axis=0)
+        inked = np.nonzero(row)[0]
+        return float(head['x0'] + inked[-1]) if len(inked) else head['x1']
+
     taken = set()
     first = {}
     takers, took = {}, {}
@@ -3549,7 +3674,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
         head['dot_near'] = any(DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space
                                and -DOT_ASK[2] * space <= y - head['cy'] <= DOT_UNDER * space for x, y in nearly)
         for number, (x, y) in enumerate(found):
-            if DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
+            if DOT_NEAR * space <= x - edge(head, x, y) <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
                     and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
                 head['dot'] = True
                 taken.add(number)
@@ -3568,6 +3693,22 @@ def dots(layers: dict, heads: list[dict]) -> None:
             if below and not any((bool(other.get('hollow')), max(other['tails'].values(), default=0)) == kind for other in below):
                 head['dot'] = False
                 first.pop(id(head), None)
+    if DOT_BESIDE:
+        # One head of a column has its dot, and a dash stands beside another head of the column (see DOT_BESIDE).
+        level, reach, side, high = DOT_BESIDE
+        dotted = [head for head in heads if id(head) in first]
+        kind = lambda head: (bool(head.get('hollow')), max(head['tails'].values(), default=0))
+        for head in heads:
+            if head['dot']:
+                continue
+            for x, y in dashes:
+                if not (DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space and abs(y - head['cy']) <= high * space):
+                    continue
+                if any(abs(other['x1'] - head['x1']) <= level * space and abs(other['cy'] - head['cy']) <= reach * space
+                       and abs(other.get('staff', 0) - head.get('staff', 0)) <= 1 and kind(other) == kind(head)
+                       and abs(found[first[id(other)]][0] - x) <= side * space for other in dotted):
+                    head['dot'] = True
+                    break
     for head in heads if DOT_TWO else []:
         # A second dot at the right of the first (see DOT_TWO).
         if id(head) not in first:
