@@ -492,7 +492,9 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   of the 32 pages is the same, field by field. Not read yet: the first syllable of that refrain where it
   stands alone at the end of a system between two rows (two letters are no row), about 4 syllables; and the
   typed hymn writes "wed-ed" where the page prints "wed-ded" (4 syllables that the page has right). The own
-  letter reader was not counted again in this round.
+  letter reader (no Tesseract) was read on the 32 pages with the rule off and on: 15 syllables gained and 6
+  lost (6 and none on the clean copies). The 6 are on two copies by hand; why was not looked at. Its figure in
+  the table above is older and was not made again.
 - Counted in round 34 and left without a rule. A bar with two or three notes whose length is not sure, on a
   page with full bars, takes the one choice of the lengths that fills it (`music.BAR_SEVERAL`, not kept): 3
   notes gained and 4 lost on the clean copies (a whole note became an eighth), and 1 and 1 when a length may
