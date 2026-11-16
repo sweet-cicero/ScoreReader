@@ -340,16 +340,17 @@ flowchart TD
     rowsure -- "yes" --> gap["<b>Two words read as one</b><br/>Where each sign of a word is one piece of ink, the gaps between the pieces are counted. A gap twice as wide as the usual one, and a third of the row's height, parts the word. A gap beside a hyphen does not count. In a row from a typewriter (its letters stand evenly apart, centre to centre) the gap beside a thin letter is wide in any word: there two words are parted only where their letters stand further apart than a letter's box."]
     gap --> syl["<b>Syllables</b><br/>A hyphen joins two syllables. A dash after a comma or a full stop is the line of a held syllable. A 0 or a 1 among letters is the letter that it stands for (O, I, l), and a 0 with a hyphen beside it is the syllable o. With a list that holds the word O, a lone Q, QO or Oo is that word, and a © that is as wide as a letter with no number after it. A word of one or two letters that Tesseract is not sure of is left out, unless the list of words holds it."]
     syl --> list{{"Is there a list of words?"}}
-    list -- "yes" --> ends["<b>Where the words end</b><br/>A word that the list does not hold is parted at the one place where the list holds both sides ('Thy-church', 'thelord'), a word of one letter being one of them only when it is a common word of the list ('odrink'). On a page in the list's language three common words that were read as one are parted too ('mercyonus'). Two words are joined that the list holds only as one ('re joice')."]
-    ends --> mend["<b>One wrong letter</b><br/>A word of four letters or more that the list does not hold, and that Tesseract was not sure of, becomes the one word of the list that is a letter away ('tnose' is 'those'). A word that Tesseract was sure of is mended all the same when two of its runs of three letters are in no word of the list ('lotd'), or when the word that it becomes is one of the list's commonest ('thov' is 'thou'). A missing vowel between two syllables is a syllable of its own. Only on a page of whose letters a fifth or more stands in words of the list: else the page is in another language than the list."]
+    list -- "yes" --> ends["<b>Where the words end</b><br/>A word that the list does not hold is parted at the one place where the list holds both sides ('Thy-church', 'thelord'), a word of one letter being one of them only when it is a common word of the list ('odrink'). On a page in the list's language three common words that were read as one are parted too ('mercyonus'). Two words are joined that the list holds only as one ('re joice'). The first word of a row with a colon behind it is a label and stays whole ('Ison:')."]
+    ends --> mend["<b>One wrong letter</b><br/>A word of four letters or more that the list does not hold, and that Tesseract was not sure of, becomes the one word of the list that is a letter away ('tnose' is 'those'). A word that Tesseract was sure of is mended all the same when two of its runs of three letters are in no word of the list ('lotd'), or when the word that it becomes is one of the list's commonest ('thov' is 'thou'). A missing vowel between two syllables is a syllable of its own. Two words side by side that the list does not hold are the one word of the list that they make with one letter read otherwise ('Al-le-lu fa'). Only on a page of whose letters a fifth or more stands in words of the list: else the page is in another language than the list."]
     mend --> again{{"Does the list hold every word of the row, with no word mended?"}}
     list -- "no" --> again2["<b>A second look</b><br/>The row is read again with the letters 32 and 50 px high. The reading that Tesseract is surest of stays."]
     again -- "no" --> look["<b>A second look</b><br/>The row is read again with the letters 32 and 50 px high. The reading of which the list holds the most letters stays. A word of it that the list does not hold becomes the list's word that another size read at the same place. Where ink crosses the row (a bar line, a stem that ends in the row, a slur), the row is read at the three sizes once more without that ink, and that reading competes with the others."]
     again -- "yes" --> whole["<b>Pieces of one word</b><br/>A word that the page parts with a hyphen where the list never parts it, and of which a piece holds no vowel, is one syllable that the page spreads under its notes ('wi-th', 'sha-ll'). Two or three read words side by side, one of them no word of the list, are one word of the list that a wide gap cut ('mer ciful'). A piece of one letter that is no vowel is never joined, and a word that the page parts as the list does stays."]
     whole --> parts["<b>Syllables that the scan does not show</b><br/>A list that writes its words with hyphens between their syllables knows how each word is parted. A word that was read in fewer syllables than the list parts it into ('mercy' under two notes, 'glo-rious' under three) is parted as the list parts it most often. Each letter keeps its place in the row."]
     look --> whole
-    parts --> under2["Under the notes, as in the diagram before"]
-    again2 --> under2
+    parts --> first["<b>A stray first row</b><br/>The first row under a staff holds the first verse. Where Tesseract is not sure of that row and sure of the next row under the staff, the first row is stray ink (a note by hand, read as short words) and the next row holds the words. A first row with no letter is stray too."]
+    again2 --> first
+    first --> under2["Under the notes, as in the diagram before"]
 ```
 
 Not in the diagrams: the brackets of triplets (`triplets.py`, after the dots; a bracket in the rows of the words
@@ -360,9 +361,10 @@ do yet: the rests that are no printed quarter rest, and slurs (see "Limits").
 
 The wide test reads every score of the app that has a typed hymn to compare with: 369 scores on 657 pages, 516 of
 them scans. 364 are counted: the page of 5 scans holds another version than the typed hymn. Notes right means pitch
-and length both right. The count is of the notes that the pages show: 5,971 typed notes that no page prints are
-listed apart. Most are recited syllables and the held notes of an ison that the page does not mark; 357 are a
-refrain or a repeat that the page prints once and the typed hymn writes out again. 218 typed notes that a part
+and length both right. The count is of the notes that the pages show: 5,953 typed notes that no page prints are
+listed apart. Most are recited syllables and the held notes of an ison that the page does not mark; 343 are a
+refrain or a repeat that the page prints once and the typed hymn writes out again, and 12 more stand in a
+system that one scan shows only in part (see round 37). 218 typed notes that a part
 sings from another part's staff are not compared. Each score is read as the `hymn` command reads it: its pages in
 order, with one vote for its key. Where a typed hymn gives a note otherwise than its page prints, the note counts as
 the page prints it (since 15 November 2026, see below; 47 notes of the clean copies so far).
@@ -370,8 +372,8 @@ the page prints it (since 15 November 2026, see below; 47 notes of the clean cop
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.3 % (20,016 of 20,163) | 53 | 70 | 0 |
-| Scans | 294 | 82.4 % (57,321 of 69,569) | 30 | 107 | 22 |
-| All | 364 | 86.2 % (77,337 of 89,732) | 83 | 177 | 22 |
+| Scans | 294 | 82.4 % (57,323 of 69,569) | 30 | 107 | 22 |
+| All | 364 | 86.2 % (77,339 of 89,732) | 83 | 177 | 22 |
 
 The first milestone is 99 % on clean copies: the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
@@ -380,13 +382,13 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 96.3 % (21,749 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 95.2 % (5,956 of 6,259) | 92.7 % (4,202 of 4,534) |
-| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 87.5 % (1,732 of 1,980) | 85.6 % (1,173 of 1,371) |
-| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 81.3 % (11,666 of 14,356) | 78.0 % (8,069 of 10,343) |
+| Clean print | 78 | 96.3 % (21,751 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 96.1 % (5,994 of 6,239) | 93.6 % (4,228 of 4,515) |
+| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 87.5 % (1,733 of 1,980) | 85.6 % (1,174 of 1,371) |
+| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 81.3 % (11,678 of 14,356) | 78.1 % (8,073 of 10,343) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
-  count of their time, and as typed (see the count by the page below). Of the clean scores, 61 are at 95 % or more. About 681 more notes are needed
+  count of their time, and as typed (see the count by the page below). Of the clean scores, 61 are at 95 % or more. About 679 more notes are needed
   for 99 % of each clean copy; 9 scores lack one to three notes. The mistakes that are left are many small causes;
   the largest that were found
   since: two voices a second apart that the print sets as one blot of ink brought 41 notes on the clean copies
@@ -407,15 +409,16 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   240 of the 1,269 notes that were lost then (1,017 now, with the notes of chords counted). An earlier count said that a quarter of the mistakes are
   the scorer lining a staff up with the wrong part: the tool behind that count lined the notes up in its own way,
   and it is not held any more.
-- Words with the optional Tesseract step and a list of words: 25,007 of 28,700 syllables are right (87.1 %,
-  counted by the page since round 35; 24,862 as typed):
-  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 85.7 % on
-  the scans (19,354 of 22,595; the rules of round 36 brought 471 of them, the rules of round 35 brought 138 and
+- Words with the optional Tesseract step and a list of words: 25,058 of 28,680 syllables are right (87.4 %,
+  counted by the page since round 35; 24,877 as typed):
+  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 86.0 % on
+  the scans (19,405 of 22,575; the rules of round 37 brought 25 of them and its count by the page 26, the
+  rules of round 36 brought 471, the rules of round 35 brought 138 and
   the count by the page 139, round 34 brought 63). Before round 34 these were 21 syllables fewer than in round 17 with the same words read: the
   words are compared in the layout that the count of the notes chooses for a score, and the scorer sets a few
-  scores in another layout or on another part of their pages now. On the clean copies 95.2 % of the syllables and 92.7 % of the whole words are
-  right, and 28 of the 78 scores have 99 % of their syllables (25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 285 syllables
-  are lacking for 99 % of each clean score (366 before round 36). The
+  scores in another layout or on another part of their pages now. On the clean copies 96.1 % of the syllables and 93.6 % of the whole words are
+  right, and 28 of the 78 scores have 99 % of their syllables (25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 227 syllables
+  are lacking for 99 % of each clean score (285 before round 37, 366 before round 36). The
   list of words is made from the typed hymns of the app without the hymn that is read and its other scores, so no
   score is read with its own text. Without a list the scans have about 910 fewer of these syllables and
   about 1,170 fewer whole words (quick count, see the rounds of the words below).
@@ -448,6 +451,75 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 37 (16 November 2026): the words by the page, for every kind of difference. No note of the reader
+  changed in this round, on LitChoir, on the fresh set and on the kit. The owner's rule of that day: where the
+  page says one thing and the typed hymn another, the page is the source of truth. The typed syllables of the
+  clean copies that the reader does not have were set against what it read at their place (293 places), and
+  each place where the reading could be the page's own word was looked at on the page: 45 candidates. 25 places
+  in 8 scores are the page's, and stand on a list outside git with their place on the page:
+
+  | What the page prints otherwise than the hymn is typed | Places |
+  |---|---:|
+  | A hymn of exercises is typed with the heading over each staff ("Tone 1") as the first word under the notes; the page prints the label "Ison:" there | 10 |
+  | A word that the page spells otherwise: at each of its six places in one hymn, and once in three other scores | 9 |
+  | A word that the page prints whole under two or three notes, typed in syllables | 3 |
+  | A syllable that the page prints in two pieces under its notes ("sea-t"), typed as one | 3 |
+
+  About 20 candidates were the reader's mistakes and stay as typed: a word that the list parts further than
+  the page prints it ("hal - lowed" under two notes, read in three pieces), a letter that was read wrongly,
+  a word at the end of a row. The count of the syllables moves with the list, because the page can print
+  another number of syllables than the hymn is typed with: the clean copies have 15 fewer. A word that the
+  page parts in two ways (the typed way in one line, another way in the next) is counted place by place now;
+  the count of the hyphens of round 35 left such a word as typed (2 syllables on the clean copies, 10 on all
+  scores). And one clean scan shows its first system only as far as the second note after the first bar
+  line: the rest of the system is white, a sheet lay over it when the page was copied. The 12 typed notes
+  there were listed apart already, as a repeat that the page prints once; they are listed as what the scan
+  does not show now, and their 5 syllables with them (2 more notes of that score line up as right). With the
+  reading of round 36 the count alone moves the clean copies from 5,956 of 6,259 to 5,974 of 6,239 syllables,
+  and all scores from 25,007 of 28,700 to 25,033 of 28,680. Counted as typed (`AS_TYPED=1`), the reading of
+  round 36 gives the figures of round 36 exactly.
+
+  The reader got three rules for the words. The clean copies went from 5,974 to 5,994 of 6,239 syllables
+  (96.1 %; 20 gained, none lost; as typed 5,940 of 6,259), their whole words from 4,210 to 4,228 of 4,515
+  (93.6 %). 28 scores have 99 % of their syllables, as before, and 227 syllables are lacking for 99 % of each
+  score (285 before the round, 247 by the count alone). All scores went from 25,033 to 25,058 of 28,680
+  syllables (87.4 %; 26 gained and 1 lost; as typed 24,877). Each rule alone, switched off against the others
+  on, counted from the stored rows (syllables gained and lost):
+
+  | Rule | Clean copies | All scan pages | Fresh test set |
+  |---|---:|---:|---:|
+  | The first word of a row with a colon behind it is a label and stays whole (`ocr.LABEL`) | ten rows of one hymn change | no other row changes | no row changes |
+  | A stray first row under a staff (`ocr.FIRST`) | 7 and 0 | 7 and 0 | 28 and 0 |
+  | Two words side by side that are one word of the list with one letter read otherwise (`ocr.MEND_PAIR`) | 2 and 0 | 8 and 1 | 0 and 0 |
+  | All three, in the full runs | 20 and 0 | 26 and 1 | 29 and 0 |
+  | the same, in whole words | 18 and 0 | 26 and 3 | 13 and 0 |
+
+  The quick count from the stored rows counts as the kit does, without the list of the words by the page, so
+  it cannot count the label: the hymn of exercises gains 18 syllables in the full run, 10 labels and 8
+  syllables of a row that a stray row hid.
+- A label (`ocr.LABEL`), round 37. A word that the list does not hold is parted where the list holds the words
+  on both sides, and the label "Ison:" under the first note of a line came out as "Is on:". The first word of
+  a row that begins with a capital and has a colon behind it stays whole. On all scan pages and on the fresh
+  set no other row changes.
+- A stray first row under a staff (`ocr.FIRST`), round 37. The first row under a staff holds the first verse,
+  and only that row is set under the notes. On three pages a note by hand or a scribble stands close under
+  the staff, Tesseract reads it as a row of short words ("a", "I", "on", "as" are words of the list), and the
+  row of the words under it was left out whole. Where Tesseract is less sure of the letters of the first row
+  than 50 of 100 and is sure of the next row under the staff (80), the first row is stray. A first form with
+  a limit of 60, for rows where the next row holds as many syllables or more, lost 9 syllables on LitChoir's
+  pages and gained none: true first rows begin at 51 there. On the fresh set the rule finds two pages
+  of the same kind (29 syllables).
+- Two words that are one (`ocr.MEND_PAIR`), round 37. The end of a word under a long melody stands far from
+  its start, and no hyphen is read between them. Two words side by side that the list does not hold, of seven
+  letters or more together, become the one word of the list that they are with one letter read otherwise;
+  the last letter is never the one that changes (the end of a word changes in the language itself).
+- Counted in round 37 and dropped. A word that the page parts with a hyphen of its own is not parted further
+  by the list: 4 syllables gained and 6 lost on the clean copies, 7 and 28 on all scan pages, none and 115 on
+  the fresh set. A scan loses a hyphen far more often than a page sets two syllables under one note. Counted
+  and left: a lone "Al - le - lu - i - a" under a long melody whose syllables stand so far apart that
+  Tesseract reads three of the five as signs (the row is found since round 36, and its reading must hold only
+  words of the list); pages of a service with the priest's lines between the staves; and the hand-lettered
+  response of two scans.
 - Round 36 (16 November 2026): rows of words that ink crosses, and rows of few words. No note changed in this
   round, on LitChoir, on the fresh set and on the kit. After round 35 five clean scores lacked 21 to 33
   syllables each. One of them prints its bar lines through the rows of the words, and slurs and stems hang into
@@ -2649,8 +2721,9 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 34 (3 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,190 of 11,341) | 87.5 % (5,816 of 6,647) | 97.4 % |
 | After round 35 (6 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,191 of 11,341) | 87.5 % (5,818 of 6,647) | 97.4 % |
 | After round 36 (2 rules for the words and a guard) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.5 % (8,225 of 11,341) | 87.9 % (5,845 of 6,647) | 97.6 % |
-| of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 89.8 % | 91.4 % | 96.9 % |
-| Romanian | 88 | 93.4 % (17,083 of 18,288) | 37 | 76 | 66.8 % | 87.6 % | 98.7 % |
+| After round 37 (3 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.8 % (8,254 of 11,341) | 88.1 % (5,858 of 6,647) | 97.9 % |
+| of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 91.3 % | 93.0 % | 98.0 % |
+| Romanian | 88 | 93.4 % (17,083 of 18,288) | 37 | 76 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
 
 - These are crisp engraved pages, not scans: they say how well the rules hold on print they were not made for,
@@ -2834,6 +2907,11 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
   "raphim" in the next, became "these". A piece with a hyphen after it is joined to nothing now; the guard is
   what the page prints, not a limit, and LitChoir's pages read the same with it. Two pages of the set hold rows
   of words that stand staggered; the rule for them changes no syllable here.
+- Round 37 was read here in full: no note changes, 29 syllables gained and none lost (8,254 of 11,341), 13
+  whole words gained and none lost (5,858 of 6,647). All of it is the rule for a stray first row under a
+  staff, on two English pieces; the label and the two words that are one change no row here. The words that a
+  hymn is typed otherwise than its page prints are a matter of LitChoir alone: the answers of this set are
+  exact, and it is counted as before.
 - Round 36 was read here twice. The first reading, with the second look at a row that ink crosses, gained 38
   syllables and lost 28, and lost 33 whole words for 28: English gained 18 syllables and lost 1, Romanian
   gained 12 and lost 24. The list of words holds few Romanian words and cannot choose between two readings of
@@ -2860,8 +2938,8 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
   reader of scans knows only the printed quarter rest, by a shape whose limits were set on LitChoir's prints.
 - The words: Tesseract reads the letters (97 % in order), and since the rounds of the words most whole words are
   right (87 %). The syllables stay behind (72.2 %), because the engraving prints a word whole where its syllables
-  stand close, with no hyphen. Such a word is parted now where the list of words knows how (89.8 % on the English
-  pieces); the Romanian pieces (66.8 %) wait for a list in their language. The Church Slavonic pieces are in the
+  stand close, with no hyphen. Such a word is parted now where the list of words knows how (91.3 % on the English
+  pieces); the Romanian pieces (66.6 %) wait for a list in their language. The Church Slavonic pieces are in the
   old spelling, which Tesseract's Russian does not know.
 - The set is for measuring. No rule or limit is set on one of its pages; a cause that it shows is worked on with
   LitChoir's pages and then measured here.
@@ -2905,7 +2983,7 @@ typed hymns, of all typed notes.
 - The wide test compares with typed hymns that were made for singing, not for testing. Some differ from the page
   (another key, an octave, a repeat written out). Known cases are told to the scorer; others count as wrong. A single
   note that a typed hymn gives otherwise than its page counts by the page where it was found and looked at (47 notes
-  of the clean copies). The thick copies and the copies by hand were not searched, and a place where the reader and
+  of the clean copies), and so does a word (25 places of the clean copies, since round 37). The thick copies and the copies by hand were not searched, and a place where the reader and
   the typed hymn are both off stays a lost note.
 - About 12,300 drawn notes of the scans are wrong (a note can be wrong in two ways; the parts were counted some
   rounds ago, when 13,700 were wrong): about 4,800 are not read at all, about 5,100 have a wrong pitch (a wrong key or clef, or one or two places off; no single cause stands out),
@@ -2984,8 +3062,10 @@ typed hymns, of all typed notes.
    straight end (a limit on the size of a hole alone lost more than it gained).
    Of the notes lost on the clean copies in round 13, 486 had only a wrong length, 346 only a wrong
    pitch (118 a semitone off, by a sign) and about 300 were not read. Words
-   (303 syllables are missing on the clean copies after round 36, 285 for 99 % of each score; the words that a
-   hymn is typed otherwise than its page prints come first, about 50 syllables, then no cause holds more than a dozen): the first syllable of a refrain that stands alone between two rows, a one-syllable word
+   (245 syllables are missing on the clean copies after round 37, 227 for 99 % of each score; no cause holds
+   more than a dozen: a response lettered by hand on two scans, single letters that Tesseract reads wrongly
+   in words that are other words of the list, a lone O, a or I that is left out, a word under a long melody
+   whose syllables are read as signs): the first syllable of a refrain that stands alone between two rows, a one-syllable word
    that the page parts with a hyphen and whose pieces each hold a vowel ("tho-u"), a misread word of three
    letters or fewer, a true word that the list lacks beside a common one, a row that is read only from its second word on, stray ink
    read as a row, the letters that Tesseract reads wrongly on heavy pages, score under which note a syllable
@@ -3099,4 +3179,7 @@ was sure of is mended where it cannot be a word of the list or is one letter fro
 word O is read where it came out as Q or ©, and a hyphen that the page sets at another place than the typed hymn
 counts as the page sets it (the owner, 16 November 2026). Round 36 was for whole rows: a row that bar lines, stems
 or slurs cross is read a second time without that ink, and a row of few words under a long melody ("A - men") is a
-row of words now.
+row of words now. Round 37 followed the owner's rule that the page is the source of truth: the words that a hymn
+is typed otherwise than its page prints were looked at on the page and count as the page prints them (25 places
+on the clean copies), a label under the first note stays whole, and a stray row close under a staff no longer
+hides the row of the words.
