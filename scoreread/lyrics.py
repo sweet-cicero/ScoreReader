@@ -782,9 +782,20 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
     for syllable in syllables:
         if syllable['band'][0] == page:
             rows[syllable['band'][1]].append(syllable)
+    # A row that goes on another row (the refrain beside the rows of the verses, see words.BESIDE) is one row with it;
+    # what the other row's picture showed of its letters, cut in half, goes.
+    for number in sorted(rows):
+        onto = bands[number].get('with') if number < len(bands) else None
+        if onto is not None and onto != number and rows[number]:
+            left, right = bands[number]['x0'], bands[number]['x1']
+            rows[onto] = [syllable for syllable in rows.get(onto, []) if not left <= (syllable['x0'] + syllable['x1']) / 2 <= right] \
+                + rows[number]
+            rows[number] = []
     taken, count = set(), 0
     for number in sorted(rows):
         band = bands[number]
+        if not rows[number]:
+            continue
         over = [index for index, staff in enumerate(staves) if staff['rows'][4] < band['top']]
         if not over:
             continue

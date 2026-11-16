@@ -73,6 +73,14 @@ PARTS = (1, 0.5)         # with a list of words that shows how its words are par
 #                          into is parted as the list does (a scan loses its hyphens, and many a page prints none),
 #                          when the list parts it so this many times or more, and in this share of the times that
 #                          it holds the word (None: off)
+ONE = (2, 3)             # with such a list: pieces that are one word of the list (held this many times or more; up
+#                          to this many pieces). A word that the page parts with a hyphen where the list never parts
+#                          it, and of which a piece holds no vowel, is one syllable: the page spreads it under its
+#                          notes ('wi-th', 'sha-ll'). And two or three read words side by side, of which one is no
+#                          word of the list, are one word that a wide gap cut ('mer ciful'): it is parted as the list
+#                          parts it. Not joined: a piece of one letter that is no vowel (what a misread leaves), a
+#                          piece with a hyphen after it at the end of the row, a piece that is a word with its other
+#                          neighbour, and a word that the page parts as the list does (None: off)
 ABC = 'abcdefghijklmnopqrstuvwxyz'
 VOWELS = 'aeiouy'
 
@@ -245,14 +253,100 @@ def _ways(lex, known: dict[str, int]) -> dict[str, tuple[str, ...]]:
     with no parted words gives none)."""
     ways: dict[str, tuple[tuple[str, ...], int]] = {}
     if not PARTS:
-        return {}
+        return _Ways()
     for parts, count in (getattr(lex, 'parts', None) or {}).items():
         way = tuple(''.join(sign for sign in part.lower() if sign.isalpha()) for part in parts)
         word = ''.join(way)
         if len(way) > 1 and all(way) and count >= PARTS[0] and count >= PARTS[1] * known.get(word, 0) \
                 and count > ways.get(word, (None, 0))[1]:
             ways[word] = (way, count)
-    return {word: way for word, (way, _) in ways.items()}
+    found = _Ways({word: way for word, (way, _) in ways.items()})
+    found.parted = {''.join(sign for part in parts for sign in part.lower() if sign.isalpha())
+                    for parts in (getattr(lex, 'parts', None) or {}) if len(parts) > 1}
+    return found
+
+
+class _Ways(dict):
+    """How the list parts its words (see _ways), with `parted`: every word that the list parts in any way."""
+    parted: set = set()
+
+
+def _whole(syllables: list[dict], known: dict[str, int], ways: dict[str, tuple[str, ...]]) -> list[dict]:
+    """Pieces side by side that are one word of the list become that word again (see ONE). _parted() parts it as
+    the list does afterwards."""
+    parted = getattr(ways, 'parted', set())
+
+    def letters(part: dict) -> str:
+        return ''.join(sign for sign in part['text'].lower() if sign.isalpha())
+
+    def word(text: str) -> bool:
+        return known.get(text, 0) >= 1 and (len(text) > 1 or text in 'aio')
+
+    def lone(text: str) -> bool:
+        return len(text) == 1 and text not in VOWELS          # one letter that is no syllable: what a misread leaves
+
+    def one(run: list[dict]) -> dict:
+        return dict(run[0], text=''.join(part['text'] for part in run), x1=run[-1]['x1'], join=run[-1]['join'])
+
+    # The words as they were read: syllables with a hyphen between them are one word.
+    words: list[list[dict]] = [[]]
+    for number, part in enumerate(syllables):
+        words[-1].append(part)
+        if not part['join'] and number + 1 < len(syllables):
+            words.append([])
+    for number, run in enumerate(words):
+        # A word that was read with a hyphen and that the list never parts, where a piece is no syllable (it holds
+        # no vowel): the page spreads one syllable under its notes.
+        whole = ''.join(letters(part) for part in run)
+        beside = [''.join(letters(part) for part in other) for other in words[max(0, number - 1):number] + words[number + 1:number + 2]]
+        pieces = [letters(part) for part in run]
+        if len(run) > 1 and all(pieces) and known.get(whole, 0) >= ONE[0] and whole not in parted \
+                and all(any(sign in VOWELS for sign in text) for text in beside + pieces[:1]) \
+                and not any(lone(text) for text in pieces) and not run[-1]['join'] \
+                and any(not any(sign in VOWELS for sign in text) for text in pieces):
+            # (A piece beside it that has no vowel is no syllable: it belongs to this word, a longer one. And a first
+            # piece with no vowel is the end of the word before: 'as k-ing'.)
+            words[number] = [one(run)]
+    found: list[dict] = []
+    at = 0
+    while at < len(words):
+        done = False
+        for count in range(ONE[1], 1, -1):
+            runs = words[at:at + count]
+            parts = [part for run in runs for part in run]
+            if len(runs) < count or len(parts) > ONE[1]:
+                continue
+            texts = [''.join(letters(part) for part in run) for run in runs]
+            whole = ''.join(texts)
+            if not all(texts) or known.get(whole, 0) < ONE[0] or all(word(text) for text in texts):
+                continue
+            if any(lone(letters(part)) for part in parts) or parts[-1]['join']:
+                continue          # (a hyphen after the last piece, at the end of the row: the word goes on)
+            if whole not in ways and whole in parted:
+                continue          # the list parts the word in more than one way
+            if len(ways.get(whole, ())) > len(parts):
+                continue          # fewer syllables than the list has (see PARTS)
+            beside = [''.join(letters(part) for part in run) for run in words[max(0, at - 1):at] + words[at + count:at + count + 1]]
+            if not all(word(text) for text in beside):
+                continue          # a piece is left over beside it: the word may be a longer one that the list lacks
+            if any(known.get(text + whole, 0) or known.get(whole + text, 0) for text in beside):
+                continue          # with the word beside it, it is a longer word that the list holds seldom
+            before, after = ''.join(letters(part) for part in words[at - 1]) if at else '', beside[-1] if at + count < len(words) else ''
+            if (after and not word(texts[-1]) and word(texts[-1] + after)) or (before and not word(texts[0]) and word(before + texts[0])):
+                continue          # the piece that is no word is one with the word at its other side ('the se raphim')
+            if len(ways.get(whole, ())) == len(parts):
+                # As many syllables as the list has: they stay as the page parts them, and are one word.
+                found.extend(dict(part, join=True) for part in parts[:-1])
+                found.append(parts[-1])
+            else:
+                found.append(one(parts))
+            at += count
+            done = True
+            break
+        if not done:
+            found.extend(words[at])
+            at += 1
+    return found
 
 
 def _parted(syllables: list[dict], ways: dict[str, tuple[str, ...]]) -> list[dict]:
@@ -513,6 +607,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         if whole:
             break
     row = best[0] if best else []
+    if ONE and ways and mend:
+        row = _whole(row, known, ways)
     return _parted(row, ways) if ways else row
 
 

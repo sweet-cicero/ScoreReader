@@ -20,9 +20,9 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
 scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,749 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
-words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
-(82.1 % on scans), and 89.9 % on the kit (6206 of 6901).
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 93.2 % with Tesseract and a list of
+words (5,814 of 6,240; 91.2 % of the whole words; 20 scores at 99 % of the syllables); 84.5 % of all syllables with Tesseract
+(82.4 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
 72.2 % of the syllables and 87.5 % of the whole words.
 
@@ -195,6 +195,24 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the gain of a rule (a first count of 11 notes was 4).
 - Notes that sound together agree on a dot too. A mark that is nearly a dot is a dot where another head of its
   column has one at the same distance; a wider limit for the shape of a dot alone gains and loses alike.
+- A bar whose lengths do not add up seldom holds the wrong length (26 wrong lengths in 106 such bars of the clean
+  copies whose notes are all sure); the bars with a note that is not sure hold them. A rule that fills a bar with
+  two or three open steps by the one choice that fits gained 3 notes and lost 4 (16 November 2026).
+- A rule that joins the pieces of a word by the list of words is read on every scan page from the stored rows
+  before it is trusted: its first form gained 9 syllables on the clean copies and lost none, and gained 20 and
+  lost 18 on all scan pages. What it joined wrongly were the pieces that a misread leaves: a piece of one letter
+  that is no vowel ("ma-n i" for "ma-ni"), a piece with a hyphen after it at the end of a row, a piece that is a
+  word with its other neighbour. A piece that holds no vowel is no syllable: that tells a syllable that the page
+  spreads under its notes ("wi-th") from a word that the page parts. The page's own hyphens win over the list
+  wherever both pieces can be syllables ("lo-ved").
+- The rows of the words are the rows of the page that cross many letters. Where rows stand staggered (a refrain
+  printed once beside the rows of the verses) the stretch is too high for one row and was dropped whole, on 32
+  pages of LitChoir. Such a stretch is parted by the lines that its letters stand on (`words.word_rows`). These
+  rows are for the words only: the notes are read with the rows as they were (`words.word_bands`), because a
+  stem ends where a row of words begins, and the first reading lost 4 notes on one copy. A change of the rows of
+  the words is compared on its pages note by note, field by field, before the words are counted.
+- The replay of the words from stored rows cannot count a rule that changes which rows there are. A census
+  names the pages that such a rule changes, and they are read with Tesseract, with the rule off and on.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
