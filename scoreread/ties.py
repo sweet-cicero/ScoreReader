@@ -15,6 +15,9 @@ import numpy as np
 TIE_FAR = 40.0          # the two heads of a tie stand at most this many staff spaces apart (0: ties are not read)
 TIE_LEAST = 1.3         # and at least this many, from edge to edge: the bow needs room
 TIE_THIN = 0.4          # the bow is at most this thick, in staff spaces
+TIE_BOLD = 0            # 0.65: a print with bold bows: where no bow of thin ink is found, a bow up to this thick counts.
+#                         Off: alone it gained 12 notes on all of LitChoir and lost 10 (1 and 0 on the clean copies); the
+#                         bold bows of the print that it was written for are found without it.
 TIE_SIDE = 0.9          # it begins and ends at most this many staff spaces from the heads, sideways
 TIE_HIGH = 1.4          # and at most this many staff spaces over or under their middle
 TIE_GAP = 0.5           # it may break for this many staff spaces
@@ -92,12 +95,13 @@ TIE_BREAK_LINE = 0.5     # the long bow over the end of a line may begin in a st
 #                         staff. Ink that goes on past the lines is no bow that a line hid (a pen lay on one page).
 
 
-def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, space: float) -> dict | None:
+def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, space: float,
+            thick: float | None = None) -> dict | None:
     """Follows thin ink from (x, y) toward the column `last`, to where it breaks off: {'rows': the bow's row in each
     column, 'shown': whether its ink was seen there, 'seen', 'hidden' (how many columns of each), 'end': the last
     column with ink}, or None when there is no ink to follow."""
     height = thin.shape[0]
-    most = int(round(TIE_THIN * space)) + 1
+    most = int(round((thick or TIE_THIN) * space)) + 1
     rows, kinds, gap, blind = [], [], 0, 0
     for column in range(x, last + 1):
         reach = int(min(0.8 * space, 3 + 0.5 * blind))
@@ -217,8 +221,10 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
     return bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True)
 
 
-def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float, low: bool) -> bool:
-    """Is there a way of thin ink from the head `one` to the head `two` that is a bow? `low`: a flat bow counts."""
+def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float, low: bool,
+         thick: float | None = None) -> bool:
+    """Is there a way of thin ink from the head `one` to the head `two` that is a bow? `low`: a flat bow counts.
+    `thick`: how thick the bow may be, in staff spaces (TIE_THIN when None)."""
     first, last = int(one['x1']) + 1, int(two['x0']) - 1
     if last - first < TIE_LEAST * space:
         return False
@@ -246,7 +252,7 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             # A bow that was followed from an earlier column is not followed again.
             if any(abs(row - other) <= 3 for other in tried):
                 continue
-            way = _follow(thin, lines, column, float(row), last, space)
+            way = _follow(thin, lines, column, float(row), last, space, thick)
             if way is None:
                 continue
             if row not in hidden:       # a way from a staff line may be another bow's: that bow is still followed from its own start
@@ -491,6 +497,7 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
     bare, lines = layers['bare'], layers['lines']
     most = int(round(TIE_THIN * space)) + 1
     thin, core = _thin(bare, most + 1)
+    bold = _thin(bare, int(round(TIE_BOLD * space)) + 2)[1] if TIE_BOLD else None
     found = []
     for staff in sorted({head['staff'] for head in heads}):
         own = sorted((head for head in heads if head['staff'] == staff), key=lambda head: head['cx'])
@@ -530,7 +537,8 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
                     break
             if two is None:
                 continue
-            tied = _bow(thin, lines, one, two, space, core) or bool(TIE_LINE and _in_line(layers, one, two, space))
+            tied = _bow(thin, lines, one, two, space, core) or bool(TIE_LINE and _in_line(layers, one, two, space)) \
+                or (bold is not None and _way(bold, lines, one, two, space, False, TIE_BOLD))
             if tied:
                 one['tie_start'] = True
                 two['tie_stop'] = True

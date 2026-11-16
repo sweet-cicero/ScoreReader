@@ -19,8 +19,8 @@ optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, 
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
-scans; 83 scores at 99 % or more), 96.2 % of the notes on the clean copies (21,741 of 22,591, counted by the page;
-21,694 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
+scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,749 of 22,591, counted by the page;
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 92.6 % with Tesseract and a list of
 words (90.9 % of the whole words; 19 scores at 99 % of the syllables); 84.3 % of all syllables with Tesseract
 (82.1 % on scans), and 89.9 % on the kit (6206 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
@@ -184,6 +184,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   kind of the page it gained 4 notes on the fresh set and lost 4.
 - A level of flags or beams at a stem is as thick as its thickest piece, at either side of the stem. Measured at
   one side, a beam under a bow was as slim as the bow.
+- A rule that takes ink off a mark by its shape meets that shape in a beam, a flag and the stroke of a hand: a bold
+  bow taken off a hollow head changed 100 pages in its first form and lost more than it gained (27 and 41, 15
+  November 2026). Ask for the whole shape of the one thing: the bow of a tie is long, slim, bent, and its two ends
+  stand at one height. A beam on a copy by hand was long and slim too.
+- OpenCV takes what lies past the edge of a picture for ink when it opens it: a shape at the edge of a small mask
+  stays where it should go. Set paper around a mask before an opening or a closing (`np.pad`).
+- The score file of the reading before a round is made again before a rule is compared with it, whenever the list
+  of the notes that count by the page or the scorer has changed since: an older file showed notes of the list as
+  the gain of a rule (a first count of 11 notes was 4).
+- Notes that sound together agree on a dot too. A mark that is nearly a dot is a dot where another head of its
+  column has one at the same distance; a wider limit for the shape of a dot alone gains and loses alike.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
