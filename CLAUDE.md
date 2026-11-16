@@ -19,12 +19,12 @@ optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, 
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
-scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,749 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 95.2 % with Tesseract and a list of
-words (5,956 of 6,259, counted by the page; 5,930 as typed; 92.7 % of the whole words; 28 scores at 99 % of the syllables);
-87.1 % of all syllables with Tesseract (85.7 % on scans), and 89.9 % on the kit (6207 of 6901).
+scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,751 of 22,591, counted by the page;
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.1 % with Tesseract and a list of
+words (5,994 of 6,239, counted by the page; 5,940 of 6,259 as typed; 93.6 % of the whole words; 28 scores at 99 % of the syllables);
+87.4 % of all syllables with Tesseract (86.0 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
-72.5 % of the syllables and 87.9 % of the whole words.
+72.8 % of the syllables and 88.1 % of the whole words.
 
 ## Direction
 
@@ -217,7 +217,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   letters in the same number of syllables, with its hyphen at another place, counts as the page parts it. The
   scorer tries this staff by staff and keeps it only where the staff counts higher; `AS_TYPED=1` gives the
   figures of the round before exactly, and the fresh set stays exact. A word that the page parts into more
-  syllables than the typed hymn has is not counted so.
+  syllables than the typed hymn has is not counted so by itself: it goes on the checked list of the words that
+  are typed otherwise than the page prints (see below).
 - A word that Tesseract is sure of can still be misread. Mending every such word loses as much as it gains. A
   census of every word that a mending rule would change, each labelled by the typed hymn (the new word is typed
   and the read one is not: right; the read word is typed: wrong), finds what separates: two runs of three
@@ -268,6 +269,42 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The stored rows hold the readings of the second look too (the sizes under 0) and the mark of a row of few
   words. A rule that chooses among the stored readings is counted by the replay; a rule that changes the picture
   or the rows needs a new census of the rows.
+- The page is the source of truth for the words too, for every kind of difference (the owner, 16 November 2026:
+  "If you find the page says one thing but the litchoir says another, then the page is the source of truth"). A
+  word that a hymn is typed otherwise than its page prints goes on a list with the wide test, outside git, with
+  its place on the page: a heading that is typed as a word under the notes where the page prints a label there,
+  a spelling, a word that the page prints whole under two notes, a syllable that the page prints in two pieces.
+  The page can print another number of syllables than the hymn is typed with, so the count of the syllables
+  moves with the list. The typed hymns stay as they are, `AS_TYPED=1` gives the figures of the round before
+  exactly, and the fresh set stays exact.
+- A word goes on that list only after it was looked at on the page. The difference between the typed and the
+  read syllables names the candidates, and about half of them are the reader's mistakes: of 45 candidates on the
+  clean copies 25 places in 8 scores were the page's, and about 20 were words that the reader read wrongly or
+  that the list parts further than the page ("hal - lowed" under two notes, read in three pieces). A place
+  where the reader is wrong is never put on the list.
+- The tool that shows the typed against the read syllables shows the words as they are typed. A hyphen that
+  the scorer already counts by the page looks like a mistake there (11 such places were taken for a fault of the
+  scorer, and were counted rightly). Ask the scorer's own count before the scorer is changed.
+- A page can part one word in two ways (the typed way in one line, another way in the next). The count of
+  the hyphens by the page tries each place of such a word alone and keeps the page's way where the staff then
+  counts higher.
+- The first row under a staff holds the first verse, and only that row is set under the notes. A stray row
+  there (a note by hand under the staff, read as short words) hides the row of the words. Where Tesseract is
+  less sure of the first row than 50 of 100 and sure of the next row under the staff, the first row is stray
+  (`ocr.FIRST`). True rows begin at 51 on LitChoir's pages: a limit of 60 lost 9 syllables and gained none.
+- A word that the page parts with a hyphen of its own is still parted further by the list: a scan loses a
+  hyphen far more often than a page sets two syllables under one note (keeping the page's parting gained 7
+  syllables on all scan pages and lost 28, and lost 115 on the fresh set).
+- The quick count of the words from stored rows counts as the kit does: the words of a typed note are one
+  syllable there, and the list of words by the page is not in it. A rule whose gain shows only with that list
+  (a label that stays whole) is judged by the rows that it changes on the three sets, and by the full runs.
+- A stretch of a typed hymn that the scan does not show (a part of a system that the copy left white) is told to
+  the scorer with its place on the page, as the other relations of a score and its typed hymn are: its notes and
+  words are listed apart. Before a score's lost syllables at the end of a row are blamed on the reader, look
+  whether the scan shows them.
+- The kit's own scorer writes its sheets of mistakes into the folder of a run, over the wide scorer's sheets of
+  the kit's hymns. The count staff by staff is read from those sheets: count it before the kit's scorer runs,
+  or score the run again first (a count that moved by 18 notes between two scorings of one reading was this).
 - `experiments/` holds the record of the first tests.
 
 ## Rules

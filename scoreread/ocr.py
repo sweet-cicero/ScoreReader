@@ -61,6 +61,10 @@ MEND = (4, 2, 80, 50, 0.2)   # with a list of words: a word of this many letters
 #                          sure of it than the fourth number. And only on a page of whose letters this share or more
 #                          stands in words that the list holds: else the page is in another language than the list
 #                          (None: off)
+MEND_PAIR = 7            # two words side by side that the list does not hold, of this many letters or more together,
+#                          become the one word of the list that they are with one letter read otherwise: the end
+#                          of a word under a long melody stands far from its start, with no hyphen that was read
+#                          ('Al-le-lu la' is 'Al-le-lu-ia'). None: off
 MEND_ODD = 2             # a word that Tesseract is sure of is mended all the same when it holds this many runs of
 #                          three letters, its beginning and its end counted, that no word of the list holds: it is no
 #                          word of the list's language ('thov', 'lotd'), where 'banner' and 'jews' are (None: off)
@@ -119,6 +123,12 @@ ONE = (2, 3)             # with such a list: pieces that are one word of the lis
 #                          neighbour, and a word that the page parts as the list does (None: off)
 ABC = 'abcdefghijklmnopqrstuvwxyz'
 VOWELS = 'aeiouy'
+LABEL = True             # the first word of a row with a colon behind it ('Ison:', 'Refrain:') is a label: where the
+#                          list does not hold it, it is not parted into two words that the list holds ('Is on:')
+FIRST = (50, 80)         # the first row under a staff holds the first verse. Where Tesseract is less sure of its
+#                          letters than the first number (of 100, the picture as it is) and as sure of the next row
+#                          under the staff as the second, the first row is stray ink (a note by hand, a heading)
+#                          and the next row holds the words. A first row with no letter at all is stray too
 
 
 def program() -> str | None:
@@ -473,7 +483,9 @@ def _ends(syllables: list[dict], known: dict[str, int], fits: bool = False) -> l
             continue
         places = [(part, at) for part in word for at, sign in enumerate(part['text']) if sign.isalpha()]
         read = ''.join(part['text'][at] for part, at in places).lower()
-        for at in reversed(_cuts(read, known, fits) if known.get(read, 0) < ENDS[0] else []):
+        label = LABEL and number + 1 == len(word) and len(word) == 1 and word[0]['text'].rstrip().endswith(':') \
+            and word[0]['text'][:1].isupper()
+        for at in reversed(_cuts(read, known, fits) if known.get(read, 0) < ENDS[0] and not label else []):
             part, place = places[at]
             before = places[at - 1][0]
             if before is not part:
@@ -512,6 +524,41 @@ def _odd(word: str, known: dict[str, int]) -> int:
                                     for at in range(len(text) - 2)), max(known.values(), default=0)]
     text = '^' + word + '$'
     return sum(text[at:at + 3] not in _RUNS[1] for at in range(len(text) - 2))
+
+
+def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None = None) -> list[dict]:
+    """Joins two words side by side that the list does not hold into the one word of the list that they are with
+    one letter read otherwise (see MEND_PAIR). `mended` takes each such pair, as it was read."""
+    words: list[list[dict]] = [[]]
+    for number, syllable in enumerate(syllables):
+        words[-1].append(dict(syllable))
+        if not syllable['join'] and number + 1 < len(syllables):
+            words.append([])
+
+    def letters(parts: list[dict]) -> list[tuple[dict, int]]:
+        return [(part, at) for part in parts for at, sign in enumerate(part['text']) if sign.isalpha()]
+
+    for first, second in zip(words, words[1:]):
+        places = letters(first) + letters(second)
+        read = ''.join(part['text'][at] for part, at in places).lower()
+        one, other = (''.join(part['text'][at] for part, at in letters(parts)).lower() for parts in (first, second))
+        if not one or not other or len(read) < MEND_PAIR or first[-1]['join'] or second[-1]['join'] \
+                or read in known or one in known or other in known:
+            continue
+        meant = {read[:at] + sign + read[at + 1:]: at for at in range(len(read)) for sign in ABC if sign != read[at]}
+        meant = {new: at for new, at in meant.items() if known.get(new, 0) >= MEND[1]}
+        if len(meant) != 1:
+            continue
+        (new, at), = meant.items()
+        if at == len(read) - 1:
+            continue          # the end of a word changes in the language itself (see MEND)
+        part, place = places[at]
+        text = part['text']
+        part['text'] = text[:place] + (new[at].upper() if text[place].isupper() else new[at]) + text[place + 1:]
+        first[-1]['join'] = True
+        if mended is not None:
+            mended.append(read)
+    return [part for parts in words for part in parts]
 
 
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None) -> list[dict]:
@@ -713,6 +760,8 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
         row = _ends(row, known, mend)
     mended: list[str] = []
     if MEND and mend:
+        if MEND_PAIR:
+            row = _mend_pair(row, known, mended)
         row = _mend(row, known, mended)
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
@@ -722,6 +771,26 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
         return [], -1.0, False        # a row of few words (words.SPARSE): only words of the list, and no label
         #                               (one word with a colon: 'Refrain:', 'Women:')
     return row, held + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE)
+
+
+def _sure(words: list[tuple[str, float, float, float]]) -> float:
+    """How sure Tesseract is of the letters of a line of text, each letter counted once (of 100)."""
+    letters = [(sum(sign.isalpha() for sign in text), sure) for text, _, _, sure in words]
+    count = sum(number for number, _ in letters)
+    return sum(number * sure for number, sure in letters) / count if count else 0.0
+
+
+def _stray_first(rows: list[tuple[list[dict], float]]) -> bool:
+    """Whether the first of the rows under one staff is stray ink and the next one holds the words (see FIRST).
+    Each row: its syllables, and how sure Tesseract is of the row as it is (_sure)."""
+    if not FIRST or len(rows) < 2:
+        return False
+    (first, sure), (second, other) = rows[:2]
+
+    def letters(row: list[dict]) -> bool:
+        return any(sign.isalpha() for syllable in row for sign in syllable['text'])
+
+    return letters(second) and (not letters(first) or (sure < FIRST[0] and other >= FIRST[1]))
 
 
 def _fits(rows: list[tuple[list[tuple[str, float, float, float]], dict]], grey: np.ndarray, known: dict[str, int]) -> bool:
@@ -862,7 +931,15 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
 
             readers.append((read, () if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ()))))
         mend = bool(known) and _fits([(read(HIGH), band) for (read, _), band in zip(readers, bands)], grey, known)
+        under: dict[int, list[tuple[list[dict], float]]] = {}
         for number, ((read, more), band) in enumerate(zip(readers, bands)):
-            for syllable in _pick(read, grey, band, known, mend, ways, more):
-                found.append(dict(syllable, band=(page, number)))
-    return found
+            row = [dict(syllable, band=(page, number)) for syllable in _pick(read, grey, band, known, mend, ways, more)]
+            # The rows under one staff, from the top (as scoreread.lyrics.set_under() gives a row to the staff over it).
+            over = [index for index, staff in enumerate(layers.get('staves') or []) if staff['rows'][4] < band['top']]
+            if row and over and band.get('with') is None:
+                under.setdefault(max(over, key=lambda index: layers['staves'][index]['rows'][4]), []).append((row, _sure(read(HIGH))))
+            found.append(row)
+        for rows in under.values():
+            if _stray_first(rows):
+                rows[0][0].clear()
+    return [syllable for row in found for syllable in row]
