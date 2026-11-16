@@ -76,6 +76,22 @@ OTHER_SIZE = (0.7, 2)    # with a list of words: the row is read at three sizes 
 #                          share this much of their width), when the list holds that word this often or more and it
 #                          is as long, or a letter longer or shorter. A word of the list with an s behind it
 #                          stays: the list need not hold that form (None: off)
+CROSS = (2.0, 1.8, 1.3, 0.3, 1.9, 3.0, 0.4, 0.25, 0.4)   # a second look at a row that ink crosses: the row is read
+#                          again without that ink where no reading of the picture as it is holds only words of the
+#                          list. The page is looked at this many staff spaces over and under the row. An upright
+#                          stroke as long as the second number of staff spaces and the third of row heights, or one
+#                          that comes in over that edge, is a bar line or a stem: it goes outside the letters, and
+#                          between them where it runs on past them by the fourth number of staff spaces at both
+#                          sides or where no ink hangs on it. The letters stand in the row, made as high as the
+#                          fifth number of staff spaces where the row is lower. A slur goes too: one thin stroke
+#                          in each column (the eighth number of staff spaces at most) over the sixth number of row
+#                          heights or more, that rises or falls by the seventh. Before the slurs are looked for,
+#                          an upright stroke is taken away but where it lies between ink that is nearer than the
+#                          last number of staff spaces (a slur that crosses a bar line stays whole). None: off
+CROSS_LIST = True        # on a page whose words do not fit the list of words (another language, see MEND), the
+#                          second look is kept only where it holds more letters in words of the list than the best
+#                          reading of the picture as it is: there the list holds few words of either reading, and
+#                          how sure Tesseract is does not choose between two pictures
 HELD = (1.2, 0.25, 0.35)   # the line of a held syllable is taken out of the picture before Tesseract
 #                          reads the row: a level line this many times as long as the band is high or longer, this
 #                          share of the band's height thick at most, that lies this near the band's lower edge
@@ -595,6 +611,76 @@ def _no_held(crop: np.ndarray, top: float, bottom: float) -> np.ndarray:
     return out
 
 
+def _no_cross(crop: np.ndarray, around: np.ndarray, down: int, top: float, bottom: float, space: float) -> np.ndarray:
+    """The picture of a row without the ink that crosses it (see CROSS). `around` is the page around the picture,
+    which begins `down` rows under its top; `top` and `bottom` are the band's edges in the picture. An upright
+    stroke that is longer than a letter, or that comes in over the edge of `around` (a bar line, a stem), goes
+    outside the band; inside the band it goes where it runs through the whole band and on at both sides, or where
+    no other ink hangs on it. A letter that a stem touches keeps every stroke. And a slur, which is long, bent and
+    thin where it runs, goes but for the letters that hang on it."""
+    high = bottom - top
+    ink = (around < 128).astype(np.uint8)
+    rows = ink.shape[0]
+    first, last = max(0, int(top) + down), min(rows, int(bottom) + down + 1)
+    grow = int(max(0.0, CROSS[4] * space - high) / 2)          # a low band holds the small letters only
+    first, last = max(down, first - grow), min(down + crop.shape[0], last + grow)
+    reach = int(max(CROSS[2] * high, CROSS[1] * space)) | 1
+    padded = np.pad(ink, ((reach, reach), (0, 0)))
+    upright = cv2.morphologyEx(padded, cv2.MORPH_OPEN, np.ones((reach, 1), np.uint8))[reach:-reach]
+    from_top = np.cumprod(ink, axis=0, dtype=np.uint8)
+    from_top[:, from_top.sum(axis=0) <= down] = 0
+    from_bottom = np.cumprod(ink[::-1], axis=0, dtype=np.uint8)[::-1].copy()
+    from_bottom[:, from_bottom.sum(axis=0) <= rows - down - crop.shape[0]] = 0
+    upright = upright | from_top | from_bottom
+    mask = upright.copy()
+    mask[first:last] = 0
+    if upright[first:last].any():
+        inside = np.ascontiguousarray(upright[first:last])
+        other = ink[first:last] & (1 - inside)
+        edge = int(CROSS[3] * space)
+        count, labels, boxes, _ = cv2.connectedComponentsWithStats(inside, connectivity=8)
+        for label in range(1, count):
+            left, upper, wide, tall = boxes[label][:4]
+            piece = labels[upper:upper + tall, left:left + wide] == label
+            through = (tall >= last - first and first - edge >= 0 and last - 1 + edge < rows
+                       and upright[first - edge, left:left + wide].any() and upright[last - 1 + edge, left:left + wide].any())
+            if not through:
+                grown = cv2.dilate((labels == label).astype(np.uint8), np.ones((3, 5), np.uint8))
+                if (grown & other).any():
+                    continue                               # a letter hangs on it: the stem that touches a letter
+            mask[first + upper:first + upper + tall, left:left + wide][piece] = 1
+    # A slur: one thin stroke in each column, over a long way, and it rises or falls. The upright strokes are
+    # taken away first, but for the ink of a stroke that lies between other ink (where the slur crosses a bar line).
+    rest = ink & (1 - upright)
+    wide_gap = int(CROSS[8] * space) | 1
+    rest = np.ascontiguousarray(rest | (upright & cv2.morphologyEx(np.pad(rest, ((0, 0), (wide_gap, wide_gap))), cv2.MORPH_CLOSE,
+                                                                  np.ones((1, wide_gap), np.uint8))[:, wide_gap:-wide_gap]))
+    thin = CROSS[7] * space
+    count, labels, boxes, _ = cv2.connectedComponentsWithStats(rest, connectivity=8)
+    for label in range(1, count):
+        left, upper, wide, tall = boxes[label][:4]
+        if upper + tall <= down or upper >= down + crop.shape[0] or wide < CROSS[5] * high:
+            continue                                   # not in the picture; a letter, a word, a dash
+        if upper <= 0 or upper + tall >= rows:
+            upper, tall = down, crop.shape[0]          # it hangs on the staff: what the picture shows of it
+        piece = labels[upper:upper + tall, left:left + wide] == label
+        ink_in = piece.sum(axis=0)
+        strokes = (np.diff(np.pad(piece.astype(np.int8), ((1, 0), (0, 0))), axis=0) > 0).sum(axis=0)
+        line = (ink_in > 0) & (ink_in <= thin) & (strokes == 1)
+        if line.sum() < CROSS[5] * high:
+            continue
+        middle = (piece * np.arange(tall)[:, None]).sum(axis=0)[line] / ink_in[line]
+        if np.percentile(middle, 95) - np.percentile(middle, 5) < CROSS[6] * high:
+            continue                                   # a level line: the line of a held syllable, a row of dashes
+        mask[upper:upper + tall, left:left + wide][piece & line[None, :]] = 1
+    mask = cv2.dilate(mask, np.ones((5, 5), np.uint8))[down:down + crop.shape[0]]     # with its pale rim
+    if not mask.any():
+        return crop
+    out = crop.copy()
+    out[mask > 0] = 255
+    return out
+
+
 def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
     """Whether a line of text is a row of words: how sure Tesseract is of its letters, each letter counted once."""
     if ROW is None:
@@ -605,12 +691,15 @@ def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
 
 
 def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
-              known: dict[str, int], mend: bool = True) -> tuple[list[dict], float, bool]:
+              known: dict[str, int], mend: bool = True, alone: bool = False) -> tuple[list[dict], float, bool]:
     """What one reading of a row gives: its syllables, how well the reading fits, and whether the list of words
     holds each of its words. The fit is the number of letters in words that the list holds, and among readings
-    that are level there, or with no list, how sure Tesseract is of the letters."""
-    unsure = not _words_row(words)
-    if unsure and not (known and ROW_HELD):
+    that are level there, or with no list, how sure Tesseract is of the letters. `alone`: the reading is a second
+    look at a row that no reading of the picture as it is took for a row of words; it is tested as a row that
+    Tesseract is not sure of. The reading of a row of few words (band['few'], words.SPARSE) must hold only words of
+    the list."""
+    unsure = alone or not _words_row(words)       # alone: no reading of the picture as it is gave a row of words
+    if (unsure or band.get('few')) and not (known and ROW_HELD):
         return [], -1.0, False
     letters = [(sum(sign.isalpha() for sign in text), sure) for text, _, _, sure in words]
     count = sum(number for number, _ in letters)
@@ -628,6 +717,10 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
         return [], -1.0, False
+    lettered = [text for (text, _, _, _), (number, _) in zip(words, letters) if number]
+    if band.get('few') and (mended or not 0 < total == held or (len(lettered) == 1 and lettered[0].endswith(':'))):
+        return [], -1.0, False        # a row of few words (words.SPARSE): only words of the list, and no label
+        #                               (one word with a colon: 'Refrain:', 'Women:')
     return row, held + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE)
 
 
@@ -699,14 +792,19 @@ def _other_size(row: list[dict], others: list[list[dict]], known: dict[str, int]
 
 
 def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True,
-          ways: dict[str, tuple[str, ...]] | None = None) -> list[dict]:
+          ways: dict[str, tuple[str, ...]] | None = None, more: tuple[int, ...] = ()) -> list[dict]:
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
-    With `ways` the words are parted into syllables as the list of words parts them."""
+    With `ways` the words are parted into syllables as the list of words parts them. `more` are the sizes of a
+    second look, read after the others where no reading is whole (a size under 0: the picture without the ink that
+    crosses the row, see CROSS and CROSS_LIST)."""
     best: tuple[list[dict], float] | None = None
     rows: list[list[dict]] = []
-    for size in (HIGH,) + tuple(AGAIN or ()):
-        row, fit, whole = _text_row(read(size), grey, band, known, mend)
+    for size in (HIGH,) + tuple(AGAIN or ()) + tuple(more):
+        row, fit, whole = _text_row(read(size), grey, band, known, mend, size < 0 and (best is None or best[1] < 0))
         rows.append(row)
+        if (size < 0 and CROSS_LIST and not mend and best is not None and best[1] >= 0
+                and not (known and _held(row, known)[0] > _held(best[0], known)[0])):
+            continue
         if best is None or fit > best[1]:
             best = (row, fit)
         if whole:
@@ -741,22 +839,30 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
             part = grey[top:bottom, first:last]
             if HELD:
                 part = _no_held(part, band['top'] - top, band['bottom'] - top)
+            bare = None
+            if CROSS:
+                over = max(0, int(band['top'] - CROSS[0] * space))
+                under = min(height, int(band['bottom'] + CROSS[0] * space) + 1)
+                bare = _no_cross(part, grey[over:under, first:last], top - over, band['top'] - top, band['bottom'] - top, space)
+                if bare is part:
+                    bare = None
             seen: dict[int, list] = {}
 
-            def read(size: int, part=part, first=first, band=band, number=number, seen=seen) -> list[tuple[str, float, float, float]]:
-                if size not in seen:
-                    scale = size / max(1.0, band['bottom'] - band['top'])
-                    crop = cv2.resize(part, None, fx=scale, fy=scale,
+            def read(size: int, part=part, bare=bare, first=first, band=band, number=number, seen=seen) -> list[tuple[str, float, float, float]]:
+                if size not in seen:                   # a size under 0: the picture without the ink that crosses the row
+                    picture, tall = (part, size) if size > 0 else (bare, -size)
+                    scale = tall / max(1.0, band['bottom'] - band['top'])
+                    crop = cv2.resize(picture, None, fx=scale, fy=scale,
                                       interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA)
-                    edge = size // 2
+                    edge = tall // 2
                     crop = cv2.copyMakeBorder(crop, edge, edge, edge, edge, cv2.BORDER_CONSTANT, value=255)
                     seen[size] = [(text, first + (left - edge) / scale, first + (right - edge) / scale, sure)
                                   for text, left, right, sure in _line(crop, folder, f'{page}_{number}_{size}')]
                 return seen[size]
 
-            readers.append(read)
-        mend = bool(known) and _fits([(read(HIGH), band) for read, band in zip(readers, bands)], grey, known)
-        for number, (read, band) in enumerate(zip(readers, bands)):
-            for syllable in _pick(read, grey, band, known, mend, ways):
+            readers.append((read, () if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ()))))
+        mend = bool(known) and _fits([(read(HIGH), band) for (read, _), band in zip(readers, bands)], grey, known)
+        for number, ((read, more), band) in enumerate(zip(readers, bands)):
+            for syllable in _pick(read, grey, band, known, mend, ways, more):
                 found.append(dict(syllable, band=(page, number)))
     return found
