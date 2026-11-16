@@ -23,7 +23,7 @@ from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, d
     slit_page, thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .triplets import mark_triplets
-from .words import cut_stems, word_bands
+from .words import cut_stems, word_bands, word_rows
 
 SIGNS = 'strokes'
 TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scoreread.meter)
@@ -252,6 +252,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     if any(bar['notes'] for bar in drone):
         parts.append(drone)
         names[width] = 'Ison'
+    # The notes are read: the step of the words gets the rows that stand staggered too.
+    words = layers['words'] = word_rows(layers)
     return {'musicxml': musicxml(parts, title, names), 'parts': parts, 'names': names, 'notes': notes, 'part_notes': part_notes, 'title': title,
             'staves': len(staves), 'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
