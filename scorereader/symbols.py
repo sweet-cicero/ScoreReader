@@ -32,6 +32,13 @@ HOLLOW_PAGE = (0.3, 0.03)   # on a page whose hollow heads have small holes: fro
                             # never under the second number (None: off)
 HOLLOW_WORN = (0.4, 0.2)    # on a page whose hollow heads have large holes (their usual hole is the second share or
 #                    more): a head is hollow from the first share of that usual hole (None: off)
+HOLLOW_PALE = (0.2, 0.015, 0.6, 10, 0.3, 0.5, 0.05, 5)   # ... and on such a page of a pale print a head is hollow only
+#                    from the third share of the usual hole. The page shows the print by three signs. Of its heads
+#                    with a stem that are not hollow (the fourth number of them or more), the first share hold a hole
+#                    of the second share of the head or more. The usual hole of its hollow heads is the fifth share
+#                    of the head or more. And its specks come in every size up to the limit: from the sixth share of
+#                    the limit on in the seventh share of those heads, and in the last number of them or more.
+#                    (None: off)
 LINE_SLIT = (0.3, 2, 0.15)   # a filled head with a stem and a staff line or a ledger line through it (its middle at
 #                     most this many staff spaces from the line) is a half note when a speck of paper of this many
 #                     px or more is closed in over the line and one under it, the upper one this many staff spaces
@@ -1918,6 +1925,15 @@ def read_symbols(layers: dict) -> dict:
                 # A print that pressed the ink out of the middle of its filled heads leaves a pale speck there. On a
                 # page whose hollow heads have large holes, such a speck is no hole.
                 limit = max(limit, HOLLOW_WORN[0] * float(np.median(sure)))
+                # A pale print leaves such a speck in many of its filled heads, and the specks come in every size up
+                # to the limit and past it. The page shows it (see HOLLOW_PALE). A page whose filled heads hold a
+                # small speck and whose holes begin far above it is no such print, and a small hole there is a hole.
+                low = [mark['hole'] for mark in marks if mark['kind'] == 'head' and mark['stems'] and mark['hole'] < limit]
+                near = sum(1 for hole in low if hole >= HOLLOW_PALE[5] * limit) if HOLLOW_PALE else 0
+                if HOLLOW_PALE and len(low) >= HOLLOW_PALE[3] and float(np.median(sure)) >= HOLLOW_PALE[4] \
+                        and sum(1 for hole in low if hole >= HOLLOW_PALE[1]) >= HOLLOW_PALE[0] * len(low) \
+                        and near >= HOLLOW_PALE[7] and near >= HOLLOW_PALE[6] * len(low):
+                    limit = max(limit, HOLLOW_PALE[2] * float(np.median(sure)))
     layers['hollow'] = limit
     if WHOLE_BESIDE:
         _whole_beside(layers, marks, limit)
