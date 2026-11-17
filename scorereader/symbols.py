@@ -2045,6 +2045,17 @@ OPEN_STEM = (0.4, 0.3, 0.5)   # ... and its stem is its own: no bar line (within
 #                    between a bar line or a sharp, the end of a tie and a staff line. (None: off. Without it the rule gained 29 notes on LitChoir's
 #                    clean copies and lost 5, but lost 285 on the fresh test set.)
 OPEN_SLANT = (0.8, 0.75)   # such a hole may be as high as wide (from this share) when it fills at most this share of its box
+RAGGED_SLIT = (1.5, -10.0, 40.0, 0.35)   # closed paper that is not quite round (layers.RAGGED) is the inside of a hollow
+#                      head, asked as an open hole is, when it is a slit: this many times as long as wide along its own
+#                      axis, which rises to the right by this to this many degrees, and at most this large (staff
+#                      spaces squared). The inside of a printed half note lies so. The bowl of a flat, a natural and
+#                      the paper between a sign and a head stand upright (None: off).
+OPEN_BESIDE = 0.25   # a piece of the rim can lie just outside the box of an open hole: a filled head lower than
+#                      OPEN_PIECE whose box reaches into that box and whose middle lies up to this many staff spaces
+#                      over or under it (0: off). A print with a bold rim leaves the rim as such a piece. A piece
+#                      that one open head replaced owns no stem any more, and ink in the columns of an open head that
+#                      was read as a sign is no sign: the second head of a chord, which hangs on the same stem, is
+#                      asked without them.
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
 HOLE_BIG = None      # (2.5, 4): the hole of a mark that is this many times the usual hole of the page's hollow heads (the
 #                    median of this many or more) is no inside of a head, and the page is read again without it.
@@ -2083,6 +2094,29 @@ def big_holes(layers: dict, heads: list[dict]) -> np.ndarray | None:
     return np.isin(labels, big).astype(np.uint8) if big else None
 
 
+def _slit(part: np.ndarray) -> bool:
+    """Whether a piece of paper lies on its side as the inside of a printed half note does (RAGGED_SLIT): a slit along
+    its own axis, which rises to the right."""
+    ys, xs = np.nonzero(part)
+    if len(xs) < 6:
+        return False
+    spread = np.cov(np.vstack((xs, -ys)).astype(float))
+    values, vectors = np.linalg.eigh(spread)
+    if values[0] <= 0 or values[1] < RAGGED_SLIT[0] ** 2 * values[0]:
+        return False
+    along = vectors[:, 1] if vectors[0, 1] >= 0 else -vectors[:, 1]
+    rise = float(np.degrees(np.arctan2(along[1], along[0])))
+    return RAGGED_SLIT[1] <= rise <= RAGGED_SLIT[2]
+
+
+def _in_head(sign: dict, heads: list[dict]) -> bool:
+    """Whether the middle of a sign lies in the columns of an open head and its box reaches into that head's box: the
+    ink where two half notes of a chord touch was read as a sign (see OPEN_BESIDE)."""
+    middle = (sign['x0'] + sign['x1']) / 2
+    return any(head.get('open') and head['x0'] <= middle <= head['x1']
+               and sign['y0'] <= head['y1'] and sign['y1'] >= head['y0'] for head in heads)
+
+
 def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[int, list[float]] | None = None,
                signs: list[dict] | None = None) -> list[dict]:
     """Hollow heads that the marks did not give: two half notes or whole notes, one over the other, grow together
@@ -2111,6 +2145,7 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
     rim = max(2, int(round(HOLE_RIM * space)))
     far = int(round(HOLE_CLOSED * space))
     out = []
+    pieces = set()      # the heads that a head of the result replaces: pieces of its rim, which own no stem
     passes = [(False, holes, None)]
     if HOLE_THROUGH:
         # A hollow head on a staff line or on a ledger line: the line cuts its inside in two. The ink of the line
@@ -2122,6 +2157,9 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
             under[:-step] |= holes[step:]
         through = ink & over & under
         passes.append((False, holes | through, through))
+    ragged = layers.get('ragged') if RAGGED_SLIT else None
+    if OPEN_HEADS and ragged is not None:
+        passes.append((True, ragged, None))
     if OPEN_HEADS and layers.get('open_holes') is not None:
         passes.append((True, layers['open_holes'], None))
     for is_open, paper, through in passes:
@@ -2138,12 +2176,16 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 most = OPEN_HEADS * space * space
             if not HOLE_HEADS[0] * usual <= area <= most:
                 continue
-            if wide < HOLE_HEADS[2] * high:
+            if paper is ragged:
+                # Paper that is not quite round: the inside of a head by its own shape only (RAGGED_SLIT).
+                if area > RAGGED_SLIT[3] * space * space or not _slit(labels[y:y + high, x:x + wide] == index):
+                    continue
+            elif wide < HOLE_HEADS[2] * high:
                 # A printed half note with a thin rim fills the gap between two staff lines: its inside is a slanted
                 # oval that is as high as wide, and fills little of its box.
                 if not (is_open and OPEN_ALONE and wide >= OPEN_SLANT[0] * high and area <= OPEN_SLANT[1] * wide * high):
                     continue
-            if not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
+            if paper is not ragged and not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
                 continue
             inside = [head for head in heads + out
                       if head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2]
@@ -2195,6 +2237,16 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 # no such piece is the hook of a rest, or the paper between two signs.
                 head['replaces'] = [other for other in heads
                                     if mark['x0'] <= other['cx'] <= mark['x1'] and mark['y0'] <= other['cy'] <= mark['y1']]
+                if OPEN_BESIDE:
+                    # A piece of the rim whose middle lies just over or under that box (see OPEN_BESIDE).
+                    beside = OPEN_BESIDE * space
+                    head['replaces'] += [
+                        other for other in heads
+                        if other not in head['replaces'] and not other['hollow'] and not other.get('thin')
+                        and other['y1'] - other['y0'] + 1 < OPEN_PIECE * layers['head'][1]
+                        and mark['x0'] <= other['cx'] <= mark['x1']
+                        and mark['y0'] - beside <= other['cy'] <= mark['y1'] + beside
+                        and other['y0'] <= mark['y1'] and other['y1'] >= mark['y0']]
                 head['open'] = True
                 if not stems:
                     continue
@@ -2209,10 +2261,12 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                     if OPEN_STEM and any(
                             any(abs(way['x'] - bar) <= OPEN_STEM[0] * space for bar in (bars or {}).get(staff, []))
                             or any(sign['x0'] - 2 <= way['x'] <= sign['x1'] + 2
-                                   and sign['y0'] - space <= cy <= sign['y1'] + space for sign in signs or [])
+                                   and sign['y0'] - space <= cy <= sign['y1'] + space for sign in signs or []
+                                   if not (OPEN_BESIDE and _in_head(sign, out)))
                             or any(not other['hollow'] and abs(stem['x'] - way['x']) <= OPEN_STEM[1] * space
                                    and abs(stem['end'] - way['end']) <= OPEN_STEM[2] * space
-                                   for other in heads for stem in other['stems'])
+                                   for other in heads if not (OPEN_BESIDE and id(other) in pieces)
+                                   for stem in other['stems'])
                             for way in stems):
                         continue      # a stem that is not its own
                 # A piece of rim is lower than a head. A whole head beside the paper is a note of its own: the paper
@@ -2228,6 +2282,19 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                     continue
                 head['place'] = found
             out.append(head)
+            pieces.update(id(other) for other in head.get('replaces', []))
+    if OPEN_BESIDE:
+        # Two open heads of a chord, one over the other, found the same two stems, one that goes up and one that
+        # goes down: the upper head keeps the stem that goes up, the lower one the stem that goes down.
+        found = [head for head in out if head.get('open') and len(head['stems']) == 2]
+        for upper, lower in ((upper, lower) for upper in found for lower in found):
+            if 0 < lower['cy'] - upper['cy'] <= 1.3 * space and abs(lower['cx'] - upper['cx']) <= 0.5 * space \
+                    and len(lower['stems']) == 2 and len(upper['stems']) == 2 \
+                    and {stem['direction'] for stem in upper['stems']} == {'up', 'down'} \
+                    and all(any(stem['direction'] == other['direction'] and abs(stem['x'] - other['x']) <= 0.2 * space
+                                for other in lower['stems']) for stem in upper['stems']):
+                upper['stems'] = [stem for stem in upper['stems'] if stem['direction'] == 'up']
+                lower['stems'] = [stem for stem in lower['stems'] if stem['direction'] == 'down']
     return out
 
 
