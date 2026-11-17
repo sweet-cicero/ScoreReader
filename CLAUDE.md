@@ -20,8 +20,8 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
-scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,751 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+scans; 83 scores at 99 % or more), 96.4 % of the notes on the clean copies (21,766 of 22,582, counted by the page;
+21,710 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
 files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
 88.3 % of all syllables with Tesseract (87.1 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
@@ -380,6 +380,24 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - Two words side by side are mended into one although the list holds one of them, where it holds the whole
   twenty times as often (`ocr.MEND_PAIR_RARE`): the list held a piece of "Al-le-lu-ia" three times as a word.
   A list made from typed hymns holds stray pieces as rare words.
+- The notes that the clean copies still lose are scattered (round 41: 816 notes in 49 scores, no cause of more
+  than 6 notes). Sort the lost notes by where they stand before a score is read for a rule: a long stretch of
+  one cause would show there, and none did.
+- A rule that reads a mark by the number of its holes meets that number in other things: two half notes a second
+  apart with their stems, a head and the room between it and its sign, an ornament, a scribble by hand. List
+  every mark where the first form acts, with the middles of its holes, and look at each: the true ones share a
+  shape (for two half notes a third apart on lines: three holes one over the other in a zigzag, and a stem),
+  and each half of that shape had a false mark of its own.
+- A rule that cuts one mark into two heads gives each head its own stem, followed from its own side. A stroke
+  that no head owns any more is asked for a head of its own (`symbols.lost_stems`, `symbols.thin_heads`), and a
+  beam at its end was read as a thin head. Count the notes that are not there for each rule that makes heads,
+  and look at the new ones.
+- The list of the notes by the page also knows a note that the page holds where the hymn is typed with it struck
+  again (`held`: the moments at which the page does not strike it, and the page's length). The scorer takes
+  such a note out of its typed chord. The finder for these places sees only a place where the reader reads the
+  long note, and a bow that may be a slur stays off the list.
+- A chain of runs loads the code copy anew for each run. Change a copy only when no chain reads it, or make a new
+  copy for the next form of a rule.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
