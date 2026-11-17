@@ -24,12 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.8 % on
-scans; 83 scores at 99 % or more), 96.7 % of the notes on the clean copies (21,820 of 22,575, counted by the page;
-21,762 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
-files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
-88.3 % of all syllables with Tesseract (87.1 % on scans), and 90.0 % on the kit (6214 of 6901).
-On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
+Not reached yet: 87.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.6 % on
+scans; 86 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,873 of 22,582, counted by the page;
+21,829 of 22,591 as typed; 32 of the 78 counted scores at 99 %; 17 scores read every printed note, 31 every
+syllable, 9 both, 13 have no note that is not there, 5 are whole in all three; 707 printed notes and 209 syllables
+are lacking and 837 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
+files and a list of words (6,030 of 6,239, counted by the page; 5,982 of 6,259 as typed; 94.5 % of the whole words; 32 scores at 99 % of the syllables);
+88.9 % of all syllables with Tesseract (87.8 % on scans), and 90.1 % on the kit (6219 of 6901).
+On the fresh test set, which no rule was set on: 95.1 % of the notes (39,720 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -524,6 +526,10 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   stands close under it, the bracket and the clef of the next system cover the narrow gap as a weak line: such
   a line counts only where the notes of the two staves stand in the same columns (`systems.OPEN_WEAK`; the weak
   lines of LitChoir's pages are in step from 0.52 on where they join a system and up to 0.13 where they do not).
+- The scorer sets a typed note apart as recited where the reader has no note for it in a run of five equal
+  pitches. On a clean copy a printed note that is not read can hide there: the count of the drawn notes then
+  moves with the reading (by 7 notes in round 47). Compare `apart` of each clean score in the two results
+  beside the notes gained and lost, and say what moved.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
