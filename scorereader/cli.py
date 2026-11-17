@@ -1,7 +1,7 @@
 """The command: a page of a score in, its notes out. Everything runs on this computer.
 
-usage: python -m scorereader read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng]]
-       python -m scorereader hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng]]
+usage: python -m scorereader read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng] [--second FOLDER]]
+       python -m scorereader hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng] [--second FOLDER]]
        python -m scorereader layers <page.png | score.pdf> --out <folder> [--page N]
        python -m scorereader layout <page.png | score.pdf> --out <folder> [--page N]
 
@@ -36,6 +36,9 @@ pages together, which names the letters better than one page alone. Without a li
 --tesseract reads the words of a scan with Tesseract in place of the reader's own letters (scorereader.ocr). Tesseract
 is a small text reader that must be installed on this computer; it is the only model the reader can use, it reads
 the rows of words alone, and the reader works without it.
+--second names a folder with a larger language file of Tesseract (its standard or its 'best' eng.traineddata; several
+folders with the path separator between them; SCOREREADER_OCR_SECOND names them too). A row that the first file
+does not read as words of the list alone is read with it as well, and the reading that fits the list best is kept.
 
 A PDF page is made into an image at 300 dpi with pdftoppm. A page that is a photo kept with no size of its own (a
 phone picture at 72 dpi makes a page of 42 by 56 inches) is made as long as an A4 page at 300 dpi.
@@ -314,6 +317,9 @@ def main(argv=None) -> int:
                         help='read the words of a scan with Tesseract (or SCOREREADER_OCR=tesseract); it must be installed')
     parser.add_argument('--language', default=None,
                         help="the language file of Tesseract (or SCOREREADER_OCR_LANGUAGE): 'eng' when not given, 'ron', 'eng+ell'")
+    parser.add_argument('--second', default=None,
+                        help="the folder of a second language file of Tesseract (or SCOREREADER_OCR_SECOND), as its standard "
+                             "'eng.traineddata': a second opinion on the rows that the first file does not read whole")
     parser.add_argument('--key-before', type=int, default=None,
                         help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
     args = parser.parse_args(argv)
@@ -321,6 +327,8 @@ def main(argv=None) -> int:
     ocr = args.tesseract or setting('OCR') == 'tesseract'
     if args.language:
         os.environ['SCOREREADER_OCR_LANGUAGE'] = args.language
+    if args.second:
+        os.environ['SCOREREADER_OCR_SECOND'] = args.second
     if ocr:
         from .ocr import available  # noqa: PLC0415
         if not available():
