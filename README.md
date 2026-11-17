@@ -159,8 +159,8 @@ photocopies and hand-copied scores are harder, at roughly three notes in four, a
 are from the pages the rules were worked out on. On a separate set of engraved choir pieces that no rule was
 tuned on, it reads about 95% of the notes.
 
-The goal is 99% of the notes and the words on every score in the choir's library, starting with the clean
-printed copies.
+The goal is to read clean printed copies without a mistake, notes and words, and to get 99% of the notes and
+the words on the hand-copied scores. The clean copies come first.
 
 Some things are not read at all yet: most rests, slurs, repeats and the numbers of a time signature. The
 [worklog](docs/worklog.md) has the full figures and the list of known limits.

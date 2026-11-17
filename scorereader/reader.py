@@ -20,7 +20,7 @@ from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
-    slit_page, thin_heads, without_flag_loops, without_joints
+    slit_page, thin_heads, without_flag_loops, without_joints, without_upright_holes
 from .ties import read_ties
 from .triplets import mark_triplets
 from .words import cut_stems, word_bands, word_rows
@@ -150,6 +150,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     cut_stems(layers, heads, words)
     count_tails(layers, heads)
     loops_have_flags(layers, heads)
+    # A hollow mark whose inside stands upright is the loop of a flag or the room of a double bar line, no head.
+    heads = without_upright_holes(layers, heads)
     heads = without_flag_loops(heads, space)
     dots(layers, heads)
     # The notes under the bracket of a triplet are two thirds as long as they are drawn.

@@ -84,6 +84,10 @@ NO_LEDGER_FIVE = 5.75# and up to this place it stands in the first space; past i
 NO_LEDGER = 6.3      # a head with no ledger line, up to this place beside the staff, stands in the first space (0: off)
 FAR_STEM = (2.0, 8.4, 0.75, 1.35)   # a head past NO_LEDGER with no ledger line is a note when its stem goes on this many
 #                      staff spaces past it, up to this place, and its box is from this to this share of the page's head (None: off)
+PALE_STEM = (25, 0.5, 0.25)   # the stem of such a head goes on as pale ink where the copy lost it: a column that is
+#                    darker than the paper at both sides of it by this many grey levels (the paper this many staff
+#                    spaces away), over gaps of at most the last share of a staff space. The pale part counts for
+#                    FAR_STEM (None: off)
 WORD_STEM = (0.35, 2.0, 0.7, 1.4, 1.0)   # a mark at most 2.0 staff spaces before the words is a note when its upright
 #                    ink goes on this many staff spaces past it and into the words (or it is slim and ends at most
 #                    1.0 staff spaces before them), and the mark is from this to this share as high as the heads of
@@ -975,6 +979,29 @@ def _way(layers: dict, mark: dict, up: bool, right: bool) -> dict | None:
     return best
 
 
+def _pale_on(layers: dict, way: dict) -> int:
+    """How many px the upright ink of a way goes on past its end as pale ink (see PALE_STEM): the scan kept a thin
+    stem as grey that is no ink for the page's limit."""
+    grey, space = layers['grey'], layers['space']
+    height, width = grey.shape
+    step = -1 if way['direction'] == 'up' else 1
+    side, most = max(3, int(round(PALE_STEM[1] * space))), max(3, int(round(PALE_STEM[2] * space)))
+    x, end = int(way['x']), int(way['end'])
+    row, gap, last = end + step, 0, end
+    while 0 <= row < height and side + 2 <= x < width - side - 2:
+        here = grey[row, x - 1:x + 2]
+        at = int(here.argmin())
+        paper = min(int(grey[row, x - side - 1:x - side + 2].min()), int(grey[row, x + side - 1:x + side + 2].min()))
+        if int(here[at]) + PALE_STEM[0] <= paper:
+            last, gap, x = row, 0, x + at - 1
+        else:
+            gap += 1
+            if gap > most:
+                break
+        row += step
+    return abs(last - end)
+
+
 def _at_staff(layers: dict, mark: dict) -> bool:
     """True when a mark stands where a head needs no ledger line (in the staff or in the first space beside it), or
     on a ledger line."""
@@ -1121,6 +1148,33 @@ def _foot_wing(layers: dict, mark: dict) -> float | None:
         if best is None or len(even) > best[0]:
             best = (len(even), float(np.median(even)))
     return best[1] if best else None
+
+
+LEDGER_DASH = (0.15, 0.6, 0.25, (0.7, 1.3), 0.6, 1.5)   # a print whose first ledger line is two short dashes beside the
+#   head that sits on it: thin level ink (at most the third number of staff spaces thick) in this many staff spaces
+#   of columns or more at each side of the foot of the mark, within the second number of it, the two at one row, that
+#   row from this to this many staff spaces from the staff. The mark is a head on that line where it is at least the
+#   fifth number of the page's head high and its stem goes on the last number of staff spaces past it (None: off)
+
+
+def _foot_dashes(layers: dict, staff: dict, mark: dict, up: bool) -> bool:
+    """True when a mark beside the staff has the end of a ledger line at each side of its foot (see LEDGER_DASH)."""
+    free, space = layers['free'], staff['space']
+    foot = mark['y1'] if up else mark['y0']
+    top, bottom = (foot - 0.2 * space, foot + 0.3 * space) if up else (foot - 0.3 * space, foot + 0.2 * space)
+    top, bottom = max(0, int(top)), min(free.shape[0], int(bottom) + 1)
+    reach = int(LEDGER_DASH[1] * space)
+    rows = []
+    for first, last in ((mark['x0'] - reach, mark['x0']), (mark['x1'] + 1, mark['x1'] + 1 + reach)):
+        window = free[top:bottom, max(0, first):min(free.shape[1], last)]
+        heights = window.sum(axis=0)
+        thin = np.nonzero((heights > 0) & (heights <= LEDGER_DASH[2] * space))[0]
+        if len(thin) < LEDGER_DASH[0] * space:
+            return False
+        rows.append(float(np.median([np.nonzero(window[:, column])[0].mean() for column in thin])) + top)
+    edge = staff['rows'][0] if up else staff['rows'][-1]
+    return abs(rows[0] - rows[1]) <= 0.15 * space \
+        and LEDGER_DASH[3][0] * space <= abs((rows[0] + rows[1]) / 2 - edge) <= LEDGER_DASH[3][1] * space
 
 
 def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
@@ -2025,8 +2079,15 @@ def read_symbols(layers: dict) -> dict:
                 # A faint ledger line is lost in the copy. A letter of the words has a bowl and a stem too, but its
                 # stem is short: a head as large as the heads of the page on a long stem is a note.
                 wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
-                if not (FAR_STEM and found is not None and abs(place) <= FAR_STEM[1] and not mark.get('word_stem')
-                        and any(stem['past'] >= FAR_STEM[0] * space for stem in mark['stems'])
+                if LEDGER_DASH and found is not None and not mark.get('word_stem') \
+                        and FAR_STEM[2] * layers['head'][0] <= wide <= FAR_STEM[3] * layers['head'][0] \
+                        and LEDGER_DASH[4] * layers['head'][1] <= high <= FAR_STEM[3] * layers['head'][1] \
+                        and any(stem['past'] >= LEDGER_DASH[5] * space for stem in mark['stems']) \
+                        and _foot_dashes(layers, layers['staves'][staff], mark, place > 0):
+                    found = 7.0 if place > 0 else -7.0
+                elif not (FAR_STEM and found is not None and abs(place) <= FAR_STEM[1] and not mark.get('word_stem')
+                        and any(stem['past'] + (_pale_on(layers, stem) if PALE_STEM else 0) >= FAR_STEM[0] * space
+                                for stem in mark['stems'])
                         and FAR_STEM[2] * layers['head'][0] <= wide <= FAR_STEM[3] * layers['head'][0]
                         and FAR_STEM[2] * layers['head'][1] <= high <= FAR_STEM[3] * layers['head'][1]):
                     continue
@@ -3890,6 +3951,81 @@ def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end
         if not (first and last):
             return False
     return seen + hidden >= THIN_BEAM[1] * count and seen >= THIN_BEAM[2] * count
+
+
+HOLE_UPRIGHT = (1.6, -15.0, 60.0, 0.05, 0.5)   # the inside of a printed half note lies on its side and rises to the right. A
+#   hollow mark on one stem whose inside is this many times as long as wide along its own axis, with that axis outside
+#   these degrees (0: level, 90: upright), is no head: the loop of a flag, the room of a double bar line, the bowl of
+#   the letter p, a C of the time, the box of a natural. Not where the inside is smaller than the fourth number of
+#   staff spaces squared (a hole that a thick copy all but closed has no direction), and not where the ink at both
+#   sides of it is the last number of staff spaces thick or more: a loop, a box and the room at a bar line have a thin
+#   stroke at one side, and one print's half note in a space has an upright inside between two thick sides (None: off)
+
+
+LOOP_UNDER = (1.3, 55.0, 0.4, 0.25, 0.3, 0.8)   # the loop of a flag right under the head of its note: a hollow mark on one
+#   stem down whose inside is this many times as long as wide, with its axis this steep or steeper, where the ink of
+#   its stem's column goes on over the mark for the third number of staff spaces or more (over gaps of the fourth) up
+#   to a filled head that stands on that column (within the fifth of its box, its middle at most the last number
+#   past the ink's end). The stem is that head's (None: off)
+
+
+def _hole_axis(layers: dict, head: dict) -> tuple[float, float, int, int]:
+    """The largest piece of closed paper in a head: how many times as long as wide it is along its own axis, the
+    degrees of that axis, its px, and how thick the ink is at the thinner of its two sides, at its middle row."""
+    y0, x0 = max(0, int(head['y0']) - 1), max(0, int(head['x0']) - 1)
+    box = layers['holes'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2]
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(box.astype(np.uint8), connectivity=4)
+    if count < 2:
+        return 0.0, 0.0, 0, 0
+    ys, xs = np.nonzero(labels == 1 + int(np.argmax(stats[1:, 4])))
+    if len(xs) < 6:
+        return 0.0, 0.0, len(xs), 0
+    values, vectors = np.linalg.eigh(np.cov(np.vstack((xs, -ys)).astype(float)))
+    if values[0] <= 0:
+        return 0.0, 0.0, len(xs), 0
+    along = vectors[:, 1] if vectors[0, 1] >= 0 else -vectors[:, 1]
+    ink, row = layers['ink'], int(round(ys.mean()))
+    own = xs[ys == row]
+    sides = [0, 0]
+    if len(own):
+        for side, (column, step) in enumerate(((x0 + int(own.min()) - 1, -1), (x0 + int(own.max()) + 1, 1))):
+            while 0 <= column < ink.shape[1] and ink[y0 + row, column]:
+                sides[side] += 1
+                column += step
+    return float(np.sqrt(values[1] / values[0])), float(np.degrees(np.arctan2(along[1], along[0]))), len(xs), min(sides)
+
+
+def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the hollow marks whose inside stands upright (HOLE_UPRIGHT)."""
+    if not HOLE_UPRIGHT and not LOOP_UNDER:
+        return heads
+    out, space = [], layers['space']
+    for head in heads:
+        if head['hollow'] and len(head['stems']) == 1 and not head.get('thin'):
+            long, rise, area, side = _hole_axis(layers, head)
+            if HOLE_UPRIGHT and long >= HOLE_UPRIGHT[0] and not HOLE_UPRIGHT[1] <= rise <= HOLE_UPRIGHT[2] \
+                    and area >= HOLE_UPRIGHT[3] * space * space and side < HOLE_UPRIGHT[4] * space:
+                continue
+            stem = head['stems'][0]
+            if LOOP_UNDER and stem['direction'] == 'down' and long >= LOOP_UNDER[0] and rise >= LOOP_UNDER[1]:
+                x = int(round(stem['x']))
+                column = layers['ink'][:, max(0, x - 1):x + 2].any(axis=1)
+                on, gap = 0, 0
+                for row in range(int(head['y0']) - 1, max(0, int(head['y0']) - 1 - int(3 * space)), -1):
+                    if column[row]:
+                        on, gap = int(head['y0']) - row, 0
+                    else:
+                        gap += 1
+                        if gap > LOOP_UNDER[3] * space:
+                            break
+                far = head['y0'] - on
+                if on >= LOOP_UNDER[2] * space and any(
+                        other is not head and other['staff'] == head['staff'] and not other['hollow']
+                        and other['x0'] - LOOP_UNDER[4] * space <= x <= other['x1'] + LOOP_UNDER[4] * space
+                        and far - LOOP_UNDER[5] * space <= other['cy'] < head['y0'] for other in heads):
+                    continue
+        out.append(head)
+    return out
 
 
 def loops_have_flags(layers: dict, heads: list[dict]) -> int:
