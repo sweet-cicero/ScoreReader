@@ -9,7 +9,7 @@ import time
 import cv2
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from scoreread.staves import draw, find_staves, line_y  # noqa: E402
+from scorereader.staves import draw, find_staves, line_y  # noqa: E402
 
 expected = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'staves_expected.json')))
 pages, out = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else None)

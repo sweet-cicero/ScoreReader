@@ -1,7 +1,7 @@
 # New methods for hard scans (2026-11-09)
 
 These scripts are a record of the first tests. They ran inside the test kit (in its folder `exp/`), so their paths
-(`../pages`, `../tools`, `../score.py`) point into the kit. The reader in `scoreread/` replaces them.
+(`../pages`, `../tools`, `../score.py`) point into the kit. The reader in `scorereader/` replaces them.
 
 This folder holds the experiments that followed the reader test. The test hymn is "O only Creator" (Saturday of Souls
 Troparion, `saturday-of-souls-troparion`): an old copy with hand-drawn notes, one staff of two voices, 162 typed notes.

@@ -1,14 +1,14 @@
 """The yardstick: reads the symbols of a clean page with copisteria (Apache-2.0), a local reader with a neural network.
 
-This is no part of the engine. scoreread reads a page with rules alone and never loads this folder. The yardstick
+This is no part of the engine. ScoreReader reads a page with rules alone and never loads this folder. The yardstick
 shows on the same clean page, with the same staves and systems, what a network reads, so each own rule can be
 measured against it. Version 0.4 of the reader used this step; version 0.5 replaced it.
 
-copisteria gets the staves and the systems of scoreread as facts (it finds a bent or tilted staff twice or not at
+copisteria gets the staves and the systems of ScoreReader as facts (it finds a bent or tilted staff twice or not at
 all), and the notes on the first ledger line can be checked with a rule (ledger.py), as an option.
 
-Where copisteria is installed: the folder in SCOREREAD_COPISTERIA, or tools/copisteria in the test kit (the folder in
-SCOREREAD_KIT; see the README).
+Where copisteria is installed: the folder in SCOREREADER_COPISTERIA, or tools/copisteria in the test kit (the folder in
+SCOREREADER_KIT; see the README).
 """
 from __future__ import annotations
 
@@ -21,15 +21,22 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-KIT = Path(os.environ.get('SCOREREAD_KIT', Path.home() / 'Projects' / 'LitChoir' / 'tmp' / 'omr-test'))
-COPISTERIA = Path(os.environ.get('SCOREREAD_COPISTERIA', KIT / 'tools' / 'copisteria'))
+
+
+def _setting(name: str, default):
+    """A setting from the environment, as scorereader.setting gives it: the name from before the rename still counts."""
+    return os.environ.get('SCOREREADER_' + name, os.environ.get('SCOREREAD_' + name, default))
+
+
+KIT = Path(_setting('KIT', Path.home() / 'Projects' / 'LitChoir' / 'tmp' / 'omr-test'))
+COPISTERIA = Path(_setting('COPISTERIA', KIT / 'tools' / 'copisteria'))
 
 
 def _load():
     source = str(COPISTERIA / 'src')
     if not (COPISTERIA / 'src' / 'copisteria').is_dir():
-        raise SystemExit(f'scoreread: copisteria is not in {COPISTERIA}. Set SCOREREAD_COPISTERIA to its folder, or '
-                         'SCOREREAD_KIT to the test kit that holds tools/copisteria.')
+        raise SystemExit(f'ScoreReader: copisteria is not in {COPISTERIA}. Set SCOREREADER_COPISTERIA to its folder, or '
+                         'SCOREREADER_KIT to the test kit that holds tools/copisteria.')
     if source not in sys.path:
         sys.path.insert(0, source)
     from copisteria import front, read, write  # noqa: PLC0415
@@ -122,7 +129,7 @@ def read_page(image_path: str | Path, places: list[dict], ledger: bool = False) 
     """Reads a clean page. Returns {'musicxml': text, 'notes': [...], 'staves': n, 'systems': n, 'ledger': [...]}."""
     from PIL import Image  # noqa: PLC0415
     front, read, write, evidence, inputs, read_revised = _load()
-    work = Path(tempfile.mkdtemp(prefix='scoreread-'))
+    work = Path(tempfile.mkdtemp(prefix='scorereader-'))
     png = work / 'page.png'
     shutil.copy(image_path, png)
     image = Image.open(png).convert('L')

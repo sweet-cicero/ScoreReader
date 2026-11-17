@@ -1,6 +1,6 @@
 """Splits the ink of a clean page into layers: staff lines, upright strokes, thick marks and the rest. No model is used.
 
-A page is hard to read as one picture and easy to read as layers. On a clean page (scoreread.page) every staff line
+A page is hard to read as one picture and easy to read as layers. On a clean page (scorereader.page) every staff line
 is level and its row is known, so each layer comes from a plain measure of the ink:
 
 1. Ink: the dark pixels of the page.

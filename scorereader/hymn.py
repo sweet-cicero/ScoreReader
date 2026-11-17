@@ -1,6 +1,6 @@
 """Joins the pages of a hymn into one score.
 
-Each page is read alone (scoreread.reader for an image, scoreread.vector for a software-made PDF) and gives its
+Each page is read alone (scorereader.reader for an image, scorereader.vector for a software-made PDF) and gives its
 parts: one list of bars for each staff of a system, from the top. The same staff of every system of every page is
 one part of the hymn. The pages follow each other bar after bar.
 """
@@ -14,7 +14,7 @@ def join_pages(pages: list[dict]) -> tuple[list[list[dict]], dict[int, str]]:
     A page begins at the same bar in every part: where a part of a page has fewer bars than another (a bar line
     was missed, or the page has no such staff), it gets empty bars at the page's end.
 
-    A tie over the end of a page: each page marks its half (scoreread.ties.TIE_PAGE), the last note of a part with
+    A tie over the end of a page: each page marks its half (scorereader.ties.TIE_PAGE), the last note of a part with
     'tie_start' and the first note of the part on the next page with 'tie_stop'. The tie holds where both pages
     mark it at one pitch; a half without its other half is taken away, at the end of the hymn too."""
     width = max(len(page['parts']) for page in pages)

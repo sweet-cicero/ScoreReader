@@ -11,11 +11,11 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from scoreread.layers import picture  # noqa: E402
-from scoreread.page import clean_page  # noqa: E402
-from scoreread.reader import read_page  # noqa: E402
-from scoreread.staves import find_staves  # noqa: E402
-from scoreread.systems import find_systems, lost_staves  # noqa: E402
+from scorereader.layers import picture  # noqa: E402
+from scorereader.page import clean_page  # noqa: E402
+from scorereader.reader import read_page  # noqa: E402
+from scorereader.staves import find_staves  # noqa: E402
+from scorereader.systems import find_systems, lost_staves  # noqa: E402
 
 # For each staff, its symbols from the left: (place, kind). Place 0 is the middle line and +1 one step up.
 # Kinds: 'q' quarter, 'h' half, 'q.' dotted quarter, 'e' eighth (two in a row are beamed), '|' bar line; 'h~' is a
@@ -102,7 +102,7 @@ def main() -> int:
     systems_ok = [len(system) for system in systems] == [2]
     print(f"{'ok ' if systems_ok else 'BAD'} systems: {[len(system) for system in systems]} (drawn [2]), clefs {result['clefs']}")
     # The words: a line of text as Tesseract gives it is cut into syllables (no Tesseract is needed for this check).
-    from scoreread.ocr import _syllables, _words_row
+    from scorereader.ocr import _syllables, _words_row
     line = [('Glo', 0, 30, 92), ('-', 32, 40, 90), ('ry', 42, 60, 88), ('to', 70, 90, 95), ('Thee,', 100, 150, 92),
             ('our-', 160, 200, 90), ('God__', 210, 280, 80), ('|', 290, 292, 90), ('mer-cy', 300, 360, 91), ('>', 370, 380, 64)]
     cut = [(syllable['text'], syllable['join']) for syllable in _syllables(line)]
@@ -110,7 +110,7 @@ def main() -> int:
     words_ok = cut == want and _words_row(line) and not _words_row([('lL', 0, 9, 0), ('te', 10, 20, 21), ('J!', 30, 40, 52)])
     print(f"{'ok ' if words_ok else 'BAD'} words: a line of text cut into {len(cut)} syllables (wanted {len(want)})")
     # The systems: verses on single staves around a refrain that is drawn as a system of two (measured links).
-    from scoreread.systems import group_staves, weigh
+    from scorereader.systems import group_staves, weigh
 
     def links(rows):
         out = [{'opening': opening, 'bars': bars, 'aligned': aligned, 'step': step} for opening, bars, aligned, step in rows]

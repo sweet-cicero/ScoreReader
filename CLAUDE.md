@@ -15,7 +15,7 @@ First milestone (the owner, 11 November 2026): 99 % on clean copies, the 81 scan
 words and crisp ink. Work on these first, notes and words. The thick copies (26) and the copies by hand (189) come
 after it. The owner decided against a local language model. The owner allowed Tesseract for the words of a scan
 (11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"): it is an
-optional step (`--tesseract`, `scoreread/ocr.py`), the reader works without it, and the own letter reader stays and
+optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
@@ -31,7 +31,7 @@ On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 
 Every step is the engine's own: staves, systems, the clean page, the layers, the symbols, the music rules, and the
 drawing of a software-made PDF. The engine is rules and classical image processing only, and it is ours to design:
 it is no wrapper of another reader. copisteria, homr and Audiveris are yardsticks only; copisteria's step lives in
-`bench/yardstick`, outside the package, and nothing in `scoreread/` may import it. Ideas, each to test:
+`bench/yardstick`, outside the package, and nothing in `scorereader/` may import it. Ideas, each to test:
 
 - Layers: process a hard page through a series of low-level steps that make it easier to read. Split the ink into
   staff lines, note heads, stems and beams, ledger lines and words, and give each layer its own strong colour. Rules
@@ -50,12 +50,20 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 
 ## State
 
-- `scoreread/` is the reader. `README.md` lists its steps, the results and the next steps.
-- `scoreread/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
+- `scorereader/` is the reader. The project is called ScoreReader everywhere (the owner, 17 November 2026): the
+  package and the command are `scorereader`, and a setting is `SCOREREADER_<NAME>` (`scorereader.setting`; a
+  setting under its name from before the rename, `SCOREREAD_<NAME>`, still counts where the new one is not set).
+- `README.md` says what ScoreReader does and how, for a person who reads it for the first time: short and high
+  level, with a plain list of the modules and one small diagram (the owner, 17 November 2026: no round-by-round
+  updates, no lists of results or of rules, no diagram of each function or file). Do not write the results of a
+  round into it. `docs/worklog.md` is the record: the results of each round on each set of pages, the limits, the
+  next steps and the history. The README's status is one paragraph of rounded figures (about 96 %): change it
+  only when a rounded figure changes.
+- `scorereader/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
   `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `music.py`). `letters.py` and `lyrics.py` read the
   words of a scan, and `ocr.py` reads them with Tesseract when asked, with rules of its own around it; the list of
   words (`--words`) serves both.
-  `scoreread/vector.py` reads a software-made PDF from its drawing.
+  `scorereader/vector.py` reads a software-made PDF from its drawing.
 - `bench/` holds the tests. Measure each change with `bash bench/kit.sh <name>` and the kit's `score.py`.
   `bench/yardstick/` is copisteria's step (`bash bench/kit.sh <name> --yardstick`).
 - The wide test (every score of LitChoir) runs with scripts outside git, because it needs the app's scans. It reads
@@ -310,12 +318,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 ## Rules
 
 - This repository is public. Do not add scans, typed hymns, recordings or keys. They stay in the test kit, outside git.
-- The test kit is in `~/Projects/LitChoir/tmp/omr-test` (`SCOREREAD_KIT`). Do not change the kit's own files.
-- The reader needs only OpenCV and NumPy (and pdfplumber for software-made PDFs). Nothing in `scoreread/` may
-  import PyTorch, copisteria or any other model. The one exception is `scoreread/ocr.py`: it calls the Tesseract
+- The test kit is in `~/Projects/LitChoir/tmp/omr-test` (`SCOREREADER_KIT`). Do not change the kit's own files.
+- The reader needs only OpenCV and NumPy (and pdfplumber for software-made PDFs). Nothing in `scorereader/` may
+  import PyTorch, copisteria or any other model. The one exception is `scorereader/ocr.py`: it calls the Tesseract
   program for the rows of the words, only when it is asked for, and no note may depend on it. The kit's
-  copisteria environment (`$SCOREREAD_KIT/tools/copisteria/.venv/bin/python`, after
-  `source "$SCOREREAD_KIT/env.sh"`) has all of it and runs the yardstick too.
+  copisteria environment (`$SCOREREADER_KIT/tools/copisteria/.venv/bin/python`, after
+  `source "$SCOREREADER_KIT/env.sh"`) has all of it and runs the yardstick too.
 - homr and Audiveris have the AGPL-3.0 licence. Do not copy their code into this repository. copisteria's code has
   the Apache-2.0 licence; the yardstick imports it and does not copy it.
 - The limits in `staves.py` and `systems.py` were set on the kit's 38 pages. Check a change on all 38 pages

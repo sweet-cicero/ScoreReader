@@ -1,11 +1,11 @@
 """Reads the rows of the words of a scan with Tesseract, when it is installed. This is the one step that uses a model.
 
 Tesseract is a small text reader that runs on this computer (Apache-2.0 licence). The reader does not need it: the
-notes are read by rules alone, and the words can be read by the letter shapes of the hymn (scoreread.lyrics). Where
+notes are read by rules alone, and the words can be read by the letter shapes of the hymn (scorereader.lyrics). Where
 Tesseract is installed and asked for, it reads each row of words as one line of text, and this step cuts the line
-into the syllables of the row with their places, so that scoreread.lyrics.set_under() can set them under the notes.
+into the syllables of the row with their places, so that scorereader.lyrics.set_under() can set them under the notes.
 
-The rows are the reader's own (scoreread.words): Tesseract never sees the notes.
+The rows are the reader's own (scorereader.words): Tesseract never sees the notes.
 """
 from __future__ import annotations
 
@@ -19,8 +19,10 @@ import tempfile
 import cv2
 import numpy as np
 
-PROGRAM = 'tesseract'    # the program's name, or its path (SCOREREAD_TESSERACT names another)
-LANGUAGE = 'eng'         # the language file (SCOREREAD_OCR_LANGUAGE names another, as 'eng+ell')
+from . import setting
+
+PROGRAM = 'tesseract'    # the program's name, or its path (SCOREREADER_TESSERACT names another)
+LANGUAGE = 'eng'         # the language file (SCOREREADER_OCR_LANGUAGE names another, as 'eng+ell')
 HIGH = 40                # a row of words is scaled so that its band is this many px high
 AGAIN = (32, 50)         # a second look: the row is read again at these sizes, and the reading that fits best is kept.
 #                          With a list of words that is the reading of which the list holds the most letters, else
@@ -133,7 +135,7 @@ FIRST = (50, 80)         # the first row under a staff holds the first verse. Wh
 
 def program() -> str | None:
     """The path of Tesseract on this computer, or None when it is not installed."""
-    return shutil.which(os.environ.get('SCOREREAD_TESSERACT', PROGRAM))
+    return shutil.which(setting('TESSERACT', PROGRAM))
 
 
 def available() -> bool:
@@ -145,7 +147,7 @@ def _line(crop: np.ndarray, folder: str, name: str) -> list[tuple[str, int, int,
     path = os.path.join(folder, name + '.png')
     cv2.imwrite(path, crop)
     # One thread: on a line of text Tesseract's threads only wait for each other, most of all on a busy computer.
-    done = subprocess.run([program(), path, '-', '--psm', '7', '-l', os.environ.get('SCOREREAD_OCR_LANGUAGE', LANGUAGE),
+    done = subprocess.run([program(), path, '-', '--psm', '7', '-l', setting('OCR_LANGUAGE', LANGUAGE),
                            'tsv'], capture_output=True, text=True, check=False,
                           env=dict(os.environ, OMP_THREAD_LIMIT='1'))
     found = []
@@ -888,7 +890,7 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
 
 def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
     """The syllables of the rows of words of a page, read with Tesseract: {'band': (page, the number of the row),
-    'text', 'x0', 'x1', 'join'} each, as scoreread.lyrics.read_words() gives them. With a list of words (`lex`:
+    'text', 'x0', 'x1', 'join'} each, as scorereader.lyrics.read_words() gives them. With a list of words (`lex`:
     {word: how often}) the words that the list does not hold are mended with it, the list sets where a word ends,
     it chooses between the readings of a row at several sizes, and a list that shows how its words are parted
     (`lex.parts`) parts the words into syllables where the scan shows no hyphen."""
@@ -934,7 +936,7 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
         under: dict[int, list[tuple[list[dict], float]]] = {}
         for number, ((read, more), band) in enumerate(zip(readers, bands)):
             row = [dict(syllable, band=(page, number)) for syllable in _pick(read, grey, band, known, mend, ways, more)]
-            # The rows under one staff, from the top (as scoreread.lyrics.set_under() gives a row to the staff over it).
+            # The rows under one staff, from the top (as scorereader.lyrics.set_under() gives a row to the staff over it).
             over = [index for index, staff in enumerate(layers.get('staves') or []) if staff['rows'][4] < band['top']]
             if row and over and band.get('with') is None:
                 under.setdefault(max(over, key=lambda index: layers['staves'][index]['rows'][4]), []).append((row, _sure(read(HIGH))))

@@ -7,7 +7,7 @@ quarter note. The note with a stem has one straight edge, the stem's, from end t
 at its head and a clef close in paper; the rest has neither.
 
 A rest is no note, and it says where a voice is silent: the note before it is not as long as the way to the next
-note of its voice (scoreread.music.agree_lengths).
+note of its voice (scorereader.music.agree_lengths).
 
 Only the printed quarter rest is read. The rests of a hand, the eighth rest and the rests that hang on a staff line
 are not read yet.
