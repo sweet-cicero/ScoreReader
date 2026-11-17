@@ -19,11 +19,11 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.7 % on
-scans; 83 scores at 99 % or more), 96.6 % of the notes on the clean copies (21,803 of 22,582, counted by the page;
-21,747 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+Not reached yet: 86.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.8 % on
+scans; 83 scores at 99 % or more), 96.6 % of the notes on the clean copies (21,808 of 22,582, counted by the page;
+21,752 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
 files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
-88.3 % of all syllables with Tesseract (87.1 % on scans), and 90.0 % on the kit (6212 of 6901).
+88.3 % of all syllables with Tesseract (87.1 % on scans), and 90.0 % on the kit (6214 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -442,6 +442,25 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   window as they move a layout: a score then loses notes and syllables that no rule read wrongly. Compare
   `window` with `layout` in the two results.
 - A new head that is read in both voices costs nothing in the count: a split of its two stems gained nothing.
+- A filled mark with no stem that stands past a read head, at the end where that head's stem begins, with the
+  stem's column at its edge, is the next head of that chord or the other voice's note whose own stem is lost
+  (`symbols.CHORD_STEM`). A mark along a stem is a sharp, the bowl of a flat or a letter as often as a head (20
+  right of 75), and no measure of the mark parts them: the place past the end of the stem does. A whole note on
+  a ledger line is no hollow mark for the reader (the line cuts its inside into slivers): a mark that closes
+  in paper is not taken.
+- The heads that the first form of a rule makes are listed with the scorer's verdict for each note (right, only
+  a wrong length, wrong, not there) and with the rule's measures: one reading of every page with wide limits
+  then shows which part of the rule and which limits bring wrong heads, without a run for each.
+- A new head changes what the older rules see beside it. A hollow head near the far end of a stem that it
+  shares with another head is the loop of a flag for `without_flag_loops`: a true half note vanished beside a
+  new head, and the new head became an eighth note. A wide guard for it (no head at a hollow head) cost 2
+  notes; the guard for the one case (a hollow head within `LOOP_NEAR` of the stem's end) gained 2 and lost 1.
+  Before a guard that costs notes is dropped, look at a note that it saves on the page and find the step that
+  loses it.
+- A rule for marks that an older rule also reads runs after the older rule: the heads that
+  `symbols.gone_stems` reads by their shape keep their own voice (before it, 3 notes fewer).
+- The figure of the notes that are not there is taken from the reading with the words, as the other figures
+  are; the reading without the words gives a few fewer.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
