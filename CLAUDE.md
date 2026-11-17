@@ -19,11 +19,11 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.5 % on
-scans; 83 scores at 99 % or more), 96.5 % of the notes on the clean copies (21,782 of 22,582, counted by the page;
-21,727 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+Not reached yet: 86.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.7 % on
+scans; 83 scores at 99 % or more), 96.6 % of the notes on the clean copies (21,803 of 22,582, counted by the page;
+21,747 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
 files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
-88.3 % of all syllables with Tesseract (87.1 % on scans), and 89.9 % on the kit (6207 of 6901).
+88.3 % of all syllables with Tesseract (87.1 % on scans), and 90.0 % on the kit (6212 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -427,6 +427,21 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A second reading of a page at another limit of the ink gives no rule: the notes that only the other reading
   has are false twice as often as true, and where two readings give a note two lengths the first is right
   three to four times as often. The bar does not choose either: a wrong length fits its voice in most cases.
+- A limit for how round the inside of a head is refuses a small inside with a ragged edge (0.83 of its hull
+  against 0.85), and a milder limit fills the bowl of a flat and the paper in a natural (37 notes gained and 62
+  lost). Paper that misses such a limit by a little is kept in a layer of its own that is not filled
+  (`layers.RAGGED`), and is asked by its own shape where a head is missing (`symbols.RAGGED_SLIT`: a slit that
+  rises to the right, with a stem). A census of every such piece in a mark that was read as a filled head gave
+  the shape. A layer that is not filled leaves the clefs and the keys as they were.
+- A hollow head that is not read leaves the pieces of its rim as small filled heads and the ink where two
+  heads touch as a sign, and a false quarter note that two voices share outvotes the true half note of
+  another voice. Before a wrong length is taken for a matter of the bar, look at the heads of its column. A
+  piece that a head replaced owns no stem, and a sign in the columns of such a head is no sign
+  (`symbols.OPEN_BESIDE`).
+- A page that holds more music than its typed hymn is counted in a window, and changed lengths can move the
+  window as they move a layout: a score then loses notes and syllables that no rule read wrongly. Compare
+  `window` with `layout` in the two results.
+- A new head that is read in both voices costs nothing in the count: a split of its two stems gained nothing.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

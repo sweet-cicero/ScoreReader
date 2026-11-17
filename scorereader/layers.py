@@ -52,6 +52,10 @@ WHOLE_INSIDE = (0.33, 0.3, 0.8, 2.4, 1.5)
 #                    wide. (None: off)
 HOLE_GAP = 0.2       # a break of up to this many staff spaces in the rim of a hollow head is closed for the open holes
 ROUND = 0.85         # the inside of a head fills at least this share of its hull: it has no dent
+RAGGED = 0.75        # closed paper that fills this share of its hull, and not ROUND of it, is no sure inside of a head:
+#                      the bowl of a flat, a natural and the paper between a sign and a head are such paper too, and
+#                      so is the small inside of a printed half note whose edge is ragged. It is kept apart (the
+#                      layer 'ragged') and is not filled; the symbols ask it where a head is missing (0: off).
 HOLE_LINE = 0.5      # two pieces of an inside that a staff line cut stand over each other for this share of the
                      # smaller one's width (0: off)
 LINE_ROUND = 0.6     # and with the line between them they fill this share of their hull
@@ -145,7 +149,7 @@ def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: floa
 
 
 def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[float] | None = None,
-               clefs: list[tuple[float, float, float, float]] | None = None) -> np.ndarray:
+               clefs: list[tuple[float, float, float, float]] | None = None, least: float | None = None) -> np.ndarray:
     """1 where paper is closed in by ink and can be the inside of a hollow note head.
 
     The inside of a head is round: it has no dent. Paper that is closed in between two marks has one. A sharp or a
@@ -157,7 +161,8 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
     where the line is. With `line` (the thickness of the staff lines in px), two such pieces, one over the other
     with a band of ink as thick as a line between them, are one inside when the two and the band are round together.
     With `rows` (the rows of the page's staff lines), a line that is faint inside a head is seen too: _necked().
-    `clefs` are the boxes (first column, last column, first row, last row) where HOLE_SIDE does not hold."""
+    `clefs` are the boxes (first column, last column, first row, last row) where HOLE_SIDE does not hold. `least` is
+    the share of its hull that an inside fills (ROUND when None; see RAGGED)."""
     lined = np.array(sorted(rows), float) if rows else None
     count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
     keep = np.zeros(count, bool)
@@ -180,7 +185,7 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
         dented.append(index)
         if area > HOLE[0] * space * space or width > HOLE[2] * space:
             continue
-        if area >= 0.06 * space * space and not _round(part, area):
+        if area >= 0.06 * space * space and not _round(part, area, least):
             if not (line and HOLE_NECK and lined is not None and _necked(part, area, line, y, lined)):
                 continue
         keep[index] = True
@@ -312,7 +317,8 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     strokes joined), 'up', 'stems' (the thin part of the slim upright strokes), 'marks' (free without stems) and
     'thick'; 'bare' (the ink without staff lines and without the filling of the holes); 'strokes' (see _strokes);
     'staves' (each staff: rows, x0, x1, space, thick, system, number, top, bottom) and 'space' (the page's staff
-    space in px). `no_holes` is 1 on closed-in paper that a first reading of the page found to be no inside of a head
+    space in px); 'ragged' (closed-in paper that is not quite round and is not filled: see RAGGED). `no_holes` is 1
+    on closed-in paper that a first reading of the page found to be no inside of a head
     (symbols.big_holes): it is not filled."""
     ink = ink_mask(grey)
     staves = []
@@ -334,6 +340,10 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((size, 1), np.uint8)) \
         | cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((1, size), np.uint8))
     open_holes = head_holes(closed, space, clefs=clefs) & (1 - ink) & (1 - holes)
+    ragged = np.zeros_like(holes)
+    if RAGGED:
+        ragged = head_holes(ink, space, max(staff['thick'] for staff in staves),
+                            [row for staff in staves for row in staff['rows']], clefs, RAGGED) & (1 - holes)
     if no_holes is not None:
         count, labels = cv2.connectedComponents(holes, connectivity=4)
         gone = np.isin(labels, np.unique(labels[(no_holes > 0) & (holes > 0)])) & (holes > 0)
@@ -393,7 +403,8 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     thick = cv2.morphologyEx(marks, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (brush, brush)))
     # The ink without the staff lines and without the filling of the holes, with thin strokes going through the lines.
     bare = (ink & (1 - lines)) | through
-    return {'grey': grey, 'ink': ink, 'holes': holes, 'open_holes': open_holes, 'solid': solid, 'lines': lines, 'free': free, 'joined': joined, 'up': up,
+    return {'grey': grey, 'ink': ink, 'holes': holes, 'open_holes': open_holes, 'ragged': ragged, 'solid': solid,
+            'lines': lines, 'free': free, 'joined': joined, 'up': up,
             'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
             'bare': bare, 'weak': weak, 'bridge': bridge}
 
