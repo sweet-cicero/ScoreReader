@@ -30,9 +30,9 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 96.3 % (21,751 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 96.1 % (5,994 of 6,239) | 93.6 % (4,228 of 4,515) |
-| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 87.5 % (1,733 of 1,980) | 85.6 % (1,174 of 1,371) |
-| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 81.3 % (11,678 of 14,356) | 78.1 % (8,073 of 10,343) |
+| Clean print | 78 | 96.3 % (21,751 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 96.5 % (6,021 of 6,239) | 94.3 % (4,259 of 4,515) |
+| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 88.0 % (1,742 of 1,980) | 86.2 % (1,182 of 1,371) |
+| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 82.5 % (11,838 of 14,356) | 79.6 % (8,235 of 10,343) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
@@ -57,16 +57,17 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   240 of the 1,269 notes that were lost then (1,017 now, with the notes of chords counted). An earlier count said that a quarter of the mistakes are
   the scorer lining a staff up with the wrong part: the tool behind that count lined the notes up in its own way,
   and it is not held any more.
-- Words with the optional Tesseract step and a list of words: 25,058 of 28,680 syllables are right (87.4 %,
-  counted by the page since round 35; 24,877 as typed):
-  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 86.0 % on
-  the scans (19,405 of 22,575; the rules of round 37 brought 25 of them and its count by the page 26, the
+- Words with the optional Tesseract step, its larger language files as further opinions (since round 39) and a
+  list of words: 25,254 of 28,680 syllables are right (88.1 %,
+  counted by the page since round 35; 25,076 of 28,700 as typed):
+  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 86.8 % on
+  the scans (19,601 of 22,575; round 39 brought 196 of them, the rules of round 37 brought 25 and its count by the page 26, the
   rules of round 36 brought 471, the rules of round 35 brought 138 and
   the count by the page 139, round 34 brought 63). Before round 34 these were 21 syllables fewer than in round 17 with the same words read: the
   words are compared in the layout that the count of the notes chooses for a score, and the scorer sets a few
-  scores in another layout or on another part of their pages now. On the clean copies 96.1 % of the syllables and 93.6 % of the whole words are
-  right, and 28 of the 78 scores have 99 % of their syllables (25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 227 syllables
-  are lacking for 99 % of each clean score (285 before round 37, 366 before round 36). The
+  scores in another layout or on another part of their pages now. On the clean copies 96.5 % of the syllables and 94.3 % of the whole words are
+  right, and 31 of the 78 scores have 99 % of their syllables (28 before round 39, 25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 200 syllables
+  are lacking for 99 % of each clean score (227 before round 39, 285 before round 37, 366 before round 36). The
   list of words is made from the typed hymns of the app without the hymn that is read and its other scores, so no
   score is read with its own text. Without a list the scans have about 910 fewer of these syllables and
   about 1,170 fewer whole words (quick count, see the rounds of the words below).
@@ -99,6 +100,98 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 39 (17 November 2026): Tesseract's larger language files as further opinions. No note of the reader
+  changed in this round, on LitChoir, on the fresh set and on the kit. (Round 38 was the new name of the
+  project and the short README, and held no rule.) Tesseract comes with a small English file. Its own
+  repositories hold two larger ones, the standard file (23 MB) and the "best" file (15 MB), both under the
+  Apache-2.0 licence. The owner allowed them (16 November 2026: "use the big one"). Neither is added to this
+  repository: `--second <folder>` (or `SCOREREADER_OCR_SECOND`) names the folder of such a file, and two
+  folders are named with a colon between them.
+
+  First the standard file was put in the place of the small one, in a full run of the clean copies: 26
+  syllables gained and 81 lost. The limits of how sure Tesseract must be were set with the small file, and
+  the larger network reads a stroke as the word I and a faint row as words. So the small file stays the first
+  reader, and the larger files are further opinions (`ocr.SECOND`): a row of which no reading with the small
+  file holds only words of the list, at its three sizes and in the second look, is read with the "best" file
+  and then with the standard file, at the three sizes each. The two misread different words, and both
+  together read more than either alone.
+
+  The clean copies went from 5,994 to 6,021 of 6,239 syllables (96.5 %; 28 gained, 1 lost; as typed 5,968
+  of 6,259), their whole words from 4,228 to 4,259 of 4,515 (94.3 %; 32 gained, 1 lost). 31 scores have 99 %
+  of their syllables (28 before), and 200 syllables are lacking for 99 % of each score (227 before; 218 are
+  missing in all). The one syllable lost is in a score that prints only "Al - le - lu - ia": a reading of a
+  larger file has "a" for "al" in one row. All scores went from 25,058 to 25,254 of 28,680 syllables
+  (88.1 %; 217 gained, 21 lost; as typed 25,076 of 28,700), the thick copies from 1,733 to 1,742 of 1,980
+  and the copies by hand from 11,678 to 11,838 of 14,356; the whole words of all scores from 16,404 to
+  16,605 of 20,578 (212 gained, 11 lost). The reader writes 62 syllables more than before on all scores
+  (27,907), and 196 more of them are right. Each rule alone, switched off against the others on, counted
+  from the stored rows (syllables gained and lost; the rows of each larger file were stored once for every
+  scan page and for the fresh set):
+
+  | Rule | Clean copies | All scan pages | Fresh test set |
+  |---|---:|---:|---:|
+  | An s at the end of a word is neither taken away nor added by the mending (`ocr.MEND_S`) | 6 and 1 | 12 and 8 | 1 and 0 |
+  | A stroke alone between two words is the word I by its ink (`ocr.LONE_I`) | 3 and 0 | 4 and 0 | 0 and 0 |
+  | The two larger files as further opinions, with their guards (`ocr.SECOND`) | 21 and 2 | 212 and 20 | 45 and 0 |
+  | the "best" file alone | 15 and 2 | 189 and 22 | 42 and 0 |
+  | the standard file alone | 17 and 2 | 138 and 14 | 38 and 0 |
+  | Guard: a word that the small file read with the same letters is not mended in a further reading (`ocr.SECOND_MEND`), against no mending there | 9 and 1 | 58 and 20 | 2 and 1 |
+  | Guard: a further reading that lacks a word which the small file read alike at each size, and has fewer letters, is not kept (`ocr.SECOND_FIRM`) | 4 and 0 | 29 and 12 | 1 and 0 |
+  | Guard: words of one letter do not count as words of the list in a further reading (`ocr.SECOND_MORE`) | 2 and 2 | 7 and 12 | 0 and 6 |
+  | The round, by this count | 29 and 1 | 223 and 18 | 45 and 0 |
+  | The round, in the full runs | 28 and 1 | 217 and 21 | 44 and 0 |
+  | the same, in whole words | 32 and 1 | 212 and 11 | 39 and 0 |
+
+  The full runs read every scan page of LitChoir and the fresh set with Tesseract; after the last change of a
+  guard, the 41 pages of LitChoir and the 2 of the fresh set whose rows it moves were read again.
+- A further reading is kept by the list alone (`ocr.SECOND`), round 39. How sure two readers are does not
+  compare: the "best" file is sure of a row that it misreads. A reading of a larger file takes the place of
+  the reading that stands only where it leaves fewer letters in words that the list lacks, and no fewer
+  letters in words of the list. The first form of this gained 22 syllables on the clean copies and lost 10,
+  and the lost ones showed three ways in which the count is fooled; each has its guard.
+  A word of the hymn that the list lacks is mended to a word of the list in the reading that is less sure
+  of it ("cries" became "cried"). A word that the small file read with the same letters is not mended in a
+  further reading: two readers that agree have read the page (`ocr.SECOND_MEND`).
+  A misread that makes such a word shorter leaves fewer letters outside the list ("patience" as "patence",
+  the label "Ison" as "son"). A further reading that lacks a word which the small file read alike at each
+  of its sizes, and that has fewer letters than the reading that stands, is not kept (`ocr.SECOND_FIRM`).
+  A second half of this guard (no new word outside the list in the place of such a word) gained 6 syllables
+  and lost 15 on all scan pages when it was counted alone, and lost 3 on the fresh set: it was taken out.
+  A stroke that a larger file reads as the word I, or a blot as "a", adds a letter of the list. Words of
+  one letter do not count as words of the list there (`ocr.SECOND_MORE`). This guard costs syllables in the
+  count: level on the clean copies, 5 more lost than gained on all scan pages, and 6 lost on the fresh set
+  with none gained. It is kept for what the count does not see: without it the reader writes 27 more false
+  words of one letter on all scan pages (16 of them the word I; 6 of the 27 on the clean copies, 20 on the
+  copies by hand), in rows like three strokes read as "I I I". The fresh set, crisp pages with no stray
+  strokes, has no such word either way. Three milder forms were counted and gave the fresh set nothing back:
+  a word of one letter counts as often as the small file read it too (5 gained and 2 lost on all scan
+  pages, nothing on the clean copies and on the fresh set), it counts neither for nor against a reading (6
+  and 12, and 13 lost on the fresh set), it counts where the reading has no more words than the one that
+  stands (6 and 4, nothing on the fresh set).
+- An s at the end of a word (`ocr.MEND_S`), round 39. The mending takes a letter away, adds one or changes
+  one to reach a word of the list. The list holds the singular of nearly every plural and the plural of
+  many words, so it cannot choose between them: of the words that lost a last s by the mending on all scan
+  pages 26 were wrong and 12 right. An s at the end is neither taken away nor added now. With the larger
+  files on, 4 of the 8 syllables that the rule loses on all scan pages are one row of a copy by hand where
+  the s was rightly taken away before and another reading stands now.
+- A stroke alone between two words (`ocr.LONE_I`), round 39. Tesseract writes the sign "|" for a bar line
+  that crosses the words, for a line by hand and for the letter I, and the word alone cannot tell them
+  apart: of the strokes that stand alone on LitChoir's scan pages few are the letter. The ink tells. The
+  letter is as high as the capitals of its row and stands on the row's line, and it is as thick as the
+  strokes of the row's letters (0.8 to 1.25 times on LitChoir's pages; the limits are 0.7 and 1.5). A bar
+  line goes on over the row, and a line by hand or a dashed bar line is a hairline (0.3 to 0.4 times). The
+  count from the stored rows hands the page itself to this rule.
+- Counted in round 39 and dropped. Single words taken from a larger file's reading into the reading that
+  stands (the list's word at the same place): 6 syllables gained and 5 lost on the clean copies; the
+  commonest word wins there, and a rare true word loses. A further reading only where it is whole: 8
+  gained and none lost, too few. No further reading where the small file read no row of words at all: it
+  loses 5 of the gains. A guard that keeps every word of the list that the standing reading has: fewer
+  gains and the same losses. Counted and left without a rule: digits of a verse number that are read as a
+  part of the first word (7 places of the clean copies), and the rows under the two staves of a system
+  that print the same words (14 syllables at most).
+- A folder with only a language file, round 39. Such a folder holds no config files of Tesseract. Asked for
+  its table of words by the config file `tsv`, Tesseract printed nothing, and a first run with the standard
+  file read no word at all. The table is asked for by its setting now (`-c tessedit_create_tsv=1`).
 - Round 37 (16 November 2026): the words by the page, for every kind of difference. No note of the reader
   changed in this round, on LitChoir, on the fresh set and on the kit. The owner's rule of that day: where the
   page says one thing and the typed hymn another, the page is the source of truth. The typed syllables of the
@@ -2370,7 +2463,8 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 35 (6 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.2 % (8,191 of 11,341) | 87.5 % (5,818 of 6,647) | 97.4 % |
 | After round 36 (2 rules for the words and a guard) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.5 % (8,225 of 11,341) | 87.9 % (5,845 of 6,647) | 97.6 % |
 | After round 37 (3 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.8 % (8,254 of 11,341) | 88.1 % (5,858 of 6,647) | 97.9 % |
-| of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 91.3 % | 93.0 % | 98.0 % |
+| After round 39 (2 rules for the words, and Tesseract's larger files as further opinions) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,298 of 11,341) | 88.7 % (5,897 of 6,647) | 97.9 % |
+| of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.4 % (17,083 of 18,288) | 37 | 76 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
 
@@ -2560,6 +2654,15 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
   staff, on two English pieces; the label and the two words that are one change no row here. The words that a
   hymn is typed otherwise than its page prints are a matter of LitChoir alone: the answers of this set are
   exact, and it is counted as before.
+- Round 39 was read here in full, and the pages that its last change moved a second time: no note changes, 44
+  syllables gained and none lost (8,298 of 11,341), 39 whole words gained and none lost (5,897 of 6,647). 38 of
+  the syllables are on the English pieces (92.3 % of their syllables now, 94.2 % of their whole words) and 6 on
+  Romanian ones. Nearly all of it is the larger files of Tesseract as further opinions (45 gained and none lost
+  by the count from the stored rows). The language files are English: the Romanian and the Church Slavonic
+  pieces get no further opinion that knows their letters. One guard of the round costs 6 syllables here and
+  gains none (a reading of a larger file is not kept for its words of one letter); it is kept for LitChoir's
+  worn pages, where it keeps 27 false words of one letter out, and three milder forms of it gave these pages
+  nothing back.
 - Round 36 was read here twice. The first reading, with the second look at a row that ink crosses, gained 38
   syllables and lost 28, and lost 33 whole words for 28: English gained 18 syllables and lost 1, Romanian
   gained 12 and lost 24. The list of words holds few Romanian words and cannot choose between two readings of
@@ -2660,6 +2763,14 @@ typed hymns, of all typed notes.
   page that the list does not fit. Each row is read up to
   three times, which takes 3 to 4 seconds for a page. Tesseract is not our own step and
   it holds a small neural network: the own letter reader must catch up with it before the goal is met.
+- The larger language files of Tesseract are not part of ScoreReader and are not in this repository: the user
+  fetches them and names their folder. They were measured for English only; a page in another language gets a
+  further opinion that does not know its letters, and the reading is kept only where it fits the list better.
+  A row in doubt is read six times more with the two files: the run of every page of LitChoir took 2,055
+  seconds with them and 1,388 without, on four cores. A further reading is chosen by the list of words, so
+  without a list the larger files are not asked. And the guard for words of one letter costs right syllables
+  on crisp pages (6 on the fresh set): a stroke and a true letter I are not told apart in a further reading
+  yet, as they are in a reading of the small file.
 - Time signatures are
   found so that they are no notes (the numbers, and the C of common time; not the sign of cut time, and not a small
   C), but they are not read into the result. A tie is read when its bow runs from head to
@@ -2710,7 +2821,7 @@ typed hymns, of all typed notes.
    straight end (a limit on the size of a hole alone lost more than it gained).
    Of the notes lost on the clean copies in round 13, 486 had only a wrong length, 346 only a wrong
    pitch (118 a semitone off, by a sign) and about 300 were not read. Words
-   (245 syllables are missing on the clean copies after round 37, 227 for 99 % of each score; no cause holds
+   (218 syllables are missing on the clean copies after round 39, 200 for 99 % of each score; no cause holds
    more than a dozen: a response lettered by hand on two scans, single letters that Tesseract reads wrongly
    in words that are other words of the list, a lone O, a or I that is left out, a word under a long melody
    whose syllables are read as signs): the first syllable of a refrain that stands alone between two rows, a one-syllable word
@@ -2796,4 +2907,7 @@ or slurs cross is read a second time without that ink, and a row of few words un
 row of words now. Round 37 followed the owner's rule that the page is the source of truth: the words that a hymn
 is typed otherwise than its page prints were looked at on the page and count as the page prints them (25 places
 on the clean copies), a label under the first note stays whole, and a stray row close under a staff no longer
-hides the row of the words.
+hides the row of the words. Round 38 gave the project its one name, ScoreReader, and a short README; it held no
+rule. Round 39 brought Tesseract's larger language files in (the owner, 16 November 2026: "use the big one"): in
+the place of the small file the standard file read fewer words right, so the small file stays the first reader,
+and a row that it leaves in doubt is read with the "best" file and the standard file as further opinions.

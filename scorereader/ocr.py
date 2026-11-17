@@ -67,6 +67,32 @@ MEND_PAIR = 7            # two words side by side that the list does not hold, o
 #                          become the one word of the list that they are with one letter read otherwise: the end
 #                          of a word under a long melody stands far from its start, with no hyphen that was read
 #                          ('Al-le-lu la' is 'Al-le-lu-ia'). None: off
+MEND_S = True            # an s at the end of a word is never taken away and never added by the mending: the list
+#                          holds 'sake' and lacks 'sakes', and the page prints 'sakes'
+LONE_I = (0.1, 0.6, 0.2, 0.7, 1.5)   # a stroke that stands alone between two words ('|') is the word I where its
+#                          ink is a letter: it begins at most LONE_I[0] heights of the band under the band's top and
+#                          under LONE_I[1] over it, it ends within LONE_I[2] of the band's foot, and it is LONE_I[3]
+#                          to LONE_I[4] times as thick as the strokes of the row's letters. A bar line goes on over
+#                          the row; a line by hand and a dashed line are hairlines.
+SECOND = 1000            # a second language file of Tesseract (SCOREREADER_OCR_SECOND names its folder: the standard or
+#                          the 'best' file beside the small one that Tesseract comes with) is a second opinion: where
+#                          no reading with the first file holds only words of the list, the row is read with the
+#                          second file too, at the three sizes, and the reading that fits the list best is kept. Its
+#                          readings are the sizes from SECOND on (SECOND + 40). In the place of the small file the
+#                          large one read 26 syllables more and 81 fewer on the clean copies: the limits of how sure
+#                          Tesseract is were set with the small file.
+SECOND_MORE = 2          # how sure the two files are does not compare: a reading with the second file is kept only
+#                          where it leaves fewer letters in words that the list does not hold, and no fewer letters
+#                          in words of the list. Words of fewer letters than this do not count as words of the list
+#                          there: the large file reads a stroke as the word I.
+SECOND_FIRM = True       # a word that the list lacks and that the first file read with the same letters at each of
+#                          its sizes is a word of the hymn. A reading of a further file that lacks such a word and
+#                          has fewer letters than the reading that stands is not kept ('patience' as 'patence',
+#                          'Ison' as 'son'): it counts fewer letters outside the list only because it read the
+#                          word shorter.
+SECOND_MEND = True       # a word of the second file's reading that the first file read with the same letters is not
+#                          mended: two readers that agree have read the page, and the word is one that the list
+#                          lacks (False: no word of the second file's reading is mended)
 MEND_ODD = 2             # a word that Tesseract is sure of is mended all the same when it holds this many runs of
 #                          three letters, its beginning and its end counted, that no word of the list holds: it is no
 #                          word of the list's language ('thov', 'lotd'), where 'banner' and 'jews' are (None: off)
@@ -142,13 +168,28 @@ def available() -> bool:
     return program() is not None
 
 
-def _line(crop: np.ndarray, folder: str, name: str) -> list[tuple[str, int, int, float]]:
-    """The words of one line of text: (text, left, right, how sure) each, in the crop's px."""
+def second_files() -> list[str]:
+    """The folders of further language files of Tesseract (SCOREREADER_OCR_SECOND: one folder, or several with the
+    path separator between them), each when it holds the file of the language that is read. Tesseract comes with a
+    small file; its standard and its 'best' file hold a larger network that reads other words wrongly than the
+    small one, and than each other. See SECOND."""
+    language = setting('OCR_LANGUAGE', LANGUAGE)
+    folders = [folder for folder in (setting('OCR_SECOND') or '').split(os.pathsep) if folder] if SECOND else []
+    return [folder for folder in folders
+            if all(os.path.exists(os.path.join(folder, name + '.traineddata')) for name in language.split('+'))]
+
+
+def _line(crop: np.ndarray, folder: str, name: str, files: str | None = None) -> list[tuple[str, int, int, float]]:
+    """The words of one line of text: (text, left, right, how sure) each, in the crop's px. `files`: the folder of
+    another language file than the one that Tesseract comes with."""
     path = os.path.join(folder, name + '.png')
     cv2.imwrite(path, crop)
     # One thread: on a line of text Tesseract's threads only wait for each other, most of all on a busy computer.
-    done = subprocess.run([program(), path, '-', '--psm', '7', '-l', setting('OCR_LANGUAGE', LANGUAGE),
-                           'tsv'], capture_output=True, text=True, check=False,
+    # The table of the words is asked for by its setting, not by the config file 'tsv': a folder with only a
+    # language file has no config files.
+    done = subprocess.run([program(), path, '-', '--psm', '7', '-l', setting('OCR_LANGUAGE', LANGUAGE)]
+                          + (['--tessdata-dir', files] if files else []) + ['-c', 'tessedit_create_tsv=1'],
+                          capture_output=True, text=True, check=False,
                           env=dict(os.environ, OMP_THREAD_LIMIT='1'))
     found = []
     for row in done.stdout.splitlines()[1:]:
@@ -563,11 +604,13 @@ def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None
     return [part for parts in words for part in parts]
 
 
-def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None) -> list[dict]:
+def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
+          agreed: frozenset[str] | set[str] = frozenset()) -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
     there ('tnose', 'orlent', 'trinty'); the hymns of one church use the same words again and again, and the list
     tells which word was meant. A word is the syllables that hyphens join. Only letters count: capitals, commas and
-    apostrophes stay as they were read. A word that the list holds is never changed, and a letter that is a whole
+    apostrophes stay as they were read. A word that the list holds is never changed, nor a word in `agreed` (a
+    word that another reading of the row holds too, see SECOND), and a letter that is a whole
     syllable is never taken away (it is a word of its own whose hyphen was read wrongly: 'O-joy'). A vowel that is
     missing between two syllables becomes a syllable of its own ('Trin-ty' is 'Trin-i-ty'), unless the syllable
     before it has no vowel yet ('Gl-ry' is 'Glo-ry'). `mended` takes each word that was mended, as it was read."""
@@ -584,7 +627,7 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
         found.extend(word)
         parts, word = word, []
         before, ahead = ahead, read
-        if len(read) < MEND[0] or read in known:
+        if len(read) < MEND[0] or read in known or read in agreed:
             continue
         odd = _odd(read, known) if MEND_ODD or MEND_OFTEN else 0
         firm = sure >= MEND[2] and not (MEND_ODD and odd >= MEND_ODD)
@@ -601,6 +644,8 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
             continue
         (new, (at, how)), = meant.items()
         last = at >= len(read) - 1 + (how == 'more')
+        if MEND_S and last and ((how == 'less' and read[-1] == 's') or (how == 'more' and new[-1] == 's')):
+            continue
         often = bool(MEND_OFTEN) and known[new] >= MEND_OFTEN[0] * _RUNS[2]
         if often and parts[-1]['join']:
             often = False
@@ -730,6 +775,52 @@ def _no_cross(crop: np.ndarray, around: np.ndarray, down: int, top: float, botto
     return out
 
 
+def _stroke(ink: np.ndarray) -> float:
+    """How thick the upright strokes of a piece of a row are: the median of its runs of ink along the rows, in px."""
+    runs = []
+    for line in ink:
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], line.astype(np.int8), [0]))))
+        runs.extend((edges[1::2] - edges[::2]).tolist())
+    return float(np.median(runs)) if runs else 0.0
+
+
+def _lone_i(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[str, float, float, float]]:
+    """The word I that Tesseract read as a stroke. A '|' that stands alone between two words is a bar line, a line
+    by hand or the letter I. The letter is as high as the row's capitals (its ink begins near the top of the band
+    or over it and ends at the foot of the band) and as thick as the strokes of the row's letters; a bar line goes
+    on over the row, and a line by hand or a dashed line is a hairline."""
+    if not LONE_I or len(words) < 3:
+        return words
+    top, bottom = int(band['top']), int(band['bottom'])
+    high = max(1, bottom - top)
+    found = list(words)
+    usual = None
+    for number in range(1, len(words) - 1):
+        text, left, right, sure = words[number]
+        if text != '|' or not all(any(sign.isalpha() for sign in words[other][0]) for other in (number - 1, number + 1)):
+            continue
+        first, last = max(0, int(left)), min(grey.shape[1], int(right) + 1)
+        box = grey[:, first:last] < 128
+        rows = box.any(axis=1)
+        middle = (top + bottom) // 2
+        if last <= first or not 0 <= middle < len(rows) or not rows[middle]:
+            continue
+        up = down = middle
+        while up > 0 and rows[up - 1]:
+            up -= 1
+        while down + 1 < len(rows) and rows[down + 1]:
+            down += 1
+        if not (-LONE_I[0] * high <= top - up < LONE_I[1] * high and abs(down - bottom) <= LONE_I[2] * high):
+            continue
+        if usual is None:
+            begin, end = max(0, int(words[0][1])), min(grey.shape[1], int(words[-1][2]) + 1)
+            usual = _stroke(grey[max(0, top):bottom + 1, begin:end] < 128)
+        thick = float(np.median(box[up:down + 1].sum(axis=1)))
+        if usual > 0 and LONE_I[3] * usual <= thick <= LONE_I[4] * usual:
+            found[number] = ('I', left, right, sure)
+    return found
+
+
 def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
     """Whether a line of text is a row of words: how sure Tesseract is of its letters, each letter counted once."""
     if ROW is None:
@@ -740,7 +831,8 @@ def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
 
 
 def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
-              known: dict[str, int], mend: bool = True, alone: bool = False) -> tuple[list[dict], float, bool]:
+              known: dict[str, int], mend: bool = True, alone: bool = False, mending: bool = True,
+              agreed: frozenset[str] | set[str] = frozenset()) -> tuple[list[dict], float, bool]:
     """What one reading of a row gives: its syllables, how well the reading fits, and whether the list of words
     holds each of its words. The fit is the number of letters in words that the list holds, and among readings
     that are level there, or with no list, how sure Tesseract is of the letters. `alone`: the reading is a second
@@ -753,6 +845,8 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     letters = [(sum(sign.isalpha() for sign in text), sure) for text, _, _, sure in words]
     count = sum(number for number, _ in letters)
     sure = sum(number * sure for number, sure in letters) / count if count else 0.0
+    if LONE_I:
+        words = _lone_i(words, grey, band)
     if CUT:
         words = _cut_wide(words, grey, band)
     row = _syllables(words, known, band['bottom'] - band['top'])
@@ -761,10 +855,10 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     if ENDS:
         row = _ends(row, known, mend)
     mended: list[str] = []
-    if MEND and mend:
+    if MEND and mend and mending:
         if MEND_PAIR:
             row = _mend_pair(row, known, mended)
-        row = _mend(row, known, mended)
+        row = _mend(row, known, mended, agreed)
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
         return [], -1.0, False
@@ -821,6 +915,12 @@ def _held(row: list[dict], known: dict[str, int], least: int = 1) -> tuple[int, 
     return held, total
 
 
+def _lacking(row: list[dict], known: dict[str, int]) -> set[str]:
+    """The words of a reading that the list of words does not hold, by their letters."""
+    words = (''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha()) for word in _read_words(row))
+    return {word for word in words if word and word not in known} if known else set()
+
+
 def _read_words(row: list[dict]) -> list[list[dict]]:
     """The words of a row: the syllables that hyphens join."""
     words: list[list[dict]] = [[]]
@@ -867,15 +967,30 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
     With `ways` the words are parted into syllables as the list of words parts them. `more` are the sizes of a
     second look, read after the others where no reading is whole (a size under 0: the picture without the ink that
-    crosses the row, see CROSS and CROSS_LIST)."""
+    crosses the row, see CROSS and CROSS_LIST; a size from SECOND on: the second language file, see SECOND)."""
     best: tuple[list[dict], float] | None = None
     rows: list[list[dict]] = []
+    firsts: set[str] = set()       # the words that the list lacks, as the first file read them
+    firm: set[str] | None = None   # those of them that every size of the first file read alike
     for size in (HIGH,) + tuple(AGAIN or ()) + tuple(more):
-        row, fit, whole = _text_row(read(size), grey, band, known, mend, size < 0 and (best is None or best[1] < 0))
+        again = size < 0 or bool(SECOND and size >= SECOND)      # a second look: another picture or another file
+        second = again and size > 0
+        row, fit, whole = _text_row(read(size), grey, band, known, mend, again and (best is None or best[1] < 0),
+                                    mending=bool(SECOND_MEND) or not second, agreed=firsts if second else frozenset())
+        lacking = _lacking(row, known)
+        if not again:
+            firsts |= lacking
+            firm = lacking if firm is None else firm & lacking
         rows.append(row)
-        if (size < 0 and CROSS_LIST and not mend and best is not None and best[1] >= 0
+        if (again and CROSS_LIST and not mend and best is not None and best[1] >= 0
                 and not (known and _held(row, known)[0] > _held(best[0], known)[0])):
             continue
+        if second and SECOND_MORE and best is not None and best[1] >= 0:
+            (held, total), (old, before) = _held(row, known, SECOND_MORE), _held(best[0], known, SECOND_MORE)
+            if not (total - held < before - old and held >= old):
+                continue
+            if SECOND_FIRM and firm and firm - lacking and total < before:
+                continue
         if best is None or fit > best[1]:
             best = (row, fit)
         if whole:
@@ -901,6 +1016,7 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
     height, width = grey.shape
     known = _known(lex)
     ways = _ways(lex, known)
+    others = second_files()
     found = []
     with tempfile.TemporaryDirectory() as folder:
         readers = []
@@ -921,17 +1037,23 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
 
             def read(size: int, part=part, bare=bare, first=first, band=band, number=number, seen=seen) -> list[tuple[str, float, float, float]]:
                 if size not in seen:                   # a size under 0: the picture without the ink that crosses the row
-                    picture, tall = (part, size) if size > 0 else (bare, -size)
+                    files = None
+                    if SECOND and size >= SECOND:      # a size from SECOND on: the picture as it is, a further file
+                        picture, tall, files = part, size % SECOND, others[size // SECOND - 1]
+                    else:
+                        picture, tall = (part, size) if size > 0 else (bare, -size)
                     scale = tall / max(1.0, band['bottom'] - band['top'])
                     crop = cv2.resize(picture, None, fx=scale, fy=scale,
                                       interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA)
                     edge = tall // 2
                     crop = cv2.copyMakeBorder(crop, edge, edge, edge, edge, cv2.BORDER_CONSTANT, value=255)
                     seen[size] = [(text, first + (left - edge) / scale, first + (right - edge) / scale, sure)
-                                  for text, left, right, sure in _line(crop, folder, f'{page}_{number}_{size}')]
+                                  for text, left, right, sure in _line(crop, folder, f'{page}_{number}_{size}', files)]
                 return seen[size]
 
-            readers.append((read, () if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ()))))
+            readers.append((read, (() if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ())))
+                            + (tuple(SECOND * (file + 1) + size for file in range(len(others))
+                                     for size in (HIGH,) + tuple(AGAIN or ())) if known else ())))
         mend = bool(known) and _fits([(read(HIGH), band) for (read, _), band in zip(readers, bands)], grey, known)
         under: dict[int, list[tuple[list[dict], float]]] = {}
         for number, ((read, more), band) in enumerate(zip(readers, bands)):

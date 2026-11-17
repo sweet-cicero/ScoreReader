@@ -14,17 +14,18 @@ note. The work does not stop at a partial result. Report each result with its li
 First milestone (the owner, 11 November 2026): 99 % on clean copies, the 81 scan scores with printed notes and
 words and crisp ink. Work on these first, notes and words. The thick copies (26) and the copies by hand (189) come
 after it. The owner decided against a local language model. The owner allowed Tesseract for the words of a scan
-(11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"): it is an
+(11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"; 16 November
+2026, of its larger language files: "use the big one"): it is an
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
 scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,751 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.1 % with Tesseract and a list of
-words (5,994 of 6,239, counted by the page; 5,940 of 6,259 as typed; 93.6 % of the whole words; 28 scores at 99 % of the syllables);
-87.4 % of all syllables with Tesseract (86.0 % on scans), and 89.9 % on the kit (6207 of 6901).
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.5 % with Tesseract, its larger
+files and a list of words (6,021 of 6,239, counted by the page; 5,968 of 6,259 as typed; 94.3 % of the whole words; 31 scores at 99 % of the syllables);
+88.1 % of all syllables with Tesseract (86.8 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
-72.8 % of the syllables and 88.1 % of the whole words.
+73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
 
@@ -313,6 +314,50 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The kit's own scorer writes its sheets of mistakes into the folder of a run, over the wide scorer's sheets of
   the kit's hymns. The count staff by staff is read from those sheets: count it before the kit's scorer runs,
   or score the run again first (a count that moved by 18 notes between two scorings of one reading was this).
+- Tesseract's larger language files are further opinions, not the reader of first resort (the owner, 16 November
+  2026: "use the big one"; `ocr.SECOND`, `--second`, `SCOREREADER_OCR_SECOND`). In the place of the small file
+  the standard file read 26 syllables more and 81 fewer on the clean copies: the limits of how sure Tesseract is
+  were set with the small file, and the larger network reads a stroke as the word I and a faint row as words. A
+  row that the small file does not read as words of the list alone is read with the larger files too, the "best"
+  file first and then the standard one: the two misread different words.
+- How sure two readers are does not compare, so a reading of a further file is kept by the list alone: where it
+  leaves fewer letters in words that the list lacks. That count is fooled in three ways, which the first form
+  showed (22 gained and 10 lost on the clean copies). A stroke that is read as a word of one letter adds a letter
+  of the list: words of one letter do not count there. A word of the hymn that the list lacks is mended to a
+  word of the list in the reading that is less sure of it: a word that the first file read with the same letters
+  is not mended, because two readers that agree have read the page. A misread that makes such a word shorter
+  leaves fewer letters outside the list ("patience" as "patence", the label "Ison" as "son"): a reading that
+  lacks a word which the first file read alike at each of its sizes, and that has fewer letters, is not kept.
+- Single words taken from the other reader (the list's word at the same place) gained 6 syllables and lost 5:
+  the commonest word wins there, and a rare true word loses. A second reader is judged by the whole row.
+- A guard is counted alone with the rest on, as a rule is, and a guard of two halves half by half. The guard
+  for a word that the first file read alike had a second half (no new word outside the list in its place): alone
+  it gained 6 syllables and lost 15 on all scan pages and lost 3 on the fresh set, behind a first half that
+  gained 29 and lost 12. It was taken out. Another guard (words of one letter do not count as words of
+  the list) costs syllables in the count: 2 and 2 on the clean copies, 7 gained and 12 lost on all scan pages, none
+  and 6 on the fresh set. It stays for what the count does not see: 27 false words of one letter on all scan pages,
+  6 of them on the clean copies and none on the fresh set, whose pages hold no stray strokes. Three milder forms
+  gave the fresh set nothing back. Say so where such a guard is kept.
+- A rule that chooses among the stored readings names its pages exactly: the rows that the words step picks are
+  written out for two copies of the code, and the pages whose rows differ are read again with Tesseract against
+  the full run before (41 pages of LitChoir and 2 of the fresh set for a narrowed guard, not an hour of runs).
+- A folder with only a language file holds no config files of Tesseract. Asked for its table of words by the
+  config file, Tesseract printed nothing, and a run read no word at all. The table is asked for by its setting
+  now. A run whose words are all gone is a fault of the setup, not a result.
+- A stroke that stands alone between two words is a bar line, a line by hand or the letter I, and the word alone
+  cannot tell (31 right of 1,739). The ink tells: the letter is as high as the capitals of its row and as thick
+  as the strokes of the row's letters (0.8 to 1.25 times on LitChoir's pages), a bar line goes on over the row,
+  and a line by hand or a dashed bar line is a hairline (`ocr.LONE_I`). The replay from stored rows hands the
+  page itself to a rule that looks at the ink.
+- An s at the end of a word is neither taken away nor added by the mending (`ocr.MEND_S`). The list holds the
+  singular of nearly every plural, so it cannot choose between them: of the words that lost a last s on all scan
+  pages 26 were wrong and 12 right.
+- The stored rows hold one census for each language file (the sizes from 1000 on are the second file, from 2000
+  on the third). A new file needs its own census of every scan page and of the fresh set before the replay can
+  count it.
+- When another thread changes main in the middle of a round (the package was renamed), the branch starts from
+  main again and the round's changes are carried over as a patch. The working copy of the wide test keeps the
+  old package name as a link, so the tools outside git run as they are.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

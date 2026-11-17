@@ -57,6 +57,11 @@ music. If you add a word list as well, ScoreReader uses it to mend misread words
 syllables. For now this is by far the more accurate way. It is optional, and it is the one part that is not
 ScoreReader's own: Tesseract has a small neural network inside for recognising letters. No note depends on it.
 
+Tesseract comes with a small language file. Its larger files (the standard and the "best" `eng.traineddata` from
+Tesseract's own repositories) misread other words than the small one does, so they serve as second opinions:
+`--second <folder>` names the folder of such a file, and a row that the small file leaves in doubt is read with it
+too. They do not replace the small file: put in its place, the standard file read fewer words right.
+
 ## How it works
 
 ```mermaid
