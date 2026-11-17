@@ -71,34 +71,40 @@ RECITED = True          # a syllable that has no note of its own is sung on the 
 
 class Words(collections.Counter):
     """A list of words, {word: how often}, that also knows how its words are parted into syllables: `parts` is
-    {the syllables of a word: how often}, for the words that the file writes with hyphens between them."""
+    {the syllables of a word: how often}, for the words that the file writes with hyphens between them. `pairs`
+    is {(a word, the word after it): how often}, for a file of plain text."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.parts: collections.Counter = collections.Counter()
+        self.pairs: collections.Counter = collections.Counter()
 
 
 def load_words(path: str | Path) -> Words:
     """The list of words from a text file: {word: how often}. The file holds plain text (each word counts once
     each time it stands there) or lines of a word and its count. Small letters and the apostrophe count; all
     else parts the words. A word written with hyphens between its syllables ('mer-cy') is the word without them,
-    and it teaches how the word is parted (`parts`)."""
+    and it teaches how the word is parted (`parts`). Plain text also teaches which words follow each other
+    (`pairs`): two words side by side are a pair, but not over an empty line (the end of a hymn) or a count."""
     counts = Words()
-    last = None
-    for token in re.findall(r"[A-Za-z'’]+(?:-[A-Za-z'’]+)*|\d+", Path(path).read_text(encoding='utf-8')):
-        if token.isdigit():
+    for block in re.split(r'\n\s*\n', Path(path).read_text(encoding='utf-8')):
+        last = None
+        for token in re.findall(r"[A-Za-z'’]+(?:-[A-Za-z'’]+)*|\d+", block):
+            if token.isdigit():
+                if last:
+                    counts[last[0]] += int(token) - 1
+                    if len(last[1]) > 1:
+                        counts.parts[last[1]] += int(token) - 1
+                last = None
+                continue
+            parts = tuple(part for part in (piece.strip("'") for piece in token.lower().replace('’', "'").split('-')) if part)
+            before, last = last, (''.join(parts), parts) if parts else None
+            if before and last:
+                counts.pairs[(before[0], last[0])] += 1
             if last:
-                counts[last[0]] += int(token) - 1
-                if len(last[1]) > 1:
-                    counts.parts[last[1]] += int(token) - 1
-            last = None
-            continue
-        parts = tuple(part for part in (piece.strip("'") for piece in token.lower().replace('’', "'").split('-')) if part)
-        last = (''.join(parts), parts) if parts else None
-        if last:
-            counts[last[0]] += 1
-            if len(parts) > 1:
-                counts.parts[parts] += 1
+                counts[last[0]] += 1
+                if len(parts) > 1:
+                    counts.parts[parts] += 1
     return counts
 
 

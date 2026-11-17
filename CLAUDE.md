@@ -21,9 +21,9 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
 scans; 83 scores at 99 % or more), 96.3 % of the notes on the clean copies (21,751 of 22,591, counted by the page;
-21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.5 % with Tesseract, its larger
-files and a list of words (6,021 of 6,239, counted by the page; 5,968 of 6,259 as typed; 94.3 % of the whole words; 31 scores at 99 % of the syllables);
-88.1 % of all syllables with Tesseract (86.8 % on scans), and 89.9 % on the kit (6207 of 6901).
+21,702 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
+88.3 % of all syllables with Tesseract (87.1 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -358,6 +358,28 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - When another thread changes main in the middle of a round (the package was renamed), the branch starts from
   main again and the round's changes are carried over as a patch. The working copy of the wide test keeps the
   old package name as a link, so the tools outside git run as they are.
+- The list of words also tells which words follow each other (`lex.pairs`, from a list that is plain text;
+  `bench/wordlist.py --text`). The hymn that is read and its other scans are left out of the list, so a phrase
+  that only this hymn has gives no pair. A pair is used strictly: a word of three letters or fewer that the list
+  lacks becomes the list's word one letter away that stands between the same two neighbours in the list's text
+  (`ocr.PAIR`), and a word that does not stand with both neighbours is taken from another reading of the row
+  where that one does (`ocr.PAIR_OTHER`). A census of every word that such a rule would change, labelled by the
+  typed hymn, showed where pairs must not be used: a word of the list with one neighbour on its side is right
+  far more often than the word that the pair would put there (8 right and 85 wrong), and a longer word that the
+  list lacks is a true word of the hymn as often as a misread (18 and 16).
+- Choosing all words of a row together, each word or its neighbour in the list so that most pairs hold, changed
+  more words wrongly than one word at a time with the neighbours as they were read (5 wrong of 44 against none
+  of 31). A misread neighbour gives no pair, and that is the safer side.
+- A census of words is not the count of syllables. One neighbour in the place of two looked nearly free in the
+  census (23 right, 3 wrong, 139 where the typed hymn has another word) and lost in the count (27 syllables
+  gained, 37 lost): a piece that is changed into a word is no longer joined to the word that it is a piece of.
+  A change that the census calls neither right nor wrong is not free.
+- Pairs in the choice among the readings of a row gained 10 syllables and lost 7 on all scan pages: a border
+  that moves. Pairs as the choice among several words one letter away gained 12 and lost 4 there and lost 4 on
+  the fresh set, on a carol whose words are not the list's: it is off.
+- Two words side by side are mended into one although the list holds one of them, where it holds the whole
+  twenty times as often (`ocr.MEND_PAIR_RARE`): the list held a piece of "Al-le-lu-ia" three times as a word.
+  A list made from typed hymns holds stray pieces as rare words.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
