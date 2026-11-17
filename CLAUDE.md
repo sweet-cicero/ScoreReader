@@ -20,8 +20,8 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.8 % on
-scans; 83 scores at 99 % or more), 96.6 % of the notes on the clean copies (21,808 of 22,582, counted by the page;
-21,752 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+scans; 83 scores at 99 % or more), 96.7 % of the notes on the clean copies (21,820 of 22,575, counted by the page;
+21,762 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
 files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
 88.3 % of all syllables with Tesseract (87.1 % on scans), and 90.0 % on the kit (6214 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
@@ -461,6 +461,22 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   `symbols.gone_stems` reads by their shape keep their own voice (before it, 3 notes fewer).
 - The figure of the notes that are not there is taken from the reading with the words, as the other figures
   are; the reading without the words gives a few fewer.
+- A print that pressed the ink out of the middle of its filled heads leaves a pale speck there, and no limit for
+  the hole parts such a head from a half note on every print (0.6 of the usual hole in the place of 0.4: 17 notes
+  gained and 83 lost on the clean copies by a census). The page shows the print (`symbols.HOLLOW_PALE`): its
+  specks come in every size up to the limit, and its half notes are wide open. The share of the filled heads
+  with a speck alone also named a copy by hand, whose specks are tiny and far under its holes, and a thick copy
+  whose holes are small: 17 gained and 6 lost on all scores, and each of the two further signs alone still lost 2
+  to 4. The rule acts on the four pages of one engraving. Say so where a rule is a rule for one print.
+- A sign of the page is counted as the reader counts it, from the marks of the page before the notes are made.
+  A count from the read notes named other pages than the rule then acted on.
+- A note that is read longer than it is typed is looked at with the columns around it and with the typed notes
+  of every voice of the staff. The page's are: a half note under which another voice strikes the same pitch, one
+  note of a typed chord that the page prints longer than the others (the list's `alone`), and a note that one
+  voice holds while the other moves. Such a place goes on the list whole, with the note that the reader then
+  loses too (a dot at one head of a chord). A page that prints a response more often than the hymn is typed
+  lines a note up with another typed note: that is the count's line-up, not the page (of 47 such notes 5 were
+  the page's).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
