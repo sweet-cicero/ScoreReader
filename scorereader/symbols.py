@@ -2288,6 +2288,27 @@ LOST_THROUGH = 0.6         # the stroke of a mark with no stem at all may run on
 LOST_SHARED = 0.5          # a head that gets such a stem shares it with a mark of its own piece of ink that has no stem
 #                            and stands at the far side of it from the stem, its middle at most this many staff spaces
 #                            sideways: two heads a third apart that the print let run together (0: off)
+STEM_GONE = (0.85, 1.1, 0.8, 1.08, 0.25, 0.5, 0.6, 0.87, 0.1)   # a filled mark with no stem at all is still a
+#                            note where it is the head of the print alone: from this to this many times as wide and
+#                            from this to this many times as high as the heads of the page; a slanted oval (of its
+#                            four corners, each three tenths of its box, the upper left and the lower right hold thick
+#                            ink in at most this share and the other two in at least this share, and the box from
+#                            this to this share); with paper around it (ink in at most the last share of a frame of
+#                            0.3 staff spaces around the box, staff lines apart: a ledger line fits in). A scan that
+#                            lost the hairline stems of a print. A rest is a box, a dot is round, the end of a slur
+#                            is slim, and the two halves of a quarter rest are one piece of ink. (None: off)
+GONE_STEM = (0.25, 4.5, 1.5, 0.9, 1.6, 1.2, 0.3, 0.2, 1.0)   # the pieces that the scan left of such a stem, in the column
+#                            of the head's right edge over it or of its left edge under it (this many staff spaces to
+#                            both sides), up to this many staff spaces from the head and not into the words: slim ink
+#                            that begins at most the third number from the head, in rows that add up to the fourth
+#                            number at least, the farthest of them the fifth number from the head or more (a stem in
+#                            dashes, a stem that begins after a gap); or wide ink from the sixth number on (a beam, a
+#                            flag) with slim rows of the seventh number before it. The stem ends there, and its flags
+#                            and beams are counted as those of any stem. Pieces at one side only, and at the other
+#                            side no slim ink on the head itself (it begins at most the eighth number from the head and
+#                            has rows of the seventh number in the first staff spaces of the last number): the hand
+#                            that draws short stems leaves the stem of the next note in the other column. (None: such
+#                            a head has no stem and is a quarter note)
 THROUGH_SIDE = 0.05        # a thin head that crosses a staff line is one piece: its ink over and under the line is joined
                            # through the line, up to this many staff spaces sideways
 LEAN_END = 0.4             # a stem that leans toward its thin head: the head's distance is counted from the stem's end, when
@@ -2377,6 +2398,103 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     used.append((x, min(other['cy'], end), max(other['cy'], end)))
                     given += 1
     return given
+
+
+def _gone_stem(layers: dict, head: dict, up: bool) -> tuple[dict | None, bool]:
+    """The stem of a head whose stem the scan lost, from the pieces that it left (GONE_STEM): a stem as lost_stems()
+    gives it, or None; and whether slim ink hangs on the head at this side (a short stem that is still there)."""
+    space = layers['space']
+    free = layers['free']
+    height, width = free.shape
+    x = int(round(head['x1'] if up else head['x0']))
+    band = int(round(GONE_STEM[0] * space))
+    first, last = max(0, x - band), min(width - 1, x + band)
+    edge = head['y0'] - 1 if up else head['y1'] + 1
+    def run(row: int) -> tuple[int, int] | None:
+        cells = np.nonzero(free[row, first:last + 1])[0]
+        if not len(cells):
+            return None
+        left, right = first + int(cells[0]), first + int(cells[-1])
+        while left > 0 and free[row, left - 1]:
+            left -= 1
+        while right < width - 1 and free[row, right + 1]:
+            right += 1
+        return left, right
+    bands = [band for band in layers.get('words') or [] if band['x0'] <= x <= band['x1']]
+    slim, near, far, end, close = 0, None, None, None, 0
+    for step in range(int(round(GONE_STEM[1] * space))):
+        row = edge - step if up else edge + step
+        if not 0 <= row < height or any(band['top'] - 0.3 * space <= row <= band['bottom'] + 0.3 * space for band in bands):
+            break
+        found = run(row)
+        if found is None:
+            continue
+        if found[1] - found[0] + 1 <= SLIM_STEM * space:
+            slim += 1
+            near, far = step if near is None else near, step
+            if near > GONE_STEM[2] * space:
+                break
+            close += step <= GONE_STEM[8] * space
+            continue
+        if step < GONE_STEM[5] * space:
+            continue        # the rim of the head itself, a ledger line
+        if slim >= GONE_STEM[6] * space:
+            end = row
+        break
+    if near is None or near > GONE_STEM[2] * space:
+        return None, False
+    attached = near <= GONE_STEM[7] * space and close >= GONE_STEM[6] * space
+    if end is None and slim >= GONE_STEM[3] * space and far >= GONE_STEM[4] * space:
+        end = edge - far if up else edge + far
+    if end is None:
+        return None, attached
+    return {'direction': 'up' if up else 'down', 'x': x, 'end': int(end), 'length': abs(head['cy'] - end), 'lost': True,
+            'gone': True}, attached
+
+
+def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list[dict]) -> list[dict]:
+    """The marks as large as a head that have no stem at all and that are heads of the print all the same
+    (STEM_GONE): the scan lost their stems. They are notes without a stem: a quarter note, in the voice that the
+    notes of their column leave free."""
+    if not STEM_GONE:
+        return []
+    space = layers['space']
+    wide, high = layers['head']
+    reach = int(round(0.3 * space))
+    found = []
+    for head in orphans:
+        if head['stems'] or head['hollow'] or any(head is other for other in heads):
+            continue
+        own_wide, own_high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
+        if not (STEM_GONE[0] * wide <= own_wide <= STEM_GONE[1] * wide and STEM_GONE[2] * high <= own_high <= STEM_GONE[3] * high):
+            continue
+        if any(other['x0'] <= head['cx'] <= other['x1'] and other['y0'] <= head['cy'] <= other['y1'] for other in heads):
+            continue
+        # One piece of ink with another mark: the halves of a quarter rest, a number, a letter.
+        if any(number != head['mark'] and other['blob'] == head['blob'] and other['kind'] is not None
+               for number, other in enumerate(marks)):
+            continue
+        part = layers['thick'][head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0
+        rows, columns = max(1, int(round(0.3 * own_high))), max(1, int(round(0.3 * own_wide)))
+        if max(part[:rows, :columns].mean(), part[-rows:, -columns:].mean()) > STEM_GONE[4] \
+                or min(part[:rows, -columns:].mean(), part[-rows:, :columns].mean()) < STEM_GONE[5] \
+                or not STEM_GONE[6] <= part.mean() <= STEM_GONE[7]:
+            continue
+        free = layers['free']
+        around = free[max(0, head['y0'] - reach):head['y1'] + 1 + reach, max(0, head['x0'] - reach):head['x1'] + 1 + reach]
+        inside = free[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1]
+        if (float(around.sum()) - float(inside.sum())) > STEM_GONE[8] * max(1, around.size - inside.size):
+            continue
+        head['gone'] = True
+        if GONE_STEM:
+            (over, on_top), (under, on_foot) = _gone_stem(layers, head, True), _gone_stem(layers, head, False)
+            # Pieces at one side only, and no short stem at the other side: the ink in a column can be another note's.
+            if over and not under and not on_foot:
+                head['stems'].append(over)
+            elif under and not over and not on_top:
+                head['stems'].append(under)
+        found.append(head)
+    return found
 
 
 def _loop(part: np.ndarray, space: float) -> float:

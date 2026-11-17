@@ -20,8 +20,8 @@ the page prints it (since 15 November 2026, see below; 51 notes of the clean cop
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.3 % (20,016 of 20,163) | 53 | 70 | 0 |
-| Scans | 294 | 82.4 % (57,343 of 69,560) | 30 | 108 | 22 |
-| All | 364 | 86.2 % (77,359 of 89,723) | 83 | 178 | 22 |
+| Scans | 294 | 82.5 % (57,424 of 69,582) | 30 | 108 | 22 |
+| All | 364 | 86.3 % (77,440 of 89,745) | 83 | 178 | 22 |
 
 The first milestone is 99 % on clean copies: the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
@@ -30,13 +30,13 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 96.4 % (21,766 of 22,582) | 29 | 74 | 49.9 % (3,286 of 6,584) | 96.6 % (6,026 of 6,239) | 94.4 % (4,264 of 4,515) |
-| Thick or grey print | 26 | 80.9 % (6,821 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 88.2 % (1,746 of 1,980) | 86.5 % (1,186 of 1,371) |
-| By hand | 190 | 74.6 % (28,756 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 82.9 % (11,897 of 14,356) | 80.2 % (8,294 of 10,343) |
+| Clean print | 78 | 96.4 % (21,778 of 22,582) | 29 | 74 | 49.9 % (3,286 of 6,584) | 96.6 % (6,026 of 6,239) | 94.4 % (4,264 of 4,515) |
+| Thick or grey print | 26 | 81.2 % (6,854 of 8,446) | 0 | 7 | 32.9 % (658 of 2,000) | 88.2 % (1,746 of 1,980) | 86.5 % (1,186 of 1,371) |
+| By hand | 190 | 74.7 % (28,792 of 38,554) | 1 | 27 | 37.7 % (5,401 of 14,345) | 82.9 % (11,897 of 14,356) | 80.2 % (8,294 of 10,343) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
-  count of their time, and as typed (see the count by the page below). Of the clean scores, 61 are at 95 % or more. About 656 more notes are needed
+  count of their time, and as typed (see the count by the page below). Of the clean scores, 61 are at 95 % or more. About 644 more notes are needed
   for 99 % of each clean copy; 10 scores lack one to three notes. The mistakes that are left are many small causes;
   the largest that were found
   since: two voices a second apart that the print sets as one blot of ink brought 41 notes on the clean copies
@@ -49,9 +49,10 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   brought 4: a tie over the end of a page; and round 31
   brought 11: a bow that lies on a beam, one dot between two heads, a slur between two stem ends, and the slit of a half note on a ledger line;
   and round 33 brought 8: a dash beside a head that is its dot, and a bold bow that is one piece of ink with its whole notes;
-  and round 41 brought 8: two half notes a third apart that touch on their lines, and two heads a second apart that overlap across their stems.
-  The reader also writes 893 notes on the clean copies that are not there (5,643 on
-  all scores); rounds 20 to 24 took 49, 67, 35, 3 and 19 of them away on the clean copies, rounds 25 and 26 none (round 26 counts 6 more, in one score), round 27 3, round 28 13, round 29 12, round 30 5, round 31 1, and round 33 2 (round 41 counts 1 more: a note that is read with a wrong length now and was not read before). Of 30 mistakes drawn by lot and looked at
+  and round 41 brought 8: two half notes a third apart that touch on their lines, and two heads a second apart that overlap across their stems;
+  and round 42 brought 12: a filled head whose stem the scan lost.
+  The reader also writes 897 notes on the clean copies that are not there (5,669 on
+  all scores); rounds 20 to 24 took 49, 67, 35, 3 and 19 of them away on the clean copies, rounds 25 and 26 none (round 26 counts 6 more, in one score), round 27 3, round 28 13, round 29 12, round 30 5, round 31 1, and round 33 2 (round 41 counts 1 more: a note that is read with a wrong length now and was not read before; round 42 counts 4 more, of the same kind). Of 30 mistakes drawn by lot and looked at
   on the page in round 12,
   8 are a hollow head and a filled head mixed up, 4 a dot, 4 a tie or a slur, 4 a beam, 4 a sign, and 6 one of a
   kind (a note that a pencil crossed out, a typed hymn that differs from its page). Two fine engravings held about
@@ -101,6 +102,78 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 42 (17 November 2026): a filled head whose stem the scan lost. The round began with a tally of the 816
+  notes that the clean copies lose (about 280 with a wrong length, 190 with a wrong pitch, 90 with both, and
+  260 that are not read) and with three counts that gave no rule (see below). The notes that are not read
+  showed one kind that is larger than the rest: a mark as large as a head with no stem. The reader keeps a
+  filled mark only with a stem, because a rest, a dot, the end of a slur and a blot are filled marks too. One
+  rule in two halves came of it. No word of the reader changed in this round.
+
+  The clean copies went from 21,766 to 21,778 of 22,582 notes (96.4 %; as typed from 21,710 to 21,723 of
+  22,591): 12 gained and none lost, in two scores (`extra-rejoice-o-virgin-rachmaninov` 8, `cherubic-lvovsky`
+  4). 29 scores are at 99 % as before, and 644 notes are lacking for 99 % of each score (656 before). All
+  scores went from 77,359 of 89,723 to 77,440 of 89,745 (86.3 %; as typed from 77,303 of 89,732 to 77,385 of
+  89,754): 81 gained and none lost, 33 of them on the thick and grey copies and 36 on the copies by hand. The
+  count of the drawn notes grows by 22: a chant page draws the notes of a recitation as filled heads without
+  stems, and the typed notes of such a run that the reader had no note for were counted apart. No score
+  changed the layout that the count chooses for it. The reader writes 897 notes on the clean copies that are
+  not there (893 before) and 5,669 on all scores (5,643): most of the new ones are true notes with a wrong
+  length (see below). The syllables are as after round 40 (6,026 of 6,239 on the clean copies, 25,322 of
+  28,680 on all scores), and the kit did not change (6207 notes). Each half alone on the pages that the round
+  changes (notes gained and lost, by parts):
+
+  | Rule | Clean copies | All scores | Fresh test set |
+  |---|---:|---:|---:|
+  | The head by its shape (`symbols.STEM_GONE`), with the second half off, against the reading before | 10 and 0 | 71 and 2 | 0 and 0 |
+  | The stem from the pieces that the scan left (`symbols.GONE_STEM`), off against on | 2 and 0 | 12 and 0 | 0 and 0 |
+  | The round | 12 and 0 | 81 and 0 | 0 and 0 |
+
+  The round changes 27 pages of LitChoir and no page of the fresh set, whose pages are crisp and lost no
+  stem.
+- A head with no stem at all (`symbols.STEM_GONE`), round 42. A census listed every filled mark as large as a
+  head that the reader leaves without a stem, on 23 clean pages: 69 marks, of which 14 are heads of the print
+  (in two engravings whose hairline stems the scan lost in places) and 55 are halves of quarter rests, pieces
+  of numbers and letters, ornaments and blots. Three measures of the mark part them, and none alone. The head
+  of a print is a slanted oval: of the four corners of its box, the upper left and the lower right are nearly
+  empty and the other two are filled. It is as large as the heads of its page (the two halves of a quarter
+  rest are a little higher, and one piece of ink with each other). And it has paper around it: a frame of
+  three tenths of a staff space around the box holds almost no ink, staff lines apart, so that a ledger line
+  fits in and an ornament does not. Such a head is a note without a stem: a quarter note, in the voice that
+  the notes of its column leave free. Off the clean copies the rule reads grey scans whose stems fall under
+  the limit of the ink, chant prints that draw their notes without stems, a typewriter print whose stems
+  stand apart from the heads, and one copy by hand with short stems. With the second half off it gains 71
+  notes on all scores and loses 2, both in one score: a head without a stem stands a little beside the note
+  that it sounds with, and was read as a column of its own, which moved the notes after it. The second half
+  gives that head its stem, and the 2 notes come back.
+- The stem of such a head from its pieces (`symbols.GONE_STEM`), round 42. A scan seldom loses a stem whole:
+  dashes of it are left, or its upper part with the beam or the flag. The rule walks from the head along the
+  column of its right edge upwards and of its left edge downwards, a quarter of a staff space to both sides,
+  for four and a half staff spaces and not into the words. A stem is slim ink that begins near the head and
+  reaches far enough, or slim ink with wide ink after it (a beam, a flag), where the stem ends; its flags and
+  beams are then counted as those of any stem. Three forms were dropped while it was written: a column inside
+  the head missed stems that stand a few pixels outside its edge, a test for the end of a beam row by row
+  failed on beams that slant, and a walk without limits ran into the letters of the words and into the stem
+  of a note of the staff above. In its first full reading the half gained 12 notes and lost 1, on a copy by
+  hand whose stems are short and thick: such a head keeps a short stem that is too short to count, and the
+  stem of the next note stands in its other column, so the head got a false stem and once a false flag. A
+  first guard (no stem where the wide ink is a mark of another head) took 8 right eighth notes away again:
+  the flag of a stem that stands apart from its head is itself a mark as large as a head. The guard that
+  stands asks the head: pieces at one side only, and no slim ink that hangs on the head at the other side.
+  With it the half gains 12 notes and loses none (8 eighth notes of the typewriter print, 3 notes of the two
+  engravings and 1 more).
+- Looked at on the page, round 42: all 103 notes that the first form changes. One is false (a sign by hand
+  under a staff that is shaped as a head), and one length changed on a blot. Several new notes are eighth
+  notes read as quarter notes, because the stem and its beam are gone whole: they count as notes that are not
+  there (26 more on all scores, 4 more on the clean copies). Two notes of one engraving changed their length
+  through the agreement of the notes that sound together (an eighth read as a quarter beside a new quarter).
+- Counted in round 42 and left without a rule. The limit of the ink: read with a lighter limit the clean
+  copies gain 62 notes and lose 258, with a darker one 25 and 280; 267 of the lost notes are right in one of
+  the other readings, but nothing that the page shows tells which reading to take for a note. The 16 clean
+  scores that lack one to four notes: each note is a case of its own. Whole notes that are taken for the tail
+  of another mark: one page. Hollow marks without a stem (69 on the clean pages): a few round whole notes in
+  the staff and one half note whose stem the scan lost; the rule for a whole note in the staff
+  (`symbols.WHOLE_STAFF`) stays off. An eighth note whose stem and beam the scan lost whole could take its
+  length from the notes of its column; not counted yet.
 - Round 41 (17 November 2026): the notes that the clean copies still lose, sorted by where they stand. The 840
   lost notes are scattered: 49 scores lose notes, no long stretch of a page has one cause, and the kinds that
   were found hold 2 to 6 notes each. The three scores that lack most after `cherubic-lvovsky` were looked at
@@ -2615,6 +2688,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 39 (2 rules for the words, and Tesseract's larger files as further opinions) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,298 of 11,341) | 88.7 % (5,897 of 6,647) | 97.9 % |
 | After round 40 (3 rules for the words, by the words that follow each other in the list) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,299 of 11,341) | 88.7 % (5,896 of 6,647) | 97.9 % |
 | After round 41 (2 rules for heads that touch) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,299 of 11,341) | 88.7 % (5,896 of 6,647) | 97.9 % |
+| After round 42 (a head whose stem the scan lost) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,299 of 11,341) | 88.7 % (5,896 of 6,647) | 97.9 % |
 | of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.4 % (17,083 of 18,288) | 37 | 76 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -2979,6 +3053,9 @@ typed hymns, of all typed notes.
    Round 41 found no cause of more than 6 notes among the 816 notes that the clean copies still lose; the kinds
    that it left are a tied chord of whole notes with one bow, whole notes worn to two crescents, and a sign that
    touches its head (about 15 notes, each by another cause).
+   Round 42 left an eighth note whose stem and beam the scan lost whole (read as a quarter note now; its
+   column could give the length), a hollow head whose stem the scan lost, and the hairline stems of grey scans
+   that lie under the limit of the ink (a second look at the grey of the column over a head).
    Of the notes lost on the clean copies in round 13, 486 had only a wrong length, 346 only a wrong
    pitch (118 a semitone off, by a sign) and about 300 were not read. Words
    (213 syllables are missing on the clean copies after round 40, 195 for 99 % of each score; no cause holds
@@ -3077,3 +3154,5 @@ Round 41 went back to the notes of the clean copies, whose lost notes are scatte
 each: two rules for heads that touch (two half notes a third apart on lines, two heads a second apart that lie
 across their stems), and a note that the page holds while the hymn is typed with it struck again counts by the
 page.
+Round 42 read a filled head whose stem the scan lost: the head by its shape (a slanted oval as large as the
+heads of the page with paper around it), and its stem from the pieces that the scan left.

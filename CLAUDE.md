@@ -19,9 +19,9 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 86.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.4 % on
-scans; 83 scores at 99 % or more), 96.4 % of the notes on the clean copies (21,766 of 22,582, counted by the page;
-21,710 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+Not reached yet: 86.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.5 % on
+scans; 83 scores at 99 % or more), 96.4 % of the notes on the clean copies (21,778 of 22,582, counted by the page;
+21,723 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
 files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
 88.3 % of all syllables with Tesseract (87.1 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
@@ -398,6 +398,20 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   long note, and a bow that may be a slur stays off the list.
 - A chain of runs loads the code copy anew for each run. Change a copy only when no chain reads it, or make a new
   copy for the next form of a rule.
+- A filled mark with no stem is a note only by the whole shape of a printed head (`symbols.STEM_GONE`: a
+  slanted oval as large as the heads of the page, with paper around it): a rest, a dot, the end of a slur and
+  the half of a quarter rest are filled marks too, and no one measure parts them. A census of every such mark
+  of the clean pages, each looked at, gave the three measures.
+- Ink in the column of a stem can be the next note's. A stem that is put together from pieces
+  (`symbols.GONE_STEM`) is taken at one side only, and not where a short stem still hangs on the head at the
+  other side: a hand that draws short stems sets the next note's stem into that column.
+- The flag of a stem that stands apart from its head is itself a mark as large as a head. A guard that asks
+  whether wide ink "is another head" took true flags away (8 eighth notes).
+- A head without a stem stands a little beside the notes that it sounds with and can be read as a column of
+  its own, which moves the notes after it. A rule in two halves is read with each half off: the first half
+  alone lost 2 notes that the second half (the stem) brings back.
+- A new kind of note that is read moves the count of the drawn notes: the typed notes of a recitation that the
+  reader has no note for are counted apart, and a chant page draws them as heads without stems (22 notes).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
