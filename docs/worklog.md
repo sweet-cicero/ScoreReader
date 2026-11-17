@@ -30,9 +30,9 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 96.3 % (21,751 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 96.5 % (6,021 of 6,239) | 94.3 % (4,259 of 4,515) |
-| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 88.0 % (1,742 of 1,980) | 86.2 % (1,182 of 1,371) |
-| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 82.5 % (11,838 of 14,356) | 79.6 % (8,235 of 10,343) |
+| Clean print | 78 | 96.3 % (21,751 of 22,591) | 29 | 73 | 49.9 % (3,286 of 6,584) | 96.6 % (6,026 of 6,239) | 94.4 % (4,264 of 4,515) |
+| Thick or grey print | 26 | 80.9 % (6,817 of 8,430) | 0 | 7 | 32.9 % (658 of 2,000) | 88.2 % (1,746 of 1,980) | 86.5 % (1,186 of 1,371) |
+| By hand | 190 | 74.6 % (28,755 of 38,548) | 1 | 27 | 37.7 % (5,401 of 14,345) | 82.9 % (11,897 of 14,356) | 80.2 % (8,294 of 10,343) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
@@ -58,16 +58,16 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   the scorer lining a staff up with the wrong part: the tool behind that count lined the notes up in its own way,
   and it is not held any more.
 - Words with the optional Tesseract step, its larger language files as further opinions (since round 39) and a
-  list of words: 25,254 of 28,680 syllables are right (88.1 %,
-  counted by the page since round 35; 25,076 of 28,700 as typed):
-  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 86.8 % on
-  the scans (19,601 of 22,575; round 39 brought 196 of them, the rules of round 37 brought 25 and its count by the page 26, the
+  list of words: 25,322 of 28,680 syllables are right (88.3 %,
+  counted by the page since round 35; 25,144 of 28,700 as typed):
+  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 87.1 % on
+  the scans (19,669 of 22,575; round 40 brought 68 of them, round 39 brought 196, the rules of round 37 brought 25 and its count by the page 26, the
   rules of round 36 brought 471, the rules of round 35 brought 138 and
   the count by the page 139, round 34 brought 63). Before round 34 these were 21 syllables fewer than in round 17 with the same words read: the
   words are compared in the layout that the count of the notes chooses for a score, and the scorer sets a few
-  scores in another layout or on another part of their pages now. On the clean copies 96.5 % of the syllables and 94.3 % of the whole words are
-  right, and 31 of the 78 scores have 99 % of their syllables (28 before round 39, 25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 200 syllables
-  are lacking for 99 % of each clean score (227 before round 39, 285 before round 37, 366 before round 36). The
+  scores in another layout or on another part of their pages now. On the clean copies 96.6 % of the syllables and 94.4 % of the whole words are
+  right, and 31 of the 78 scores have 99 % of their syllables (28 before round 39, 25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 195 syllables
+  are lacking for 99 % of each clean score (200 before round 40, 227 before round 39, 285 before round 37, 366 before round 36). The
   list of words is made from the typed hymns of the app without the hymn that is read and its other scores, so no
   score is read with its own text. Without a list the scans have about 910 fewer of these syllables and
   about 1,170 fewer whole words (quick count, see the rounds of the words below).
@@ -100,6 +100,70 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 40 (17 November 2026): the words that follow each other in the list. No note of the reader changed in
+  this round, on LitChoir, on the fresh set and on the kit. The 218 syllables that the clean copies lacked
+  after round 39 were sorted by what the reader wrote in their place: about 50 are one or two misread letters
+  of one word, about 95 a row or a part of a row that was read as other words (30 of them a response lettered
+  by hand on two scans), about 60 a word that was not read at all (among them "Al - le - lu - ia" under a
+  long melody on four scores), and 17 a word that was read with its letters but parted otherwise. No cause holds more than
+  a dozen. Many of the misread words are short, and a short word is not mended by the list: too many words
+  are one letter away. But the hymns of one church say the same phrases again and again. A list of words
+  that is plain text now also tells which words follow each other (`lex.pairs`; `bench/wordlist.py --text`
+  writes such a list), and three rules use it. The hymn that is read and its other scans are left out of
+  the list as before, so no score is read with its own text.
+
+  The clean copies went from 6,021 to 6,026 of 6,239 syllables (96.6 %; 5 gained, none lost; as typed 5,973
+  of 6,259), their whole words from 4,259 to 4,264 of 4,515 (94.4 %). 31 scores have 99 % of their
+  syllables, as before, and 195 syllables are lacking for 99 % of each score (200 before; 213 are missing in
+  all). All scores went from 25,254 to 25,322 of 28,680 syllables (88.3 %; 69 gained, 1 lost; as typed
+  25,144 of 28,700), the thick copies from 1,742 to 1,746 of 1,980 and the copies by hand from 11,838 to
+  11,897 of 14,356; the whole words of all scores from 16,605 to 16,673 of 20,578. Each rule alone, switched
+  off against the others on, counted from the stored rows (syllables gained and lost):
+
+  | Rule | Clean copies | All scan pages | Fresh test set |
+  |---|---:|---:|---:|
+  | A word of three letters or fewer that the list lacks is the list's word one letter away that stands between the same two neighbours (`ocr.PAIR`) | 2 and 0 | 30 and 0 | 0 and 0 |
+  | A word that does not stand with both neighbours is taken from another reading of the row where that one does (`ocr.PAIR_OTHER`) | 2 and 0 | 34 and 1 | 0 and 0 |
+  | Two words side by side are one word although the list holds one of them as a rare word (`ocr.MEND_PAIR_RARE`) | 1 and 0 | 3 and 0 | 1 and 0 |
+  | The round, by this count | 5 and 0 | 67 and 1 | 1 and 0 |
+  | The round, on the pages that it changes, read with Tesseract | 5 and 0 | 69 and 1 | 1 and 0 |
+  | the same, in whole words | 5 and 0 | 69 and 1 | 0 and 1 |
+
+  The rules choose among stored readings and mend words, so the count from the stored rows names the pages
+  that they change exactly: 73 pages of LitChoir and 1 of the fresh set, which were read again with Tesseract
+  against the full runs of round 39.
+- A short word by its two neighbours (`ocr.PAIR`), round 40. "Lord tq have mercy": the list does not hold
+  "tq", and "to", "ty", "tr" are all one letter away. The list's text holds "Lord to" and "to have", and no
+  other word one letter away stands between those two. The rule asks for both neighbours, as they were
+  read, and for one such word only. A census of every word that such a rule would change, labelled by the
+  typed hymn, set these limits. With both neighbours, a short word that the list lacks: 31 right and none
+  wrong on all scan pages. With one neighbour: 23 right and 3 wrong in the census, and in the count 27
+  syllables gained and 37 lost, because a piece that is changed into a word is no longer joined to the word
+  that it is a piece of. A word that the list holds is not changed by its neighbours (with one neighbour on
+  its own side: 8 right and 85 wrong), and a longer word that the list lacks is a true word of the hymn as
+  often as a misread (18 and 16). Choosing all words of a row together, so that most pairs hold, changed
+  more words wrongly (5 of 44) than one word at a time.
+- A word from another reading by its neighbours (`ocr.PAIR_OTHER`), round 40. A row is read at three sizes,
+  without the ink that crosses it and with the larger files, and one reading is kept. A word of it that
+  does not stand with both of its neighbours in the list's text becomes the word that another reading holds
+  at the same place, where that word stands with both and the other readings hold one such word only. The
+  word that goes can be a word of the list here ("at thy night hand" where another reading has "right"): the
+  other reading has read it from the page. With the kept word standing with neither neighbour the rule
+  gained 26 syllables on all scan pages and lost none; with one neighbour allowed, 34 and 1.
+- A rare piece in the list (`ocr.MEND_PAIR_RARE`), round 40. Two words side by side that the list does not
+  hold are mended into the one word that they are with one letter read otherwise ("Al-le-lu la", round 37).
+  The list, made from typed hymns, held "la" three times and "allelu" once as words, and such a pair stayed.
+  It is mended now where the list holds the whole twenty times as often as the piece. On the fresh set this
+  joins two words on one page: a syllable more and a whole word fewer.
+- Counted in round 40 and dropped. Pairs in the choice among the readings of a row (a reading counts higher
+  for each pair that it holds): 10 syllables gained and 7 lost on all scan pages. Pairs as the choice among
+  several words of the list that are one letter away from a longer misread word: 2 gained on the clean
+  copies, 12 and 4 on all scan pages, and 4 lost on the fresh set, on a carol whose words are not the list's.
+  A number or a sign alone between two words as the word of one letter that stands between them in the
+  list ("by 4 star", the a of a typewriter): no row changes, because that phrase stands in this hymn only,
+  and a census found one such a on the clean copies. Looked at and left: a typewriter print whose i is read
+  as l or as an exclamation mark at every size and with every file ("Na - ti - vi - ty" in three scans of
+  one print, 5 syllables each); that is a matter for the page's own letter shapes.
 - Round 39 (17 November 2026): Tesseract's larger language files as further opinions. No note of the reader
   changed in this round, on LitChoir, on the fresh set and on the kit. (Round 38 was the new name of the
   project and the short README, and held no rule.) Tesseract comes with a small English file. Its own
@@ -2464,6 +2528,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 36 (2 rules for the words and a guard) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.5 % (8,225 of 11,341) | 87.9 % (5,845 of 6,647) | 97.6 % |
 | After round 37 (3 rules for the words) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 72.8 % (8,254 of 11,341) | 88.1 % (5,858 of 6,647) | 97.9 % |
 | After round 39 (2 rules for the words, and Tesseract's larger files as further opinions) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,298 of 11,341) | 88.7 % (5,897 of 6,647) | 97.9 % |
+| After round 40 (3 rules for the words, by the words that follow each other in the list) | 214 | 94.9 % (39,650 of 41,761) | 90 | 178 | 73.2 % (8,299 of 11,341) | 88.7 % (5,896 of 6,647) | 97.9 % |
 | of these, English (Orthodox Liturgics) | 109 | 95.5 % (13,770 of 14,415) | 49 | 86 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.4 % (17,083 of 18,288) | 37 | 76 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -2663,6 +2728,12 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
   gains none (a reading of a larger file is not kept for its words of one letter); it is kept for LitChoir's
   worn pages, where it keeps 27 false words of one letter out, and three milder forms of it gave these pages
   nothing back.
+- Round 40 changes one page here (read again with Tesseract): no note changes, 1 syllable gained and none lost
+  (8,299 of 11,341), 1 whole word lost and none gained (5,896 of 6,647). Two words side by side were joined
+  into one word of the list. The rules that use the words that follow each other change nothing here: the
+  crisp pages of this set hold few misread short words, and the pieces in Romanian and Church Slavonic are
+  not in the list. A further use of those pairs, as the choice among several words one letter away, lost 4
+  syllables on a carol of this set whose words are not the list's, and is off.
 - Round 36 was read here twice. The first reading, with the second look at a row that ink crosses, gained 38
   syllables and lost 28, and lost 33 whole words for 28: English gained 18 syllables and lost 1, Romanian
   gained 12 and lost 24. The list of words holds few Romanian words and cannot choose between two readings of
@@ -2821,7 +2892,7 @@ typed hymns, of all typed notes.
    straight end (a limit on the size of a hole alone lost more than it gained).
    Of the notes lost on the clean copies in round 13, 486 had only a wrong length, 346 only a wrong
    pitch (118 a semitone off, by a sign) and about 300 were not read. Words
-   (218 syllables are missing on the clean copies after round 39, 200 for 99 % of each score; no cause holds
+   (213 syllables are missing on the clean copies after round 40, 195 for 99 % of each score; no cause holds
    more than a dozen: a response lettered by hand on two scans, single letters that Tesseract reads wrongly
    in words that are other words of the list, a lone O, a or I that is left out, a word under a long melody
    whose syllables are read as signs): the first syllable of a refrain that stands alone between two rows, a one-syllable word
@@ -2911,3 +2982,5 @@ hides the row of the words. Round 38 gave the project its one name, ScoreReader,
 rule. Round 39 brought Tesseract's larger language files in (the owner, 16 November 2026: "use the big one"): in
 the place of the small file the standard file read fewer words right, so the small file stays the first reader,
 and a row that it leaves in doubt is read with the "best" file and the standard file as further opinions.
+Round 40 taught the list of words which words follow each other: a short misread word is mended by its two
+neighbours, and a word that does not stand with its neighbours is taken from another reading of the row.

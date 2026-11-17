@@ -67,6 +67,20 @@ MEND_PAIR = 7            # two words side by side that the list does not hold, o
 #                          become the one word of the list that they are with one letter read otherwise: the end
 #                          of a word under a long melody stands far from its start, with no hyphen that was read
 #                          ('Al-le-lu la' is 'Al-le-lu-ia'). None: off
+PAIR = 3                 # with a list of words that tells which words follow each other (`lex.pairs`, from plain
+#                          text): a word of at most this many letters that the list does not hold becomes the
+#                          list's word one letter away that the list holds behind the word before it and before
+#                          the word after it ('Lord tq have' is 'Lord to have'), where there is one such word
+#                          only. A short word is not mended by the list alone: too many words are one letter
+#                          away. None: off
+PAIR_OTHER = 0.7         # and a word that does not stand with both of its neighbours in the list's text becomes
+#                          the word that another reading of the row holds at its place (they share this much of
+#                          their width), where that word stands with both ('at thy night hand' is 'right' in
+#                          another reading), and the other readings hold one such word only. None: off
+MEND_PAIR_RARE = 20      # two words side by side are mended into one (MEND_PAIR) although the list holds one of
+#                          them, where it holds the whole this many times as often ('Al-le-lu la': the list holds
+#                          'la' three times and 'alleluia' two hundred times). None: a piece that the list holds
+#                          is never joined
 MEND_S = True            # an s at the end of a word is never taken away and never added by the mending: the list
 #                          holds 'sake' and lacks 'sakes', and the page prints 'sakes'
 LONE_I = (0.1, 0.6, 0.2, 0.7, 1.5)   # a stroke that stands alone between two words ('|') is the word I where its
@@ -333,12 +347,23 @@ def _cut_wide(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     return found
 
 
+class _Known(dict):
+    """The list of words by letters alone (see _known), with `pairs`: the words that follow each other in the
+    list's text (see PAIR)."""
+    pairs: frozenset = frozenset()
+
+
 def _known(lex) -> dict[str, int]:
-    """The list of words by letters alone: {the letters of a word: how often}."""
-    known: dict[str, int] = {}
+    """The list of words by letters alone: {the letters of a word: how often}, and the pairs of words that follow
+    each other in the list's text (`lex.pairs`) as `pairs`."""
+    def plain(word: str) -> str:
+        return ''.join(sign for sign in word.lower() if sign.isalpha())
+
+    known = _Known()
     for word, count in (lex or {}).items():
-        letters = ''.join(sign for sign in word.lower() if sign.isalpha())
+        letters = plain(word)
         known[letters] = known.get(letters, 0) + count
+    known.pairs = frozenset((plain(first), plain(second)) for first, second in (getattr(lex, 'pairs', None) or ()))
     return known
 
 
@@ -364,6 +389,38 @@ def _ways(lex, known: dict[str, int]) -> dict[str, tuple[str, ...]]:
 class _Ways(dict):
     """How the list parts its words (see _ways), with `parted`: every word that the list parts in any way."""
     parted: set = set()
+
+
+def _between(syllables: list[dict], known: dict[str, int]) -> list[dict]:
+    """A short word that the list of words does not hold becomes the list's word one letter away that stands
+    between its two neighbours in the list's text (see PAIR). Capitals and signs stay as they were read."""
+    pairs = getattr(known, 'pairs', None) or frozenset()
+    words = _read_words(syllables)
+    texts = [''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha()) for word in words]
+    for number in range(1, len(words) - 1):
+        read = texts[number]
+        if len(words[number]) != 1 or not read or len(read) > PAIR or read in known:
+            continue
+        before, after = texts[number - 1], texts[number + 1]
+        near = set()
+        for at in range(len(read) + 1):
+            near.update(read[:at] + sign + read[at:] for sign in ABC)
+            if at < len(read):
+                near.add(read[:at] + read[at + 1:])
+                near.update(read[:at] + sign + read[at + 1:] for sign in ABC)
+        meant = [new for new in near if new and new != read and new in known
+                 and (before, new) in pairs and (new, after) in pairs]
+        if len(meant) != 1:
+            continue
+        part = dict(words[number][0])
+        text = part['text']
+        places = [at for at, sign in enumerate(text) if sign.isalpha()]
+        new = meant[0].upper() if text[places[0]].isupper() and all(text[at].isupper() for at in places) and len(places) > 1 \
+            else meant[0].capitalize() if text[places[0]].isupper() else meant[0]
+        part['text'] = text[:places[0]] + new + text[places[-1] + 1:]
+        words[number][0] = part
+        texts[number] = meant[0]
+    return [part for word in words for part in word]
 
 
 def _whole(syllables: list[dict], known: dict[str, int], ways: dict[str, tuple[str, ...]]) -> list[dict]:
@@ -586,13 +643,15 @@ def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None
         read = ''.join(part['text'][at] for part, at in places).lower()
         one, other = (''.join(part['text'][at] for part, at in letters(parts)).lower() for parts in (first, second))
         if not one or not other or len(read) < MEND_PAIR or first[-1]['join'] or second[-1]['join'] \
-                or read in known or one in known or other in known:
+                or read in known or (not MEND_PAIR_RARE and (one in known or other in known)):
             continue
         meant = {read[:at] + sign + read[at + 1:]: at for at in range(len(read)) for sign in ABC if sign != read[at]}
         meant = {new: at for new, at in meant.items() if known.get(new, 0) >= MEND[1]}
         if len(meant) != 1:
             continue
         (new, at), = meant.items()
+        if max(known.get(one, 0), known.get(other, 0)) * (MEND_PAIR_RARE or 0) > known[new]:
+            continue          # a piece that the list holds is a word, unless the whole is far more common
         if at == len(read) - 1:
             continue          # the end of a word changes in the language itself (see MEND)
         part, place = places[at]
@@ -962,6 +1021,37 @@ def _other_size(row: list[dict], others: list[list[dict]], known: dict[str, int]
     return found
 
 
+def _other_pair(row: list[dict], others: list[list[dict]], known: dict[str, int]) -> list[dict]:
+    """A word of the reading that was kept that does not stand with both of its neighbours in the list's text,
+    where another reading holds at the same place a word that does, is that word (see PAIR_OTHER)."""
+    pairs = getattr(known, 'pairs', None) or frozenset()
+
+    def letters(word: list[dict]) -> str:
+        return ''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
+
+    words = _read_words(row)
+    texts = [letters(word) for word in words]
+    for number in range(1, len(words) - 1):
+        text, before, after = texts[number], texts[number - 1], texts[number + 1]
+        if not text or ((before, text) in pairs and (text, after) in pairs):
+            continue
+        left, right = words[number][0]['x0'], words[number][-1]['x1']
+        meant: dict[str, list[dict]] = {}
+        for other in others:
+            for there in _read_words(other):
+                new = letters(there)
+                first, last = there[0]['x0'], there[-1]['x1']
+                if new != text and new in known and (before, new) in pairs and (new, after) in pairs \
+                        and min(right, last) - max(left, first) >= PAIR_OTHER * max(right - left, last - first, 1e-6):
+                    meant[new] = there
+        if len(meant) != 1:
+            continue
+        (new, there), = meant.items()
+        words[number] = [dict(part) for part in there[:-1]] + [dict(there[-1], join=words[number][-1]['join'])]
+        texts[number] = new
+    return [part for word in words for part in word]
+
+
 def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True,
           ways: dict[str, tuple[str, ...]] | None = None, more: tuple[int, ...] = ()) -> list[dict]:
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
@@ -998,6 +1088,10 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     row = best[0] if best else []
     if OTHER_SIZE and known and mend and len(rows) > 1:
         row = _other_size(row, [other for other in rows if other is not row], known)
+    if PAIR_OTHER and known and mend and len(rows) > 1 and getattr(known, 'pairs', None):
+        row = _other_pair(row, [other for other in rows if other is not row], known)
+    if PAIR and known and mend and getattr(known, 'pairs', None):
+        row = _between(row, known)
     if ONE and ways and mend:
         row = _whole(row, known, ways)
     return _parted(row, ways) if ways else row

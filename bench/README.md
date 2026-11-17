@@ -16,7 +16,8 @@ python3 "$SCOREREADER_KIT/score.py" --results out/kit --tools own v04
 The yardstick (`bench/yardstick`) reads the reader's clean pages with copisteria's network, to measure the own rules
 against it. It is a test tool: the reader does not load it, and nothing of it ships with the reader.
 
-`bench/wordlist.py` makes the list of words for the words of a scan (`--words`) from typed hymns.
+`bench/wordlist.py` makes the list of words for the words of a scan (`--words`) from typed hymns. With `--text` it writes the
+words of each hymn in their order, so the list also tells which words follow each other.
 
 The wide test (every score of LitChoir) is run with scripts outside this repository, because it needs the app's
 scans and typed hymns.

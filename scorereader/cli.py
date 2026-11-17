@@ -29,7 +29,7 @@ The symbols are read with rules on the ink: no model, and only OpenCV and NumPy 
 key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature.
 
 --words gives a list of words (a text file: plain text, or lines of a word and its count; SCOREREADER_WORDS names it
-too). With it the words of a scan are read: the letter shapes of the hymn are grouped, and the groups are named so
+too; plain text also tells which words follow each other, which mends short misread words with --tesseract). With it the words of a scan are read: the letter shapes of the hymn are grouped, and the groups are named so
 that the page reads like the words of the list (scorereader.letters, scorereader.lyrics). `hymn` reads the words of all
 pages together, which names the letters better than one page alone. Without a list a scan gives its notes only.
 
