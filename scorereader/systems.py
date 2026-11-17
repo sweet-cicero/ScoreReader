@@ -7,12 +7,14 @@ Two staves that follow each other belong to one system when one of these is true
 3. Their bar lines stand at the same places along the page. A copyist who rules each staff by hand often draws no
    opening line, but the bars of the voices of one system still begin together.
 
-Four checks on the whole page follow. A line at the left end that goes on over the first staff or under the last
+Five checks follow. A line at the left end that goes on over the first staff or under the last
 staff is no opening line (SHADOW). Where the opening lines of a page all join the same number of staves, they say
 what a system is, and a staff that no line joins stands alone (BLOCKS). On a page without opening lines, the notes
 of the staves of one system stand in the same columns, and the notes of two systems do not (CONTRAST). On a page
 that draws its systems with bar lines through the gap, two staves with no such bar line and no opening line are two
-systems, also where their bars begin together: two lines of a verse on single staves (LONE).
+systems, also where their bars begin together: two lines of a verse on single staves (LONE). And a weak line at
+the left end between two staves whose notes do not stand in the same columns is the bracket and the clef of the next
+system, not an opening line (OPEN_WEAK).
 
 Ink in the margin does not count: the shadow of a binding or the edge of a book stands more than one staff space
 outside the staves.
@@ -42,6 +44,12 @@ CONTRAST = (0.3, 0.5)   # on a page without opening lines, the systems have the 
 LONE = 0.45             # on a page that draws its systems with bar lines through the gap (under more than half of its
 #                         opening lines), two staves with no bar line through their gap and an opening line under this
 #                         cover are two systems: a verse on single staves over a refrain for the choir (None: off)
+OPEN_WEAK = (0.75, 0.3)  # an opening line that covers less of the gap than this, with no bar line through the gap, is
+#                         none where the notes of the two staves do not stand in the same columns (in_step at most the
+#                         second number): the bracket and the clef of the next system, which begins at another left end
+#                         and stands close under this one. Measured on every page of LitChoir: the opening lines that
+#                         cover under 0.75 are in step from 0.52 on where they join a system, and up to 0.13 where
+#                         they do not (None: off)
 STEP_START = 8.0        # the marks of two staves are compared from this many staff spaces after their left end
 STEP_LEAST = 12.0       # along at least this many staff spaces
 STEP_REACH = 2.5        # and up to this many staff spaces over and under each staff (at most to the middle of the gap)
@@ -174,6 +182,10 @@ def joined(ink: np.ndarray, upper: dict, lower: dict) -> dict:
         aligned = matched / max(len(own_upper), len(own_lower))
     link = {'opening': round(opening, 2), 'bars': bars, 'aligned': None if aligned is None else round(aligned, 2),
             'step': in_step(ink, upper, lower) if BLOCKS or CONTRAST else None}
+    if OPEN_WEAK and COVER <= link['opening'] < OPEN_WEAK[0] and bars == 0 and link['step'] is not None \
+            and link['step'] <= OPEN_WEAK[1]:
+        # The bracket and the clef of the next system reach into a narrow gap, at another left end: no opening line.
+        link['weak'], link['opening'] = link['opening'], 0.0
     link['weight'] = weigh(link)
     link['same'] = link['weight'] > 0
     return link

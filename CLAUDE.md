@@ -11,8 +11,13 @@ under 99 % of the notes that its pages show. The words under the notes belong to
 words is of no use. Recited syllables that no page prints are counted apart, and the reader must mark a reciting
 note. The work does not stop at a partial result. Report each result with its limits.
 
-First milestone (the owner, 11 November 2026): 99 % on clean copies, the 81 scan scores with printed notes and
-words and crisp ink. Work on these first, notes and words. The thick copies (26) and the copies by hand (189) come
+First milestone (the owner, 11 November 2026, raised on 17 November 2026): the clean copies are read perfectly, the
+81 scan scores with printed notes and words and crisp ink ("No one wants a 99% product. the clean copies need to be
+100%, or maybe 99.9%"; "the clean copies should be consistently perfect"). Each clean score reads every note and
+every syllable that its pages show, with no note that is not there; no clean score has a thousand notes, so 99.9 %
+of a score is all of it. The copies by hand keep the target of 99 %. Work on the clean copies first, notes and words.
+Report them by the scores that are read whole (every note; every note and syllable; no note that is not there)
+beside the share of the notes. The thick copies (26) and the copies by hand (189) come
 after it. The owner decided against a local language model. The owner allowed Tesseract for the words of a scan
 (11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"; 16 November
 2026, of its larger language files: "use the big one"): it is an
@@ -76,6 +81,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The clean copies are a fixed list of 81 scores (outside git, with the wide test); 78 are counted (one was sorted
   wrongly, the page of two holds another version than the typed hymn). Report them first after each round, and
   change the list only with a reason.
+- A note that a hand changed on a clean copy counts apart (the owner, 17 November 2026: "Count hand-changed notes
+  apart"): a printed head that is crossed out, drawn over or written in by hand is listed by its place on the page
+  (outside git, with the wide test), counted apart from the print and held to the 99 % of the copies by hand. Every
+  printed note must be read, also under a pencil ring, a marker or a paperclip: marks around the print are no
+  excuse. A mark is called handwriting only after it was looked at four times the size and in the scan itself: two
+  of the first three such places were worn print (17 November 2026).
 - Switch one rule at a time and score it alone on all 38 pages, and on the wide test's pages that it changes.
   Rules scored together hide a rule that costs notes. The pages that a round changes are listed by the notes of
   the page and by its written music: a held note of an ison is written into the music only.
@@ -477,6 +488,42 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   loses too (a dot at one head of a chord). A page that prints a response more often than the hymn is typed
   lines a note up with another typed note: that is the count's line-up, not the page (of 47 such notes 5 were
   the page's).
+- The clean pages of the wide test are built once and read by every run. After a change of `staves.py`,
+  `systems.py` or `page.py`, every page is built anew and compared with the stored one (staves, systems, places
+  and the picture; blank columns at the right do not count; a script outside git, with the wide test): in round
+  47, 20 of the 657 stored pages were a week older than the code. Read as the code builds them, one clean score
+  lost 46 notes (two systems joined into one) and another gained 19, and no round had seen either. The change of
+  the pages is reported apart from the rules of the round.
+- A staff is followed past the end that the comb gives it, each of its five lines by itself, window by window
+  (`staves.ENDS_ON`): a pencil ring, a paperclip, a faded stretch or a bend hides the lines from the comb. What
+  the first forms met: a brace, a punch hole and the black edge of a page are filled at the rows of the lines too
+  (a line is thin, with paper half a staff space over or under it); a chord and a bar line are dark for a few
+  windows only; two pieces of one staff are followed into each other (the longer stays). A page that bends at
+  its spine spreads the lines unevenly, 0.8 to 1.35 staff spaces apart: a fit to five evenly spaced lines refused
+  true staves, so the rows only have to stand in order, 0.65 to 1.5 staff spaces apart (`staves.ENDS_GAPS`;
+  without it two lines were followed onto one). A slip of paper that is pasted on carries its staff at other
+  rows, and the nearest rows are then one line off: a staff has five lines, and a sixth one where the first is
+  missing tells (`staves.ENDS_SIXTH`).
+- A staff that grows moves the cuts of its system by a row of pixels, and notes anywhere on the page change with
+  it. A rule for the staves is judged by its staff ends, each looked at on the page; the notes that a score
+  loses are looked for across the page before the rule is narrowed for them (five scores lost 12 notes, and
+  each of their staff ends was right).
+- A mark that is no note can count as one, hold a line-up or carry a vote of its column. A rule that takes false
+  marks away (the loop of a flag, the room of a double bar line, the box of a natural, read as half notes by
+  their closed paper: `symbols.HOLE_UPRIGHT`) loses notes by the count where every mark that it took was false.
+  Look at each mark that is gone in a score that loses, and say so. The lengths that then change by the vote of
+  a column are another cause, listed apart.
+- A step that takes marks away runs after the flags are counted (`count_tails`): the loop of a flag is a mark
+  on the stem of its note, and older rules read the flag from it. Taken away before, two eighth notes became
+  quarters.
+- The inside of a printed half note lies on its side and rises to the right; closed paper that stands upright
+  is something else. Two guards came from a census of every hollow mark with one stem: a hole that a thick copy
+  all but closed has no direction (the area of the inside), and one print sets an upright inside between two
+  thick sides (the ink at both sides of the hole).
+- An opening line joins two staves at one left end. Where the first system of a page is set in and the next one
+  stands close under it, the bracket and the clef of the next system cover the narrow gap as a weak line: such
+  a line counts only where the notes of the two staves stand in the same columns (`systems.OPEN_WEAK`; the weak
+  lines of LitChoir's pages are in step from 0.52 on where they join a system and up to 0.13 where they do not).
 - `experiments/` holds the record of the first tests.
 
 ## Rules

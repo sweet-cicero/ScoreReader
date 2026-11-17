@@ -23,7 +23,11 @@ the page prints it (since 15 November 2026, see below; 59 notes of the clean cop
 | Scans | 294 | 82.8 % (57,637 of 69,573) | 30 | 111 | 22 |
 | All | 364 | 86.5 % (77,653 of 89,736) | 83 | 181 | 22 |
 
-The first milestone is 99 % on clean copies: the scan scores with printed notes and words and crisp ink. 81 were
+The first milestone was 99 % on clean copies until 17 November 2026; since then it is clean copies that are read
+whole, every note and every syllable of each score, with no note that is not there (the owner: "the clean copies
+should be consistently perfect"). The copies by hand keep 99 %. After round 46, 15 of the 78 counted clean scores
+read every note, 30 every syllable, 9 every note and syllable, 10 have no note that is not there, and 3 are whole
+in all three. The clean copies are the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
 by hand now, and the page of two holds another version than the typed hymn. The other scans come after the
 milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or words by hand.
@@ -106,6 +110,119 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 47 (17 November 2026): the first round under the raised bar, score by score. The owner raised the first
+  milestone on this day: a clean copy is read whole, every note and every syllable, with no note that is not
+  there ("No one wants a 99% product"; "the clean copies should be consistently perfect"). So the round began
+  with the clean scores that lack one to three notes, each lost note looked at on the page, and it ended
+  at the staves: the largest gains were pages whose staff the reader had cut short, and pages of the wide test
+  that were older than the code.
+
+  The count has a second column since this round: the notes that a hand changed on a clean copy (the owner:
+  "Count hand-changed notes apart"). A printed head that is crossed out, drawn over or written in by hand is
+  listed by its place on the page, outside git, and held to the 99 % of the copies by hand; everything printed
+  must be read, also under a pencil ring. At least 28 of the 78 clean scores carry marks by hand (14 on or at
+  the notes, 8 beside the music only, 6 a paperclip, punch holes or a stamp), and one place changes notes: a
+  note crossed out in pen with a new head beside it (2 typed notes). Two further places that looked like a
+  hand at two and a half times the size are worn and rough print at four times: a mark is called handwriting
+  only after it was looked at four times the size and in the scan itself.
+
+  Four rules for the notes, each counted alone on every page of LitChoir (notes gained and lost; the stored
+  pages of the wide test, see below):
+
+  | Rule | Clean copies | All scores | Pages that change |
+  |---|---|---|---|
+  | `symbols.PALE_STEM`: the stem of a head beside the staff goes on as pale grey where the copy lost it | 3 and 0 | 9 and 1 | 5 |
+  | `symbols.HOLE_UPRIGHT`: a hollow mark whose inside stands upright is no head (first form, without its two guards) | 8 and 3 | 61 and 30 | 158 |
+  | `symbols.LOOP_UNDER`: the loop of a flag right under the head of its note | 0 and 0 | 5 and 0 | 9 |
+  | `symbols.LEDGER_DASH`: a first ledger line that the print sets as two dashes beside the head | 2 and 0 | 2 and 0 | 2 |
+  | The four together, with the guards of `HOLE_UPRIGHT` | 13 and 3 | 76 and 27 | |
+  | The step for the hollow marks after the flags are counted | 0 and 0 | 1 and 0 | 10 |
+
+  `HOLE_UPRIGHT` is the rule of the round for the notes that are not there. The inside of a printed half
+  note lies on its side and rises to the right; closed paper that stands upright is the loop of a flag, the
+  room of a double bar line, the bowl of a letter, the C of the time or the box of a natural, and each was
+  read as a half note. The rule measures the largest piece of closed paper in a hollow mark with one stem:
+  how many times as long as wide it is along its own axis (1.6 or more) and where that axis points (outside
+  -15 to 60 degrees). A census of every such mark gave two guards: a hole that a thick copy all but closed
+  has no direction (smaller than 0.05 staff spaces squared: not taken), and one print sets the half note
+  of a space with an upright inside between two thick sides (ink 0.5 staff spaces thick at both sides: not
+  taken). Its first form lost true half notes of both kinds.
+
+  The rule loses notes by the count, and every mark that it took in a score that loses was looked at: a
+  number of a time signature, the room of a double bar line, the box of a natural, a clef, a "6" and a
+  pencil ring, each read as a half note before, and each either counted as a right note by chance or held
+  a line-up or a vote of its column (liturgy-litanies moves its window by it and loses 6, a copy by hand
+  moves its layout and loses 4). Four notes change their length by the vote of their column once the false
+  note beside them is gone (a quarter that takes the half of the other voice, on two clean scores; an
+  eighth whose flag touches a bar line and was an eighth by that vote only). That vote is a cause of its
+  own and is left for a later round. The hollow marks are taken away after the flags are counted: the loop
+  of a flag is a mark on the stem of its note, and two eighth notes had become quarters without it.
+
+  `LEDGER_DASH` is a rule for one print, and says so: it reads the two notes of pascha-receive-long that
+  stand on a first ledger line drawn as two short dashes, and with them that score reads every printed
+  note. `PALE_STEM` reads 11 heads beside the staff whose stem the scan kept as pale grey only; all 11 are
+  true heads, and one score loses a note by the line-up of a true one.
+
+  The staves. A pencil ring, a paperclip or a binder ring over the start of a staff, a faded stretch, or a
+  page that bends at its spine hides the lines from the comb that finds the staves, and the staff then began
+  after its clef or ended before its last bar: the notes there were not read at all. `staves.ENDS_ON` follows
+  each of the five lines past the end that the comb gives, window by window (half a staff space wide), at
+  the row where the window before puts it. A window counts where three of the five lines are there, each
+  filled and thin; a chord, a bar line or a brace is dark for a few windows and is passed; the end moves
+  where the lines go on for one and a half staff spaces or more. What the first forms met, each on a page:
+
+  - A brace, a punch hole and the black edge of a page are filled at the rows of the lines too. A line is
+    thin: paper half a staff space over or under it.
+  - Two pieces of one staff were followed into each other and stood as two staves: the longer one stays.
+  - A page that bends at its spine spreads the lines unevenly, 0.8 to 1.35 staff spaces apart. A fit of the
+    found rows to five evenly spaced lines refused true staves on clean copies, so the rows only have to
+    stand in order, 0.65 to 1.5 staff spaces apart (`staves.ENDS_GAPS`). Without that, two lines were
+    followed onto one and the staff came out 88 pixels high where it is 112.
+  - The last bar of a system can be a slip of paper from another copy, pasted on with its staff at other
+    rows. The nearest rows are then one line off. A staff has five lines: where the first is missing in most
+    windows and a sixth one stands under the last (or the other way round), the five lines are the other
+    four and the sixth (`staves.ENDS_SIXTH`).
+
+  The rule moves staves on 39 pages of LitChoir and on no page of the fresh set. Rule off against rule on,
+  on the pages as the code builds them: 15 notes gained and 3 lost on the clean copies, 216 gained and 12
+  lost on all scores (one copy by hand gains 112: two of its staves began a third of the page late). The
+  five scores that lose (5, 2, 2, 2 and 1 notes) were each looked at: every staff end is right now (a final
+  bar line, a punch hole at the end of a staff, a faded start), and the lost notes stand elsewhere on the
+  page. A staff that grows moves the cuts of its system by a row of pixels, the straightened page shifts
+  by that row, and a few notes across the page are read otherwise. The rule is not narrowed for them.
+
+  The stored pages. The wide test reads each scan from a clean page that was built once, on 10 November.
+  The staves and the systems of the code changed after that day, and the stored pages were not built
+  again. All 657 were built anew in this round and compared (staves, systems, places and the picture; blank
+  columns at the right do not count): 20 differ. Read from the pages that the code builds, without the staff
+  rule, the clean copies gain 31 notes and lose 46, and all scores gain 55 and lose 66:
+
+  - cherubic-georgian--s2 gains 19 (477 of 482) and cherubic-voronkoff--s2 15: the code finds their staves
+    better than the stored pages had them.
+  - pascha-receive-short, a clean score, loses 46 of its 150 notes: the code joins the first two systems
+    of its page into one. The first system is set in, the next one stands close under it, and the bracket
+    and the clef of the next system cover 0.60 of the narrow gap between them, which is the limit for a
+    line that opens a system. No round had seen it, because the stored page was older than that limit.
+  - liturgy-gospel-alleluia--s2, a copy by hand, loses 19: on a staff that rises steeply to the edge of
+    the photo the comb jumps to the next line, and the staff is one line off from there on. Not solved in
+    this round (the rule for the staff ends gives 7 of the notes back).
+
+  So the figures of the rounds before held 46 notes of the clean copies that the code did not read, and
+  lacked 31 that it did. The wide test's pages are those of the code now, and after a change of
+  `staves.py`, `systems.py` or `page.py` every page is built anew and compared.
+
+  The systems. A census of what joins two staves on every page of LitChoir (1,560 sure links, 1,046 of them
+  by the opening line alone) shows the line of pascha-receive-short for what it is: 18 opening lines cover
+  less than 0.75 of their gap, with no bar line through the gap. Of the 15 whose staves can be compared, 6
+  join staves whose notes stand in the same columns (in step from 0.52 on) and 9 do not (up to 0.13).
+  `systems.OPEN_WEAK` takes such a line for none at 0.3 or less. It changes the systems of 7 pages, each
+  looked at: systems of four and six staves that are systems of two (two scans of one hymn by hand, 38 and
+  69 notes), chant on single staves that two set-in lines had joined (73 and 40 notes), an "Amen" drawn
+  by hand beside the text at the foot of a page, which is a system of its own, a page whose first system
+  is set in as on pascha-receive-short (four systems of two now, the count as before), and
+  pascha-receive-short, which reads 150 of 153 again. 46 notes gained on the clean copies and none lost, 266 and none on all
+  scores. The kit's 38 pages keep their systems (37 of 38 right, as before; the staves 38 of 38).
+
 - Round 46 (17 November 2026): the pale speck in the filled heads of one engraving. The two clean scores
   that lack most are two fine engravings (`cherubic-lvovsky`, 104 notes, and
   `extra-rejoice-o-virgin-rachmaninov`, 60). In the first the print pressed the ink out of the middle of its
