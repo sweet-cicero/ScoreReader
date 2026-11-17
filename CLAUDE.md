@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.6 % on
-scans; 86 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,873 of 22,582, counted by the page;
-21,829 of 22,591 as typed; 32 of the 78 counted scores at 99 %; 17 scores read every printed note, 31 every
-syllable, 9 both, 13 have no note that is not there, 5 are whole in all three; 707 printed notes and 209 syllables
-are lacking and 837 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
+scans; 85 scores at 99 % or more), 96.8 % of the notes on the clean copies (21,876 of 22,597, counted by the page;
+21,832 of 22,612 as typed; 31 of the 78 counted scores at 99 %; 17 scores read every printed note, 31 every
+syllable, 9 both, 13 have no note that is not there, 5 are whole in all three; 719 printed notes and 209 syllables
+are lacking and 794 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
 files and a list of words (6,030 of 6,239, counted by the page; 5,982 of 6,259 as typed; 94.5 % of the whole words; 32 scores at 99 % of the syllables);
 88.9 % of all syllables with Tesseract (87.8 % on scans), and 90.1 % on the kit (6219 of 6901).
 On the fresh test set, which no rule was set on: 95.1 % of the notes (39,720 of 41,761; 90 of 214 pieces at 99 %),
@@ -527,9 +527,37 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   a line counts only where the notes of the two staves stand in the same columns (`systems.OPEN_WEAK`; the weak
   lines of LitChoir's pages are in step from 0.52 on where they join a system and up to 0.13 where they do not).
 - The scorer sets a typed note apart as recited where the reader has no note for it in a run of five equal
-  pitches. On a clean copy a printed note that is not read can hide there: the count of the drawn notes then
-  moves with the reading (by 7 notes in round 47). Compare `apart` of each clean score in the two results
-  beside the notes gained and lost, and say what moved.
+  pitches. On a clean copy a printed note that is not read hid there (15 notes of nine scores, and the count of the
+  drawn notes moved with the reading). Since round 48 the notes that a clean copy does not draw are a matter of the
+  page: the clean scores whose pages show a reciting note or a held ison are a list with the wide test, outside
+  git, each looked at on the page (9 scores), and on every other clean score such a note is missed. Compare
+  `apart` of each clean score in two results beside the notes gained and lost.
+- The count of the notes that are not there, by parts, holds more than marks that are no notes: the notes of a
+  page that prints more than its hymn types (one clean score that is typed as a unison: 57), the breves of an
+  ison that is counted by its letters, and a note that is given to both voices of a staff. The sheets staff by
+  staff show the marks (470 of 839 after round 47). Look at the page before a figure of false notes is taken
+  for the reader's, and sort them by sight before a rule: of 80 looked at, no kind held more than a tenth.
+- The thick stroke of a final bar line or of a repeat sign is wider than a stem, so it is no slim ink: the staff
+  lines cut it into pieces as high as a staff space, which were read as filled heads, with the thin line beside
+  it as their stem (`symbols.THICK_BAR`: the columns of the mark are ink over the whole height of the staff).
+  The heads of a chord taper towards the lines between them: of 15,057 true notes of the clean copies none had
+  such columns.
+- A sign that is read as a note is told by its whole shape and by where it stands (`meter.COMMON_BOLD`,
+  `COMMON_AT`: the bold C of common time). Its height and its place on the middle line also fit an eighth rest,
+  a double sharp and two whole notes one over the other; each of the 61 such pieces of the clean pages was looked
+  at, and what only the 39 signs share is the bow: the left edge stands furthest left in the middle rows, where
+  the others have a waist. The two other pieces with a bow stood in the middle of a bar: a time signature stands
+  after the clef and the key or after a bar line. The copies by hand showed what the clean pages did not: of 149
+  further pieces with a bow, 14 were flats that a hand draws large (the stroke stands at the left over the bowl),
+  so the two ends of the C must both turn to the right (`COMMON_ARM`). A thin C by hand with one short end is left
+  out on purpose. One print parts the two ends of the C from its bow (`COMMON_ENDS`: 44 further signs, each looked
+  at). A sign takes the heads in its columns only in the rows of the staff (`COMMON_ROWS`): one print sets a held
+  note under the staff below the sign, and the first form took that note with it. The C of the fresh set's
+  engravings has a short lower end and does not pass; no page of the fresh set reads it as a note.
+- A rule that takes a false note away loses notes by the count where the false note had counted by chance (a piece
+  of a C that stands at the pitch of the first note) or had held a line-up: six notes on four scores of one print.
+  List the typed notes whose verdict changes and the notes of the page that are gone and new; where no note of the
+  page is new and every gone note is a piece of the sign, the rule stays as it is.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
