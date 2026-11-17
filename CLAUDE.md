@@ -20,8 +20,8 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 86.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 82.5 % on
-scans; 83 scores at 99 % or more), 96.4 % of the notes on the clean copies (21,778 of 22,582, counted by the page;
-21,723 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
+scans; 83 scores at 99 % or more), 96.5 % of the notes on the clean copies (21,782 of 22,582, counted by the page;
+21,727 of 22,591 as typed; 29 of the 78 counted scores at 99 %), and of their syllables 49.9 % with the own letter reader and 96.6 % with Tesseract, its larger
 files and a list of words (6,026 of 6,239, counted by the page; 5,973 of 6,259 as typed; 94.4 % of the whole words; 31 scores at 99 % of the syllables);
 88.3 % of all syllables with Tesseract (87.1 % on scans), and 89.9 % on the kit (6207 of 6901).
 On the fresh test set, which no rule was set on: 94.9 % of the notes (39,650 of 41,761; 90 of 214 pieces at 99 %),
@@ -412,6 +412,21 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   alone lost 2 notes that the second half (the stem) brings back.
 - A new kind of note that is read moves the count of the drawn notes: the typed notes of a recitation that the
   reader has no note for are counted apart, and a chant page draws them as heads without stems (22 notes).
+- A small mark in the rows of a staff line is the tip of a tie only by the whole shape of the tie
+  (`symbols.DOT_TIP`): the bow comes out of the line again at the right of the mark, long, and slim and near
+  the line where it begins. A hand sets its true dots on the staff lines, and a thick copy prints them into
+  the lines: the mark's place alone gained 51 notes on all scores and lost 171 (17 November 2026).
+- A piece of ink beside a mark is measured where it begins, not by its box: a bow that is joined to a stem or a
+  bar line has any box, and "a long, low piece past the line" was a beam, a slur and a blot of joined ink.
+- A next form of a rule that is not a part of the form before it is read on the pages of the widest form.
+- A wrong reading can be counted as right: a whole note that is tied to a half note was read with a false dot
+  and had the six beats of the two together. Look at a note that a rule loses on the page before the rule is
+  narrowed for it.
+- A tie is joined only where the first note ends as the second begins. Where a bow is found and its tie is
+  not counted, look at the length of the first note and at the head at the end of the bow before the bow.
+- A second reading of a page at another limit of the ink gives no rule: the notes that only the other reading
+  has are false twice as often as true, and where two readings give a note two lengths the first is right
+  three to four times as often. The bar does not choose either: a wrong length fits its voice in most cases.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
