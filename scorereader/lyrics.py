@@ -1,6 +1,6 @@
 """Reads the words under the notes of a scan with a list of words. No model is used.
 
-scoreread.letters groups the letters of a hymn by shape, without names. The names are a puzzle that the hymn sets
+scorereader.letters groups the letters of a hymn by shape, without names. The names are a puzzle that the hymn sets
 itself: the same shape is the same letter in every word, and the words of the hymn are words of the list (the words
 of other hymns, given by the user). The names under which the page reads most like the words of the list are the
 names of the shapes. A letter's height (over the small letters, under the line), its dot and its holes say which
@@ -684,7 +684,7 @@ def named_shapes(groups: list[dict], members: dict[int, list[dict]], named: dict
 
 def read_words(glyphs: list[dict], lex: collections.Counter, shapes: list[dict] | None = None,
                learned: list[dict] | None = None, source: str = '') -> list[dict]:
-    """The syllables of the words of a hymn, from the glyphs of its pages (scoreread.letters.page_glyphs) and a
+    """The syllables of the words of a hymn, from the glyphs of its pages (scorereader.letters.page_glyphs) and a
     list of words: {'band' (the page and the number of the row), 'x0', 'x1', 'text' ('?' for a letter with no
     name), 'join' (a hyphen follows), 'glyphs'} each, in the order of the rows.
 

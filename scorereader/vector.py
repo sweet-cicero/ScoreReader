@@ -3,7 +3,7 @@
 Such a PDF keeps every sign as a character of a music font at its exact place: a note head, a clef, a sharp, a flag,
 a dot. The staff lines, the stems and the bar lines are drawn lines, the beams are filled shapes, and the words are
 plain text. So nothing has to be recognised: the step looks each sign up in a table and applies the same music rules
-as the reader of scans (scoreread.music). A scan has no such signs, and this step then gives None.
+as the reader of scans (scorereader.music). A scan has no such signs, and this step then gives None.
 
 Two ways of drawing are read:
 - Finale (fonts Maestro, Petrucci) and MuseScore (Leland, a SMuFL font): lines for the staves, stems and bar lines.

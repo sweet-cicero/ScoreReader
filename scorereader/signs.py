@@ -1,6 +1,6 @@
 """Reads the sharps, flats and naturals that stand before notes. No model is used.
 
-A sign is read from its upright strokes, as the signs of a key signature are (scoreread.starts). A flat has one
+A sign is read from its upright strokes, as the signs of a key signature are (scorereader.starts). A flat has one
 stroke with a bowl at its lower right. The other signs have two strokes side by side, joined by ink: the strokes of
 a sharp stand at one height and are as long as each other; the left stroke of a natural stands higher than the right
 one; and the right side of a high bowl of a flat is a short stroke at the foot of the long one.

@@ -1,8 +1,8 @@
 """Reads a clean page with the reader's own symbol step: no model, no network, only rules on the ink.
 
-The steps: the layers of the ink (scoreread.layers), the symbols on them (scoreread.symbols), the clef and the key
-signature at the start of each staff (scoreread.starts), the sharps, flats and naturals before a note
-(scoreread.signs), the ties (scoreread.ties), and the music rules that turn the symbols into notes (scoreread.music).
+The steps: the layers of the ink (scorereader.layers), the symbols on them (scorereader.symbols), the clef and the key
+signature at the start of each staff (scorereader.starts), the sharps, flats and naturals before a note
+(scorereader.signs), the ties (scorereader.ties), and the music rules that turn the symbols into notes (scorereader.music).
 
 The yardstick (bench/yardstick, copisteria's network) gives the same kind of result for the same clean page, so the
 two can be measured side by side on the test kit. Nothing of it is loaded here.
@@ -26,17 +26,17 @@ from .triplets import mark_triplets
 from .words import cut_stems, word_bands, word_rows
 
 SIGNS = 'strokes'
-TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scoreread.meter)
-CHECK = True         # the music check: the voices of a system agree on the lengths (scoreread.music.agree_lengths)
+TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scorereader.meter)
+CHECK = True         # the music check: the voices of a system agree on the lengths (scorereader.music.agree_lengths)
 OCTAVE = 0.4         # a treble staff with a small 8 under its clef sounds an octave lower, when this share of the staves at
-                     # its place in the systems show the 8 (scoreread.starts.octave_mark); None: the 8 is not read
+                     # its place in the systems show the 8 (scorereader.starts.octave_mark); None: the 8 is not read
 TENORS = 2.5         # a number: a treble staff over the bass staff is the tenors' only when its notes do not sound this many
                      # places under the notes of the bass staff (the middle note of each); None: always the tenors'
 
 
 def page_starts(grey: np.ndarray, places: list[dict]) -> list[dict]:
     """A first look at a clean page: what the start of each staff shows (its clef and its key signature), for the
-    vote of all pages of a hymn on its key (scoreread.starts.hymn_key)."""
+    vote of all pages of a hymn on its key (scorereader.starts.hymn_key)."""
     if not places:
         return []
     layers = read_layers(grey, places)
@@ -51,9 +51,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests') for pictures and checks.
     `key_before` is the key of the page before in the same hymn: a page that shows no key signature has that key.
     `clefs_before` are the clefs of the staves of a system on that page, and `key_hymn` is the key that the staves
-    of all pages of the hymn voted for together (see scoreread.starts). `ties_before` is the 'ties_out' of the page
+    of all pages of the hymn voted for together (see scorereader.starts). `ties_before` is the 'ties_out' of the page
     before: the notes that a tie leaves over the end of that page, as (the number of the staff in its system, the
-    place). A tie comes to the first notes of this page only there (see scoreread.ties.TIE_PAGE).
+    place). A tie comes to the first notes of this page only there (see scorereader.ties.TIE_PAGE).
 
     'key' is the key of the page, and 'staff_keys' the key of each staff (a page with two pieces has two keys).
     'ties_out' are the notes of the last system that a tie leaves over the end of the page (for the next page).
@@ -64,7 +64,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     the note; the tied notes stay two notes, as in MusicXML) and 'mark': what the note was read from (the size and
     place of the head, hollow or filled, its hole, its dot, its sign, its stems and their flags or beams).
 
-    The words are read after the notes, for the whole hymn at once (scoreread.lyrics): 'part_notes' holds, for each
+    The words are read after the notes, for the whole hymn at once (scorereader.lyrics): 'part_notes' holds, for each
     note of 'notes', the same note in 'parts', so that a syllable can be set under both."""
     if not places:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
@@ -211,13 +211,13 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     if CHECK:
         systems = [{index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
                    for system in sorted({staff['system'] for staff in staves})]
-        # The sum that most bars of the page have: a bar with one open step is as long (scoreread.music.BAR_FULL).
-        # On a page whose bars keep their length, a bar that is too long is looked at too (scoreread.music.BAR_OVER).
+        # The sum that most bars of the page have: a bar with one open step is as long (scorereader.music.BAR_FULL).
+        # On a page whose bars keep their length, a bar that is too long is looked at too (scorereader.music.BAR_OVER).
         sums = [value for own in systems for value in bar_sums(own, bars, space, rests)]
         full, steady = full_sum(sums), full_sum(sums, _music.BAR_OVER) if _music.BAR_OVER else None
         for own in systems:
             agreed += agree_lengths(own, bars, space, rests, full, steady)
-    # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scoreread.drone).
+    # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scorereader.drone).
     # It is a part of its own after the melody; its notes are in no list of notes, so no syllable is set under them.
     drone, holding = [], {}
     for index, staff in enumerate(staves):

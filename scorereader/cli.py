@@ -1,9 +1,9 @@
 """The command: a page of a score in, its notes out. Everything runs on this computer.
 
-usage: python -m scoreread read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng]]
-       python -m scoreread hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng]]
-       python -m scoreread layers <page.png | score.pdf> --out <folder> [--page N]
-       python -m scoreread layout <page.png | score.pdf> --out <folder> [--page N]
+usage: python -m scorereader read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng]]
+       python -m scorereader hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng]]
+       python -m scorereader layers <page.png | score.pdf> --out <folder> [--page N]
+       python -m scorereader layout <page.png | score.pdf> --out <folder> [--page N]
 
 read    finds the staves and the systems, builds the clean page, reads it, and writes:
           <name>.musicxml     the notes
@@ -22,18 +22,18 @@ layers  does the first steps and writes the picture of the layers (no reading), 
 layout  does only the first steps (no reading), to check a page fast.
 
 A PDF that notation software wrote (Finale, MuseScore, Encore) is read from its own drawing, with its words: every
-sign is a character of a music font at its exact place (scoreread.vector; needs pdfplumber). --drawing off reads such
+sign is a character of a music font at its exact place (scorereader.vector; needs pdfplumber). --drawing off reads such
 a page as an image instead.
 
 The symbols are read with rules on the ink: no model, and only OpenCV and NumPy are needed. --key-before gives the
 key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature.
 
---words gives a list of words (a text file: plain text, or lines of a word and its count; SCOREREAD_WORDS names it
+--words gives a list of words (a text file: plain text, or lines of a word and its count; SCOREREADER_WORDS names it
 too). With it the words of a scan are read: the letter shapes of the hymn are grouped, and the groups are named so
-that the page reads like the words of the list (scoreread.letters, scoreread.lyrics). `hymn` reads the words of all
+that the page reads like the words of the list (scorereader.letters, scorereader.lyrics). `hymn` reads the words of all
 pages together, which names the letters better than one page alone. Without a list a scan gives its notes only.
 
---tesseract reads the words of a scan with Tesseract in place of the reader's own letters (scoreread.ocr). Tesseract
+--tesseract reads the words of a scan with Tesseract in place of the reader's own letters (scorereader.ocr). Tesseract
 is a small text reader that must be installed on this computer; it is the only model the reader can use, it reads
 the rows of words alone, and the reader works without it.
 
@@ -54,6 +54,7 @@ from pathlib import Path
 
 import cv2
 
+from . import setting
 from .page import clean_page, flat_paper
 from .staves import draw, find_staves
 from .systems import find_systems, lost_staves
@@ -113,8 +114,8 @@ def drawn(source: Path, page: int, name: str | None) -> dict | None:
 
 
 def word_list(path: str | None):
-    """The list of words for the words of a scan: from the file of --words, or of SCOREREAD_WORDS. None without one."""
-    path = path or os.environ.get('SCOREREAD_WORDS')
+    """The list of words for the words of a scan: from the file of --words, or of SCOREREADER_WORDS. None without one."""
+    path = path or setting('WORDS')
     if not path:
         return None
     from .lyrics import load_words  # noqa: PLC0415
@@ -133,7 +134,7 @@ def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '', 
     from .music import musicxml  # noqa: PLC0415
     images = [(number, result) for number, result in enumerate(read) if result.get('layers')]
     if ocr:
-        # Tesseract reads each row of words as a line of text (scoreread.ocr); it needs no list of words, and with
+        # Tesseract reads each row of words as a line of text (scorereader.ocr); it needs no list of words, and with
         # one it mends the words that the list does not hold.
         from .ocr import read_rows  # noqa: PLC0415
         count = 0
@@ -173,7 +174,7 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
     code, the summary that the command prints, and what the reader gave (None when nothing was read). `looked` is
     what a first look at the page gave already: (the drawing's result or None, what prepare() gave or None). With
     `lex` (a list of words) the words of an image page are read too. `ties_before`: the notes that a tie leaves
-    over the end of the page before (see scoreread.reader.read_page)."""
+    over the end of the page before (see scorereader.reader.read_page)."""
     start = time.time()
     out.mkdir(parents=True, exist_ok=True)
     result, ready = looked if looked else (None, None)
@@ -191,12 +192,12 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
                    'key': result['key'], 'clefs': result['clefs'], 'seconds': round(time.time() - start, 1)}, result
     ready = ready or prepare(source, page)
     if ready is None:
-        print(f'scoreread: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
+        print(f'ScoreReader: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
         return 2, {}, None
     grey, staves = ready['grey'], ready['staves']
     name = name or ready['stem']
     if not staves:
-        print(f'scoreread: no staff found on {source}' + (f', page {page}' if source.suffix.lower() == '.pdf' else '')
+        print(f'ScoreReader: no staff found on {source}' + (f', page {page}' if source.suffix.lower() == '.pdf' else '')
               + '. Check that the page is upright and holds music.', file=sys.stderr)
         return 1, {'name': name, 'staves': 0}, None
     systems, clean, places = ready['systems'], ready['clean'], ready['places']
@@ -260,7 +261,7 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
             result = drawn(source, page, stem) if drawing == 'auto' else None
             ready = prepare(source, page) if result is None else None
             if result is None and ready is None:
-                print(f'scoreread: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
+                print(f'ScoreReader: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
                 return 2, {}
             if ready is not None and ready['staves']:
                 shown.append(page_starts(ready['clean'], ready['places']))
@@ -297,7 +298,7 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog='scoreread', description='Reads the pages of a score on this computer.')
+    parser = argparse.ArgumentParser(prog='scorereader', description='Reads the pages of a score on this computer.')
     parser.add_argument('command', choices=['read', 'hymn', 'layers', 'layout'])
     parser.add_argument('source', nargs='+')
     parser.add_argument('--out', required=True)
@@ -306,20 +307,20 @@ def main(argv=None) -> int:
     parser.add_argument('--name', default=None)
     parser.add_argument('--drawing', choices=['auto', 'off'], default='auto')
     parser.add_argument('--words', default=None,
-                        help='a text file with a list of words (or SCOREREAD_WORDS): the words of a scan are read with it')
+                        help='a text file with a list of words (or SCOREREADER_WORDS): the words of a scan are read with it')
     parser.add_argument('--shapes', default=None,
-                        help='a file of letter shapes that the reader keeps (or SCOREREAD_SHAPES): what one hymn named helps the next')
+                        help='a file of letter shapes that the reader keeps (or SCOREREADER_SHAPES): what one hymn named helps the next')
     parser.add_argument('--tesseract', action='store_true',
-                        help='read the words of a scan with Tesseract (or SCOREREAD_OCR=tesseract); it must be installed')
+                        help='read the words of a scan with Tesseract (or SCOREREADER_OCR=tesseract); it must be installed')
     parser.add_argument('--language', default=None,
-                        help="the language file of Tesseract (or SCOREREAD_OCR_LANGUAGE): 'eng' when not given, 'ron', 'eng+ell'")
+                        help="the language file of Tesseract (or SCOREREADER_OCR_LANGUAGE): 'eng' when not given, 'ron', 'eng+ell'")
     parser.add_argument('--key-before', type=int, default=None,
                         help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
     args = parser.parse_args(argv)
-    shapes = args.shapes or os.environ.get('SCOREREAD_SHAPES')
-    ocr = args.tesseract or os.environ.get('SCOREREAD_OCR') == 'tesseract'
+    shapes = args.shapes or setting('SHAPES')
+    ocr = args.tesseract or setting('OCR') == 'tesseract'
     if args.language:
-        os.environ['SCOREREAD_OCR_LANGUAGE'] = args.language
+        os.environ['SCOREREADER_OCR_LANGUAGE'] = args.language
     if ocr:
         from .ocr import available  # noqa: PLC0415
         if not available():

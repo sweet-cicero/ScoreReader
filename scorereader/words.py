@@ -178,8 +178,8 @@ def _beside(bands: list[dict], letters: list[tuple]) -> None:
 def cut_stems(layers: dict, heads: list[dict], bands: list[dict]) -> int:
     """Ends each stem that runs into a band of words where the band begins: its 'end' is the last row of its own ink
     before the band, and stem['words'] holds the band's rows, so that nothing in the band counts as its flag.
-    stem['full'] keeps the end that was found first (see scoreread.symbols.WORD_BEAMS), and stem['own'] the row where
-    the stem's own ink ends in the band, without a break (see scoreread.symbols.THIN_FULL). Returns how many stems
+    stem['full'] keeps the end that was found first (see scorereader.symbols.WORD_BEAMS), and stem['own'] the row where
+    the stem's own ink ends in the band, without a break (see scorereader.symbols.THIN_FULL). Returns how many stems
     were cut."""
     if not bands:
         return 0

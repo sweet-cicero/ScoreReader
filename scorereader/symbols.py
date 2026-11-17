@@ -1,4 +1,4 @@
-"""Reads the symbols of a clean page from its layers (scoreread.layers): note heads with their pitch place and their
+"""Reads the symbols of a clean page from its layers (scorereader.layers): note heads with their pitch place and their
 stems. No model is used: every decision is a rule on the ink.
 
 How a note is found. A note head is a thick mark with a stem. Printed music and almost every copyist follow one
@@ -909,7 +909,7 @@ def _at_staff(layers: dict, mark: dict) -> bool:
 
 
 def _in_words(layers: dict, mark: dict) -> bool:
-    """True when a mark stands in a band of words (scoreread.words): it is a letter."""
+    """True when a mark stands in a band of words (scorereader.words): it is a letter."""
     space = layers['space']
     return any(band['x0'] <= mark['cx'] <= band['x1'] and band['top'] <= mark['cy'] <= band['bottom']
                and mark['y0'] >= band['top'] - 0.3 * space and mark['y1'] <= band['bottom'] + 0.5 * space
@@ -917,7 +917,7 @@ def _in_words(layers: dict, mark: dict) -> bool:
 
 
 def _into_words(layers: dict, mark: dict, way: dict | None, before: float = 0.3) -> dict | None:
-    """The band of words (scoreread.words) that the upright ink of a mark runs into, or ends at most `before` staff
+    """The band of words (scorereader.words) that the upright ink of a mark runs into, or ends at most `before` staff
     spaces before, when the mark stands clear of the band and near it; else None."""
     if not way:
         return None
@@ -2867,7 +2867,7 @@ def tail_marks(layers: dict, head: dict, stem: dict, last: float | None = None, 
     near = cv2.dilate(window, np.ones((1, 5), np.uint8))
     window |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((high, 1), np.uint8)) & lines
     if stem.get('words') and words:
-        # The stem ends at the words (scoreread.words): the ink of the letters is no flag.
+        # The stem ends at the words (scorereader.words): the ink of the letters is no flag.
         low, high = int(stem['words'][0]) - top, int(stem['words'][1]) + 1 - top
         window[max(0, low):max(0, high)] = 0
     centre = x - first

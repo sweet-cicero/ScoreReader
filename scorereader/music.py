@@ -1,4 +1,4 @@
-"""Turns the symbols of a page (scoreread.symbols) into music: pitches, voices, onsets, and MusicXML. No model is used.
+"""Turns the symbols of a page (scorereader.symbols) into music: pitches, voices, onsets, and MusicXML. No model is used.
 
 - Pitch: the clef gives the note name of each pitch place, the key signature and the accidentals of the bar give
   its sharp or flat.
@@ -269,7 +269,7 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
     was taken for a beam, or the hole of a half note was filled by the copy. A note that reaches over several
     columns is only made shorter, never longer: a note can be missing after it, or a rest can stand there.
 
-    `rests` holds the rests of the page (scoreread.rests.quarter_rests): a note with a rest after it is silent for
+    `rests` holds the rests of the page (scorereader.rests.quarter_rests): a note with a rest after it is silent for
     a part of the way to the next note of its voice (see REST_SPAN). `full` is the sum that most bars of the page
     have (full_sum): a bar with one open step is as long (see BAR_FULL). `steady` is that sum on a page whose bars
     keep their length, or None (see BAR_OVER)."""
@@ -613,7 +613,7 @@ def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | N
            '<score-partwise version="4.0">']
     if title:
         out.append(f'<work><work-title>{escape(title)}</work-title></work>')
-    out.append('<identification><encoding><software>scoreread</software></encoding></identification>')
+    out.append('<identification><encoding><software>ScoreReader</software></encoding></identification>')
     out.append('<part-list>')
     for number in range(len(parts)):
         name = (names or {}).get(number, f'Staff {number + 1}')

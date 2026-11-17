@@ -3,7 +3,7 @@
 One copyist, one typewriter or one type draws a letter the same way each time, so the page teaches its own letters:
 the pieces of ink of the rows of words are set on one canvas (scaled by the height of the small letters, placed by
 the line that the letters stand on), and the pieces of one shape make one group. The groups have no names here:
-scoreread.lyrics names them with a list of words.
+scorereader.lyrics names them with a list of words.
 """
 from __future__ import annotations
 

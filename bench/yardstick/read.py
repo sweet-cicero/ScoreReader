@@ -2,11 +2,11 @@
 
 usage: python bench/yardstick/read.py <folder> [--name NAME] [--ledger]
 
-The folder holds what `python -m scoreread layout <page> --out <folder>` wrote: <name>.clean.png and
+The folder holds what `python -m scorereader layout <page> --out <folder>` wrote: <name>.clean.png and
 <name>.layout.json. For each page (or for NAME alone) this writes <name>.musicxml and <name>.notes.json beside them,
-as `scoreread read` does, so the kit's score.py scores both in the same way. --ledger turns the ledger rule on.
+as `scorereader read` does, so the kit's score.py scores both in the same way. --ledger turns the ledger rule on.
 
-It needs copisteria with its Python (see engine.py). Nothing here is used by scoreread itself.
+It needs copisteria with its Python (see engine.py). Nothing here is used by ScoreReader itself.
 """
 from __future__ import annotations
 
