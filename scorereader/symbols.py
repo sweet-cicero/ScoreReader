@@ -229,6 +229,13 @@ SLUR_STEM = (1.7, 0.28, 2.5, 0.2, 1.0, 0.5, 0.6, 0.7)   # the end of a bold slur
 #                       then it goes on upright: over the next 1.0 staff space past the followed end, ink within 0.5
 #                       staff spaces of the end's column in 0.6 of the rows or more is a stem, and it stays. The mark
 #                       is 0.7 staff spaces high or more: a whole head.
+CHORD_STEM = (0.7, 1.3, 0.75, 1.3, 0.3, 0.25, 1.25, 0.02)   # a filled mark with no stem, from this to this many
+                         # heads wide and from this to this many heads high, is the next head of the chord of a
+                         # read head, past the end where that head's stem begins: the stem's column lies at most
+                         # this many staff spaces inside the mark's edge or this many past it, at most this many
+                         # staff spaces of paper lie between the two, and the mark closes in at most this much
+                         # paper (staff spaces squared; a whole note on a ledger line closes in two slivers)
+                         # (None: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -2561,6 +2568,68 @@ def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list
             elif under and not over and not on_top:
                 head['stems'].append(under)
         found.append(head)
+    return found
+
+
+def chord_stems(layers: dict, heads: list[dict], orphans: list[dict]) -> list[dict]:
+    """The filled marks as large as a head that have no stem and stand where the stem of a read head begins, as the
+    next head of its chord stands (CHORD_STEM): past the read head at the end that its stem does not leave from
+    (under the head of a stem up, over the head of a stem down), with the stem's column at the mark's edge (the
+    right edge at a stem up, the left edge at a stem down) and little paper between the two. The scan cut the
+    stem between them, the mark's ink hides it, or the mark is the other voice's note and its own hairline stem
+    is lost: the notes of one column sound together. Such a mark is a head of that stem. A mark along the stem
+    is not taken: a sharp, the bowl of a flat and a letter stand there as often as a head. Called after
+    gone_stems(), which keeps the heads that it reads by their own shape."""
+    if not CHORD_STEM:
+        return []
+    space = layers['space']
+    wide, high = layers['head']
+    found = []
+    for mark in orphans:
+        if mark['stems'] or mark['hollow'] or any(mark is other for other in heads):
+            continue
+        own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+        if not (CHORD_STEM[0] * wide <= own_wide <= CHORD_STEM[1] * wide
+                and CHORD_STEM[2] * high <= own_high <= CHORD_STEM[3] * high):
+            continue
+        if any(other['x0'] <= mark['cx'] <= other['x1'] and other['y0'] <= mark['cy'] <= other['y1']
+               for other in heads):
+            continue
+        # Paper that the mark closes in: a whole note on a ledger line, whose inside the line cuts into two slivers.
+        paper = (layers['ink'][max(0, mark['y0'] - 2):mark['y1'] + 3,
+                               max(0, mark['x0'] - 2):mark['x1'] + 3] == 0).astype(np.uint8)
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(paper, connectivity=4)
+        open_ = set(labels[0]) | set(labels[-1]) | set(labels[:, 0]) | set(labels[:, -1])
+        closed = sum(int(stats[index][4]) for index in range(1, count) if index not in open_)
+        if closed > CHORD_STEM[7] * space * space:
+            continue
+        best = None
+        for head in heads:
+            if head['staff'] != mark['staff'] or head.get('thin') or head.get('gone'):
+                continue
+            for stem in head['stems']:
+                up = stem['direction'] == 'up'
+                aside = stem['x'] - mark['x1'] if up else mark['x0'] - stem['x']
+                if not -CHORD_STEM[4] * space <= aside <= CHORD_STEM[5] * space:
+                    continue
+                # A hollow head near the far end of a stem that it shares is taken for the loop of a flag
+                # (without_flag_loops): on so short a stem a filled mark is not given the stem of a hollow head.
+                if head['hollow'] and abs(head['cy'] - stem['end']) <= LOOP_NEAR * space:
+                    continue
+                if up and mark['cy'] > head['cy']:
+                    apart = max(0.0, mark['y0'] - head['y1'])
+                elif not up and mark['cy'] < head['cy']:
+                    apart = max(0.0, head['y0'] - mark['y1'])
+                else:
+                    continue
+                if apart <= CHORD_STEM[6] * space and (best is None or apart + abs(aside) < best[0]):
+                    best = (apart + abs(aside), stem)
+        if best:
+            stem = best[1]
+            mark['stems'].append({'direction': stem['direction'], 'x': stem['x'], 'end': stem['end'],
+                                  'length': abs(mark['cy'] - stem['end']), 'lost': True})
+            mark['chord_stem'] = True
+            found.append(mark)
     return found
 
 

@@ -19,7 +19,7 @@ from . import music as _music
 from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, read_symbols, \
+from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
     slit_page, thin_heads, without_flag_loops, without_joints
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -125,6 +125,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads += thin_heads(layers, heads, bars, ends)
     # A head whose stem the scan lost.
     heads += gone_stems(layers, heads, orphans, symbols['marks'])
+    # A head of a chord that stands where the stem of a read head begins and was left without it.
+    heads += chord_stems(layers, heads, orphans)
     # A hollow head read from its hole; where the copy broke its rim, it replaces the pieces of the rim.
     from_holes = hole_heads(layers, heads, ends, bars, symbols['signs'])
     from_holes = [head for head in from_holes if not any(head is mark for mark in bar_marks(layers, from_holes))]
