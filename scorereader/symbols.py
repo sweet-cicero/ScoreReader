@@ -2954,6 +2954,15 @@ DOT_BESIDE = (0.5, 12.0, 0.4, 0.3)   # a dot that a print drew as a short dash o
 #                    [1] (on one staff or on two staves next to each other), the dash and that dot at most [2] apart
 #                    sideways, the dash at most [3] over or under the middle of its head, and the two notes of one
 #                    kind (hollow or filled, as many flags or beams). Notes that sound together agree (None: off)
+DOT_TIP = (0.5, 5.0, 0.5, 2.0, 0.6)   # the tip of a tie's bow is no dot (None: off). A tie begins beside its head in a
+#                      space and runs flat into the staff line under or over it; the line hides a stretch of the bow, and
+#                      the tip that is left before it is as small and as full as a dot. The whole shape makes it a tip.
+#                      The mark lies in the rows of the staff line: the line goes on at its left or its right in this
+#                      share of the line's thickness or more of the mark's own rows. And the bow comes out of the line
+#                      again at the right: a piece of ink this many staff spaces wide or more, which begins from the
+#                      third to the fourth number of staff spaces right of the mark's left edge, and whose first staff
+#                      space lies within the last number of staff spaces of the line and is at most as thick. The first
+#                      half alone is true of the dots of a hand, which stand on the staff lines.
 DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger line is this many times as wide as the
 #                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
 #                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
@@ -3827,6 +3836,36 @@ def without_joints(heads: list[dict], space: float) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+def _bow_tip(layers: dict, x: int, y: int, wide: int, high: int, labels: np.ndarray, stats: np.ndarray) -> bool:
+    """True when the small mark with this box in the ink without the staff lines is the tip of a bow (DOT_TIP).
+    labels and stats are the connected pieces of that ink."""
+    space, lines = layers['space'], layers['lines']
+    width = lines.shape[1]
+    index = _staff_of(layers, x, y)
+    thick = layers['staves'][index]['thick'] if index is not None else max(staff['thick'] for staff in layers['staves'])
+    least = max(2, int(round(DOT_TIP[0] * thick)))
+    near = int(round(DOT_TIP[4] * space))
+    for first, last in ((x + wide, x + wide + 3), (max(0, x - 3), x)):
+        rows = np.nonzero(lines[y:y + high, first:last].any(axis=1))[0]
+        if len(rows) < least:
+            continue
+        row = y + int(rows[len(rows) // 2])
+        # The bow comes out of the line where the hidden stretch ends: a piece that begins there, near the line.
+        left, right = x + int(round(DOT_TIP[2] * space)), min(width, x + int(round(DOT_TIP[3] * space)) + 1)
+        band = labels[max(0, row - near):row + near + 1, left:right]
+        for other in np.unique(band):
+            if other == 0:
+                continue
+            start, long = int(stats[other][0]), int(stats[other][2])
+            if not left <= start < right or long < DOT_TIP[1] * space:
+                continue
+            begin = labels[:, start:start + int(round(space))] == other
+            inked = np.nonzero(begin.any(axis=1))[0]
+            if inked[0] >= row - near and inked[-1] <= row + near and int(begin.sum(axis=0).max()) <= near:
+                return True
+    return False
+
+
 def dots(layers: dict, heads: list[dict]) -> None:
     """Sets head['dot'] to True where a dot stands at the right of a head: a small round mark in the space beside it."""
     space = layers['space']
@@ -3839,6 +3878,8 @@ def dots(layers: dict, heads: list[dict]) -> None:
         if not (DOT_SMALL * space <= wide <= 0.6 * space and DOT_SMALL * space <= high <= DOT_HIGH * space):
             continue
         if area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
+            continue
+        if DOT_TIP and _bow_tip(layers, int(x), int(y), int(wide), int(high), labels, stats):
             continue
         found.append((float(centres[index][0]), float(centres[index][1])))
         sizes.append((int(x), int(wide), int(high), int(area)))
