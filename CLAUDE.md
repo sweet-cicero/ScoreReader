@@ -53,7 +53,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - `scorereader/` is the reader. The project is called ScoreReader everywhere (the owner, 17 November 2026): the
   package and the command are `scorereader`, and a setting is `SCOREREADER_<NAME>` (`scorereader.setting`; a
   setting under its name from before the rename, `SCOREREAD_<NAME>`, still counts where the new one is not set).
-- `README.md` lists its steps, the results and the next steps.
+- `README.md` says what ScoreReader does and how, for a person who reads it for the first time: short and high
+  level, with a plain list of the modules and one small diagram (the owner, 17 November 2026: no round-by-round
+  updates, no lists of results or of rules, no diagram of each function or file). Do not write the results of a
+  round into it. `docs/worklog.md` is the record: the results of each round on each set of pages, the limits, the
+  next steps and the history. The README's status is one paragraph of rounded figures (about 96 %): change it
+  only when a rounded figure changes.
 - `scorereader/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
   `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `music.py`). `letters.py` and `lyrics.py` read the
   words of a scan, and `ocr.py` reads them with Tesseract when asked, with rules of its own around it; the list of
