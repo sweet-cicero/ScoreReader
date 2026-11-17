@@ -3995,6 +3995,30 @@ def _hole_axis(layers: dict, head: dict) -> tuple[float, float, int, int]:
     return float(np.sqrt(values[1] / values[0])), float(np.degrees(np.arctan2(along[1], along[0]))), len(xs), min(sides)
 
 
+THICK_BAR = (0.8, 0.9)  # a filled mark in the staff is a piece of a thick bar line, and no head, where its columns are
+#   ink over the whole height of the staff: this share of the mark's width, in this share of the rows from the top
+#   line to the bottom line. The thick stroke of a final bar line or of a repeat sign is wider than a stem, the staff
+#   lines cut it into pieces as high as a staff space, and the thin line beside it was their stem. (A census of the
+#   read notes of the clean copies: 13 notes that are not there at 0.8 of the rows, and no true note of 15,057: the
+#   heads of a chord taper towards the lines between them.) None: off
+
+
+def without_bar_pieces(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the filled marks that are pieces of a thick bar line (THICK_BAR)."""
+    if not THICK_BAR:
+        return heads
+    ink, out = layers['ink'], []
+    for head in heads:
+        if not head['hollow'] and not head.get('thin'):
+            rows = layers['staves'][head['staff']]['rows']
+            top, bottom = int(rows[0]), int(rows[4])
+            box = ink[top:bottom + 1, max(0, int(head['x0'])):int(head['x1']) + 1] > 0
+            if box.size and top <= head['cy'] <= bottom and (box.mean(axis=1) >= THICK_BAR[0]).mean() >= THICK_BAR[1]:
+                continue
+        out.append(head)
+    return out
+
+
 def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
     """The heads without the hollow marks whose inside stands upright (HOLE_UPRIGHT)."""
     if not HOLE_UPRIGHT and not LOOP_UNDER:

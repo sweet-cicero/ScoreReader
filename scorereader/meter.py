@@ -202,6 +202,101 @@ def common_signs(layers: dict, staff: dict, first: float, last: float) -> list[d
     return sorted(found, key=lambda sign: sign['x0'])
 
 
+COMMON_BOLD = (1.8, 2.45, 0.15, 1.0, 1.9, 0.5, 0.25, 0.75, -0.05)   # the bold C of a print, which is read as a note
+#   or two: its ink without the staff lines is one piece or two side by side, each this high (two numbers, in staff
+#   spaces) with its middle at most this far from the middle line; together they are this wide (two numbers), at
+#   most this far apart, they fill this share of their box (two numbers), they close in one piece of paper at most
+#   (the ends of a bold C can touch), and the left edge stands further left in the middle rows than in the upper and
+#   the lower quarter, by this at least (the bow; negative: left). A head is one space high and a head with its stem
+#   is higher, the numbers of a time signature stand over and under the middle line, and an eighth rest, a double
+#   sharp and two whole notes one over the other have a waist at the left where the C has its bow (a census of the
+#   clean pages, each of 61 pieces looked at: 39 signs from -0.25 to -0.07, and 20 of the 22 other pieces from 0.0
+#   on). None: off
+COMMON_ARM = 0.6         # and its two ends turn to the right: in the upper and in the lower fifth of its rows the ink reaches
+#   this share of its width (the signs of the clean pages: 0.81 and more; a flat that a hand draws large has its
+#   stroke at the left over its bowl: up to 0.52 at one end, 14 such marks on the copies by hand)
+# The ends of a bold C that stand apart from its bow begin at most this far past the bow's right edge and lie within
+# this much of its rows (staff spaces). A head counts as ink of the sign only this near the middle line (COMMON_ROWS,
+# staff spaces): a held note that is printed under the staff in the sign's columns is a note.
+COMMON_ENDS = (0.5, 0.25)
+COMMON_ROWS = 2.25
+COMMON_AT = (4.5, 1.6)   # and it stands where a time signature stands: it begins at most this far after the clef and
+#   the key signature, or at most this far after a bar line, in staff spaces (the signs of the census: up to 4.0 and
+#   1.3; the two other pieces with a bow, a rest and a flag, stand in the middle of a bar)
+
+
+def _waist(box: np.ndarray) -> float:
+    """How far the left edge of a piece of ink stands in at its middle rows, against its upper and its lower quarter
+    (px): the bow of a C stands furthest left in its middle, and two heads one over the other have a waist there."""
+    tall = box.shape[0]
+    inked = box.any(axis=1)
+    left = np.where(inked, box.argmax(axis=1), box.shape[1]).astype(float)
+    quarter = max(1, tall // 4)
+    middle = left[int(0.4 * tall):int(0.6 * tall) + 1]
+    return float(np.median(middle) - max(left[:quarter].min(), left[tall - quarter:].min()))
+
+
+def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bool = False) -> list[dict]:
+    """The bold signs of common time of a staff between the columns first and last, by their shape (COMMON_BOLD): each
+    {'x0', 'x1', 'common', 'bold'} with the measures 'high', 'wide', 'ink', 'waist' (staff spaces) and 'arms' (how
+    far the ink reaches to the right in the upper and in the lower fifth of its rows, as a share of the width). With
+    `every`, the pieces with any waist and any arms (for a census)."""
+    if not COMMON_BOLD:
+        return []
+    low, high, off, narrow, wide, apart, thin, full, bow = COMMON_BOLD
+    free = _free(layers)
+    height, width = free.shape
+    space, rows = staff['space'], staff['rows']
+    y0, y1 = max(0, int(rows[0] - 1.5 * space)), min(height, int(rows[4] + 1.5 * space) + 1)
+    x0, x1 = max(0, int(first)), min(width, int(last) + 1)
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return []
+    region = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
+                              np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
+    pieces = sorted((int(x), int(y), int(bw), int(bh), label) for label, (x, y, bw, bh, _) in enumerate(stats) if label
+                    and low * space <= bh <= high * space and abs(y0 + y + bh / 2 - rows[2]) <= off * space)
+    found, used = [], set()
+    for index, (x, y, bw, bh, label) in enumerate(pieces):
+        if index in used:
+            continue
+        group = [(x, y, bw, bh, label)]
+        if index + 1 < len(pieces) and pieces[index + 1][0] - (x + bw) <= apart * space:
+            group.append(pieces[index + 1])
+            used.add(index + 1)
+        elif COMMON_ENDS and bw < narrow * space:
+            # A print parts the two ends of the bow from it: small pieces at its right, in its rows.
+            group += [(int(ox), int(oy), int(ow), int(oh), other) for other, (ox, oy, ow, oh, _) in enumerate(stats)
+                      if other and other != label and x < ox <= x + bw + COMMON_ENDS[0] * space
+                      and y - COMMON_ENDS[1] * space <= oy and oy + oh <= y + bh + COMMON_ENDS[1] * space
+                      and ox + ow - x <= wide * space]
+        left, right = group[0][0], max(piece[0] + piece[2] for piece in group)
+        top, bottom = min(piece[1] for piece in group), max(piece[1] + piece[3] for piece in group)
+        if not narrow * space <= right - left <= wide * space:
+            continue
+        own = np.isin(labels[:, left:right], [piece[4] for piece in group])
+        box = own[top:bottom]
+        if not thin <= box.mean() <= full:
+            continue
+        if cv2.connectedComponents(layers['holes'][y0 + top:y0 + bottom, x0 + left:x0 + right].astype(np.uint8))[0] > 2:
+            continue
+        # Nothing else stands in its columns just over or under it (a stem, a head a third away).
+        others = (labels[:, left:right] > 0) & ~own
+        if others[max(0, top - int(space / 2)):bottom + int(space / 2)].sum() > 0.1 * space * space:
+            continue
+        waist = _waist(box) / space
+        # The two ends of the bow turn to the right: the stroke of a flat stands at the left over its bowl.
+        fifth = max(1, box.shape[0] // 5)
+        arms = [float(np.nonzero(rows_.any(axis=0))[0].max() + 1) / box.shape[1] if rows_.any() else 0.0
+                for rows_ in (box[:fifth], box[-fifth:])]
+        if (waist > bow or min(arms) < COMMON_ARM) and not every:
+            continue
+        found.append({'x0': float(x0 + left), 'x1': float(x0 + right - 1), 'common': True, 'bold': True,
+                      'high': (bottom - top) / space, 'wide': (right - left) / space, 'ink': float(box.mean()), 'waist': waist,
+                      'arms': arms})
+    return found
+
+
 def start_sign(layers: dict, staff: dict, first: float, last: float) -> dict | None:
     """The time signature that begins between the columns first and last, at the start of a staff: {'x0', 'x1'};
     two numbers, or with COMMON the sign of common time ('common': True)."""
@@ -232,4 +327,11 @@ def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:
                 sure = any(0 <= sign['x0'] - bar <= TIME_AFTER * space for bar in bars.get(index, []))
             if sure:
                 kept[index].append(sign)
+    # The bold C of a print, at the start of the notes or after a bar line (COMMON_BOLD, COMMON_AT).
+    for index, staff in enumerate(staves):
+        space = staff['space']
+        for sign in bold_commons(layers, staff, ends[index] - 2 * space, staff['x1']):
+            if sign['x0'] - ends[index] <= COMMON_AT[0] * space \
+                    or any(0 <= sign['x0'] - bar <= COMMON_AT[1] * space for bar in bars.get(index, [])):
+                kept[index] = sorted(kept[index] + [sign], key=lambda found: found['x0'])
     return kept

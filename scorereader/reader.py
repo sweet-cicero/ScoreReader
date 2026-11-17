@@ -13,14 +13,14 @@ import numpy as np
 
 from .drone import letter_marks
 from .layers import read_layers
-from .meter import mid_signs
+from .meter import COMMON_ROWS, mid_signs
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, musicxml, staff_columns
 from . import music as _music
 from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
-    slit_page, thin_heads, without_flag_loops, without_joints, without_upright_holes
+    slit_page, thin_heads, without_bar_pieces, without_flag_loops, without_joints, without_upright_holes
 from .ties import read_ties
 from .triplets import mark_triplets
 from .words import cut_stems, word_bands, word_rows
@@ -95,6 +95,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # A printed quarter rest is no note: its thick middle was read as a head and its thin strokes as a stem.
     rests = quarter_rests(layers, ends)
     heads = [head for head in heads if not in_rest(head, rests, space)]
+    # The pieces of a thick bar line between the staff lines are no heads, and the thin line beside it is no stem.
+    heads = without_bar_pieces(layers, heads)
     bars = bar_lines(layers, heads)
     # A stem can cross the whole staff as a bar line does, but a head hangs on it.
     for index in bars:
@@ -136,6 +138,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     times = mid_signs(layers, ends, bars) if TIMES else {}
     if TIMES:
         heads = [head for head in heads if not any(sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space
+                                                   and (not sign.get('bold') or abs(head['cy'] - staves[head['staff']]['rows'][2])
+                                                        <= COMMON_ROWS * staves[head['staff']]['space'])
                                                    for sign in times[head['staff']])]
     # (The other finders of heads can find the sign at the bar line again.)
     heads = [head for head in heads
@@ -144,6 +148,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                         for sign in at_bars)]
     # (The other finders of heads can find a rest again.)
     heads = [head for head in heads if not in_rest(head, rests, space)]
+    heads = without_bar_pieces(layers, heads)
     for head in heads:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
