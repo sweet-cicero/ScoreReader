@@ -39,6 +39,14 @@ STACKED = 0.6        # two notes of one voice on two stems begin together when t
 #                      spaces apart (a third voice on a staff: the basses in octaves under the tenors, a part that divides
 #                      with a stem for each note); a note that follows another stands a head's width or more after it
 #                      (0: off)
+STACKED_NEAR = (1.3, 0.25, 2, 0.85, 0.8)   # ... and where a small note stands over a chord, set to the left with a stem of
+#                      its own, so that the chord's upper head stands in the place of its stem: the middles at most
+#                      this many staff spaces apart, at most this much paper between the boxes of the two heads, the
+#                      small note at most this many places higher, both heads filled, and the small head at most the
+#                      fourth number times as wide as the other and the fifth number of staff spaces wide or more
+#                      (a piece of a head is narrower). Notes that follow each other in print leave 0.4 staff spaces
+#                      of paper or more. A rule for one engraving: without the small head, two marks of one head
+#                      and a sign beside a head were made chords. (None: off)
 SPAN_VOTE = True     # a note that reaches over several steps votes too: where all of its steps but one are sure, it says
 #                      that the last one is the rest of its length. With the voices of that step AGREE or more must say
 #                      the same, and more than say anything else. A long note in one voice is a witness for the short
@@ -247,7 +255,13 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                 # wide. One cannot follow the other there: they begin together.
                 stacked = bool(STACKED) and event['stem_x'] is not None and any(
                     other['voice'] == event['voice'] and other['stem_x'] is not None and other['place'] != event['place']
-                    and abs(other['x'] - event['x']) <= STACKED * space for other in column)
+                    and (abs(other['x'] - event['x']) <= STACKED * space
+                         or STACKED_NEAR is not None and abs(other['x'] - event['x']) <= STACKED_NEAR[0] * space
+                         and 0 < other['place'] - event['place'] <= STACKED_NEAR[2]
+                         and event['head']['x0'] - other['head']['x1'] <= STACKED_NEAR[1] * space
+                         and not other['head'].get('hollow') and not event['head'].get('hollow')
+                         and STACKED_NEAR[4] * space <= other['head']['x1'] - other['head']['x0'] + 1
+                         <= STACKED_NEAR[3] * (event['head']['x1'] - event['head']['x0'] + 1)) for other in column)
                 if same_stem or other_voice or one_line or stemless or partner or touching or stacked:
                     column.append(event)
                     break

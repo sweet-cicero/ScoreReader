@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 87 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,887 of 22,595, counted by the page;
-21,843 of 22,608 as typed; 33 of the 78 counted scores at 99 %; 22 scores read every printed note, 35 every
-syllable, 16 both, 18 have no note that is not there, 12 are whole in all three; 706 printed notes and 196 syllables
-are lacking and 742 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,043 of 6,239, counted by the page; 5,994 of 6,259 as typed; 94.7 % of the whole words; 36 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.1 % on the kit (6218 of 6901).
-On the fresh test set, which no rule was set on: 95.3 % of the notes (39,809 of 41,761; 92 of 214 pieces at 99 %),
+scans; 88 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,894 of 22,595, counted by the page;
+21,850 of 22,608 as typed; 34 of the 78 counted scores at 99 %; 23 scores read every printed note, 35 every
+syllable, 17 both, 18 have no note that is not there, 12 are whole in all three; 699 printed notes and 195 syllables
+are lacking and 738 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
+89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
+On the fresh test set, which no rule was set on: 95.4 % of the notes (39,820 of 41,761; 92 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -642,6 +642,35 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   gained).
 - The kit's count by parts and its own count staff by staff can differ in what a round moves: two false marks
   that had counted by parts went, and the count staff by staff stayed (6220 to 6218 by parts).
+- A filled head and the stem of the note before it, or a head and its sign, close a cell of paper with the staff
+  lines, and the whole piece was read as one half note. The layer of the insides stays as it is (round 52); the
+  cell is taken out where the marks are made, and the piece is made anew with the brush of the page
+  (`symbols.CELL_OUT`). Every such cell in a mark with a filled head gained 10 notes on the clean copies and lost
+  10; a census of the 170 cells gave the shape: a thin stroke at one side of the cell and a head at the other.
+  A step that makes pieces anew cuts each piece to its own box: the first form stopped on one page.
+- Two heads that stand close side by side are a small note beside a chord on one engraving, and two marks of one
+  head or a sign beside a head elsewhere. A false twin that is joined to a true note takes the note to its own
+  moment. The print's sign is the small head (`music.STACKED_NEAR`): say so where a rule is a rule for one
+  engraving, and read it on the PDFs too, because it is a rule of `music.py`.
+- An engraved bow swells in its middle and is no thin ink there. Followed in fatter ink, a short fat stroke
+  between two heads is a tie too (a hand's slur, a piece of a beam): 3 notes gained and 3 lost on LitChoir, none
+  and 29 on the fresh set. The ways of the first form on LitChoir's pages were measured, true and false: the
+  length parts them (`ties.TIE_SWELL`).
+- Stray ink under the clef is read as a short word, and such a word can hold letters of the list: a reading
+  with it then wins over the reading with a true syllable that Tesseract was not sure of (`ocr.CLEF`). A rule
+  that takes a word out of a reading changes what the reading is beside that word: whether the row is a row of
+  words, how sure Tesseract is of it, and whether it is whole, so that the other sizes are not read. The word
+  goes after the row is judged, and a reading that lost it is not whole (`ocr.CLEF_WHOLE`). The replay did not
+  show this on the fresh set: the full reading lost a whole row of one piece there. Trace a lost syllable
+  through every reading of its row with their fits (a script outside git, with the wide test) before a guard.
+- The hymn that is read is left out of the list of words, so a guard that asks the list for a whole word cannot
+  act on a word that only this hymn has.
+- How dark a word is does not part a smudge from words: true thin letters are far paler than their row too
+  (4 syllables gained and 18 lost on the clean copies).
+- A rule that gives a note to another voice meets the kit's split of a staff by its voices and the rules of the
+  bar. Two whole notes alone in a bar, the lower one for the second voice, lost in three forms; the false note
+  that it was tried for comes from the count (a tie into one note of a chord leaves the other alone in its
+  column).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
