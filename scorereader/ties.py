@@ -27,6 +27,13 @@ TIE_FLAT = (0.15, 0.9, 0.6)   # a short tie between two heads that stand close h
 #                         shows of it is flatter: a way whose ink shows in this share of its columns or more is a bow from
 #                         this height on, if it begins and ends this many staff spaces or more over or under the middles
 #                         of the heads (two ledger lines that touch run on at the height of the heads) (None: off)
+TIE_APART = (1.0, 0.15, 0.7, 0.4, 0.25)   # a short bow that stands free between its two heads (None: off): its ink shows
+#                         without a break for this many staff spaces or more, then paper shows for this many or more,
+#                         and the way goes on for at most this many in the ink at the second head (the end of its
+#                         ledger line). The bow stands in the middle: the paper before it and the paper after it differ
+#                         by at most this many staff spaces. The two heads stand at one height on the page, at
+#                         most this many staff spaces apart: such a bow between two heads a step apart is a slur,
+#                         and one of the heads can be read a step off.
 TIE_RIM = 'even'        # thin ink is the ink without its thick blobs. The opening that finds the blobs lies one pixel
 #                         low where the limit is an even number of pixels, and the top row of every blob is then left
 #                         over as thin ink: a bold bow is followed along its upper edge. 'even': on those pages, as it
@@ -142,6 +149,26 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
         return None
     return {'rows': np.array(rows), 'shown': np.array([kind == 'seen' for kind in kinds]), 'seen': kinds.count('seen'),
             'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1, 'tail': tail or 0}
+
+
+def _apart(way: dict, x: int, first: int, last: int, space: float) -> bool:
+    """Is the way that was followed from the column `x` a short bow that stands free between its heads (TIE_APART)?
+    The heads' columns end at `first` and begin again at `last`. The bow is the first part of the way, up to where
+    paper shows; what follows the paper is the ink at the second head."""
+    shown = way['shown']
+    breaks = np.nonzero(~shown)[0]
+    if not len(breaks) or way['hidden']:
+        return False
+    cut = int(breaks[0])
+    paper = len(breaks)
+    if breaks[-1] - cut + 1 != paper:
+        return False            # more than one break
+    after = len(shown) - cut - paper
+    before_bow, after_bow = x - first, last - (x + cut - 1)
+    if cut < TIE_APART[0] * space or paper < TIE_APART[1] * space or after > TIE_APART[2] * space \
+            or abs(before_bow - after_bow) > TIE_APART[3] * space:
+        return False
+    return _is_bow({'rows': way['rows'][:cut], 'shown': shown[:cut], 'seen': cut}, space)
 
 
 def _thin(bare: np.ndarray, height: int) -> tuple[np.ndarray, np.ndarray]:
@@ -265,6 +292,9 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             if abs(way['rows'][-1] - two['cy']) > high:
                 continue
             if way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
+                if TIE_APART and not low and abs(one['cy'] - two['cy']) <= TIE_APART[4] * space \
+                        and _apart(way, column, first, last, space):
+                    return True
                 continue
             if way['seen'] < TIE_SEEN[0] * count and not (TIE_DIP and way['seen'] >= TIE_DIP[0] * count
                                                          and count >= TIE_DIP[2] * space

@@ -97,6 +97,58 @@ def line_thickness(ink: np.ndarray, rows: list[float], x0: int, x1: int) -> floa
     return float(np.median(runs)) if runs else 3.0
 
 
+STRAY = (2.0, 0.3, 0.12)   # a line of the scan (a fold, the edge of a slip that was pasted on, the edge of the page) runs
+#                            upright past a system: without a break from this many staff spaces over the top line of
+#                            its first staff to as many under the bottom line of its last staff, and it is at most
+#                            this many staff spaces wide. A bar line ends at the staff. It is taken out of the ink
+#                            where it stands alone in its row, with at most this many staff spaces of ink beside it:
+#                            a staff line, a head and a letter that it crosses stay whole (None: off)
+
+
+def stray_lines(ink: np.ndarray, places: list[dict]) -> np.ndarray:
+    """A mask of the upright lines that run past a system at both ends (STRAY), where they stand alone in their row."""
+    out = np.zeros_like(ink)
+    if not STRAY:
+        return out
+    height, width = ink.shape
+    for place in places:
+        lines = place['lines']
+        space = (lines[0][4] - lines[0][0]) / 4
+        top, bottom = int(lines[0][0] - STRAY[0] * space), int(lines[-1][4] + STRAY[0] * space)
+        if top < 0 or bottom >= height:
+            continue
+        # (A line of the scan leans a little: its ink may lie in the next column.)
+        near = ink[top:bottom + 1].copy()
+        near[:, 1:] |= ink[top:bottom + 1, :-1]
+        near[:, :-1] |= ink[top:bottom + 1, 1:]
+        columns = np.nonzero(near.min(axis=0))[0]
+        beside = int(STRAY[2] * space)
+        start = None
+        for index, column in enumerate(columns):
+            start = column if start is None else start
+            if index + 1 < len(columns) and columns[index + 1] == column + 1:
+                continue
+            x0, x1, start = int(start), int(column), None
+            if x1 - x0 + 1 > STRAY[1] * space:
+                continue
+            inked = ink[:, x0:x1 + 1].max(axis=1)
+            first, last = top, bottom
+            while first > 0 and inked[first - 1]:
+                first -= 1
+            while last + 1 < height and inked[last + 1]:
+                last += 1
+            for row in range(first, last + 1):
+                # The piece of ink that the line is in this row: alone where it is little wider than the line.
+                left, right = x0, x1
+                while left > 0 and ink[row, left - 1] and x0 - left <= beside:
+                    left -= 1
+                while right + 1 < width and ink[row, right + 1] and right - x1 <= beside:
+                    right += 1
+                if (x0 - left) + (right - x1) <= beside:
+                    out[row, left:right + 1] = 1
+    return out
+
+
 def blots(ink: np.ndarray, space: float) -> np.ndarray:
     """1 on the blots of the page: solid ink that a disc of BLOT staff spaces fits in, with the ink at its rim. A
     punch hole, the shadow of a binding or a torn corner is a blot; no mark of music is that solid."""
@@ -331,6 +383,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
         raise ValueError('a page without staves has no layers')
     space = float(np.median([staff['space'] for staff in staves]))
     ink = ink & (1 - blots(ink, space))
+    ink = ink & (1 - stray_lines(ink, places))
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
              for staff in staves] if HOLE_SIDE else None
     holes = head_holes(ink, space, max(staff['thick'] for staff in staves), [row for staff in staves for row in staff['rows']], clefs)
