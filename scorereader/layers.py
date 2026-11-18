@@ -98,9 +98,10 @@ def line_thickness(ink: np.ndarray, rows: list[float], x0: int, x1: int) -> floa
 
 
 END_BAR = (0.5, 0.25, 0.9)  # a staff ends with a bar line where a column from this many staff spaces before its end to
-#   this many after it is ink in this share of the rows from the top line to the bottom line. It is asked of the ink as
-#   it is scanned, before the blots are taken out: a punch hole beside the bar line takes the line with its rim. A mark
-#   at or past such a line is no note (symbols.END_MARK).
+#   this many after it is ink in this share of the rows from the top line to the bottom line (the largest share of
+#   such a column is kept as the staff's 'end_ink'). It is asked of the ink as it is scanned, before the blots are
+#   taken out: a punch hole beside the bar line takes the line with its rim. A mark at or past such a line is no note
+#   (symbols.END_MARK).
 STRAY = (2.0, 0.3, 0.12)   # a line of the scan (a fold, the edge of a slip that was pasted on, the edge of the page) runs
 #                            upright past a system: without a break from this many staff spaces over the top line of
 #                            its first staff to as many under the bottom line of its last staff, and it is at most
@@ -372,7 +373,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     'solid' (ink and holes), 'lines', 'free' (solid without the staff lines), 'joined' (free with the dashes of thin
     strokes joined), 'up', 'stems' (the thin part of the slim upright strokes), 'marks' (free without stems) and
     'thick'; 'bare' (the ink without staff lines and without the filling of the holes); 'strokes' (see _strokes);
-    'staves' (each staff: rows, x0, x1, space, thick, system, number, top, bottom, end_bar) and 'space' (the page's staff
+    'staves' (each staff: rows, x0, x1, space, thick, system, number, top, bottom, end_bar, end_ink) and 'space' (the page's staff
     space in px); 'ragged' (closed-in paper that is not quite round and is not filled: see RAGGED). `no_holes` is 1
     on closed-in paper that a first reading of the page found to be no inside of a head
     (symbols.big_holes): it is not filled."""
@@ -389,7 +390,8 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     for staff in staves:
         top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
         columns = ink[top:bottom + 1, max(0, int(staff['x1'] - END_BAR[0] * space)):int(staff['x1'] + END_BAR[1] * space) + 1]
-        staff['end_bar'] = bool(columns.size and columns.mean(axis=0).max() >= END_BAR[2])
+        staff['end_ink'] = float(columns.mean(axis=0).max()) if columns.size else 0.0
+        staff['end_bar'] = staff['end_ink'] >= END_BAR[2]
     ink = ink & (1 - blots(ink, space))
     ink = ink & (1 - stray_lines(ink, places))
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)

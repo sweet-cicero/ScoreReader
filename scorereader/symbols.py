@@ -4050,6 +4050,13 @@ END_MARK = (0.5, 0.25, 1.5)  # nothing of the music stands at or past the bar li
 #   the two strokes of a final bar line took a true whole note of its staff with it. None: off
 
 
+END_PAST = 0.55   # a mark whose middle is past the end of its staff is no head where a column at that end is ink in
+#   this share of the staff's rows (the staff's 'end_ink', see layers.END_BAR): the black of a binder hole or of the
+#   edge of the scan stands there, and the hole bit the end line. (Of the read notes past the end of their staff on
+#   LitChoir's scan pages, the 7 with such a column from 0.6 on are no notes, and the 4 true ones, on a copy by hand
+#   and beside a punch hole, have 0.43 at most.) 1.1: only at a whole bar line
+
+
 def without_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
     """The heads without the marks at or past the bar line that ends their staff (END_MARK)."""
     if not END_MARK:
@@ -4057,7 +4064,8 @@ def without_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
     space, out = layers['space'], []
     for head in heads:
         staff = layers['staves'][head['staff']]
-        if staff.get('end_bar') and head['cx'] >= staff['x1'] - END_MARK[0] * space \
+        if (staff.get('end_bar') or head['cx'] >= staff['x1'] and staff.get('end_ink', 0.0) >= END_PAST) \
+                and head['cx'] >= staff['x1'] - END_MARK[0] * space \
                 and head['x1'] >= staff['x1'] - END_MARK[1] * space and head['cx'] <= staff['x1'] + END_MARK[2] * space:
             continue
         out.append(head)
@@ -4093,6 +4101,53 @@ def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
                         and other['x0'] - LOOP_UNDER[4] * space <= x <= other['x1'] + LOOP_UNDER[4] * space
                         and far - LOOP_UNDER[5] * space <= other['cy'] < head['y0'] for other in heads):
                     continue
+        out.append(head)
+    return out
+
+
+FLAT_CELL = (0.6, 0.95, 2.0, 0.85)   # a hollow mark is no head where its closed paper is this many staff spaces
+#   high or more and has a top or a bottom that is level in this share of its columns (within a pixel of its first or
+#   last row) at a staff line (the line's middle within the third number of px, or half its thickness): a cell between
+#   the line and a slanted stroke (a pencil ring, a slur that crosses the staff, the loop of a flag, a rest, a piece
+#   of a clef). The inside of a printed head is round and stands clear of the lines: of the 95 such marks that were
+#   read as notes on LitChoir's scan pages, each looked at, none is a printed hollow head. Not where the mark holds
+#   ink as fat as a head (the widest disc in its ink, against the last number times the usual one of the page's
+#   filled heads): a filled head with a sharp or a natural close before it closes such a cell too, and so does the
+#   stroke that a hand draws for a head; that mark stays as it was read. (None: off)
+
+
+def without_flat_cells(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the hollow marks whose inside is a cell along a staff line (FLAT_CELL). It runs after the
+    flags are counted: the loop of a flag is such a cell, and older rules read the flag from it. The layer of the
+    insides stays as it is for the same reason."""
+    if not FLAT_CELL:
+        return heads
+    space = layers['space']
+    rows = np.array(sorted(row for staff in layers['staves'] for row in staff['rows']), float)
+    thick = max(staff['thick'] for staff in layers['staves'])
+    half, slack = thick / 2, max(FLAT_CELL[2], thick / 2)
+    fats = [head['alt']['fat'] for head in heads if not head['hollow'] and head.get('alt')]
+    usual = float(np.median(fats)) * space if fats else 0.0
+    out = []
+    for head in heads:
+        if head['hollow'] and usual:
+            y0, x0 = max(0, int(head['y0']) - 1), max(0, int(head['x0']) - 1)
+            box = layers['holes'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2]
+            count, labels, stats, _ = cv2.connectedComponentsWithStats(box.astype(np.uint8), connectivity=4)
+            if count >= 2:
+                index = 1 + int(np.argmax(stats[1:, 4]))
+                x, y, width, height, _ = stats[index]
+                if height >= FLAT_CELL[0] * space:
+                    part = labels[y:y + height, x:x + width] == index
+                    first, last = part.argmax(axis=0), height - 1 - part[::-1].argmax(axis=0)
+                    top, bottom = y0 + y, y0 + y + height
+                    if ((first <= 1).mean() >= FLAT_CELL[1] and np.abs(rows - (top - 0.5 - half)).min() <= slack) \
+                            or ((last >= height - 2).mean() >= FLAT_CELL[1]
+                                and np.abs(rows - (bottom - 0.5 + half)).min() <= slack):
+                        own = np.ascontiguousarray(layers['ink'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2])
+                        fat = 2 * cv2.distanceTransform(np.pad(own.astype(np.uint8), 1), cv2.DIST_L2, 3).max()
+                        if fat < FLAT_CELL[3] * usual:
+                            continue
         out.append(head)
     return out
 

@@ -48,6 +48,8 @@ SOLID = (0.3, 0.9, 0.5)  # a word of two letters or more is no word where this s
 #                          (None: off)
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
 #                          ink under a staff: a slur, a hairpin, the ends of stems). None: every row is kept
+ROUND_SIDE = ('()[]', '@')   # the word O with a bracket at one side ('0)', '@)'): the ring of a large O is read as
+#                          a round sign and a bracket. The second: signs that are the word O only so. (None: off)
 JOINS = '-‐‑‒–—~='     # what a hyphen between two syllables can be read as
 STOPS = '.,;:!?'         # a dash after a syllable that ends with one of these is the line of a held syllable, no hyphen
 LINES = '_'              # the line after a syllable that is held
@@ -232,6 +234,8 @@ def _no_digits(text: str, first: bool = False) -> str:
     alone is the word I (not at the start of a row or before a full stop: the number of a verse), and among letters
     a 0 is an o and a 1 is an I between capitals and an l between small letters. Other digits stay."""
     core = text.strip(STOPS + '\'"‘’“”' + (JOINS + LINES if DIGIT_JOIN else ''))
+    if ROUND_SIDE and core.strip(ROUND_SIDE[0]) == '0' and core != '0' and '(0)' not in core:
+        return text.replace('0', 'O')
     if core == '0':
         return text.replace('0', 'O')
     if core == '1':
@@ -283,6 +287,9 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
             if core in ROUND[0] or (core == ROUND[1] and high and right - left >= ROUND[2] * high and not (
                     number + 1 < len(words) and words[number + 1][0][:1].isdigit())):
                 text = text.replace(core, 'O')
+            elif ROUND_SIDE and core != core.strip(ROUND_SIDE[0]) and '(' + core.strip(ROUND_SIDE[0]) + ')' not in core \
+                    and core.strip(ROUND_SIDE[0]) in ROUND[0] + tuple(ROUND_SIDE[1]):
+                text = text.replace(core.strip(ROUND_SIDE[0]), 'O')
         if all(sign in JOINS + LINES + '.,' for sign in text):
             if found and any(sign in JOINS for sign in text) and found[-1]['text'][-1] not in STOPS:
                 found[-1]['join'] = True
