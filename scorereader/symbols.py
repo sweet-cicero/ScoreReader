@@ -3287,7 +3287,17 @@ DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger 
 #                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
 #                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
 #                    notes on all of LitChoir and lost 32 (none and 8 on the clean copies).
-SHARED_TAILS = True  # a head with two stems has the flags of its one stem at the other stem too
+SHARED_TAILS = 'flags'   # a head with two stems has the flags of its one stem at the other stem too (True); 'flags': a
+#                      beam stays at its own stem where the other stem ends in paper (SHARED_FREE). A beam joins the
+#                      stems of one voice, and the stem of the other voice that ends free is a quarter note: one print
+#                      sets the alto's quarter note under the soprano's beamed eighth, on one head. A hand that draws
+#                      the flag at one stem only draws a flag; a hand's beam that the reader does not see at the other
+#                      stem leaves ink at its end. The beam goes on from the shared head to the next note: the free
+#                      voice holds its quarter note under that note. Where the shared head ends its beam, the next
+#                      head is both voices' again, and a hand left the flag out. (False: off)
+SHARED_FREE = (1.5, 0.4, 0.6, 0.02)   # the stem ends in paper: beside its end, this many staff spaces to each side and
+#                      from the first number of staff spaces before the end to the second past it, at most the last
+#                      share is ink (the staff lines count: a stem that ends in the staff does not end free)
 RING_FLAG = (0.45, 0.75, 0.25, 0.5, 0.4)   # a hollow head with the ink of a printed flag at its stem: one piece at the right
 #                      of the stem's end and none at its left, from this to this many staff spaces far, from this to this
 #                      thick, leaning this much, and no beam. A copy that burns out its filled heads leaves such rings: it
@@ -3788,8 +3798,9 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                                   and (-bow[1] if direction == 'up' else bow[1]) >= BEAM_STRAIGHT[1] * space for bow in bows)
                 if not printed and (not THIN_BEAM_PAST or not (_goes_on(layers, run[1][0][1], run[0][0][1])
                                                                or _goes_on(layers, run[-2][0][1], run[-1][0][1]))):
-                    for entry in run:
+                    for index, entry in enumerate(run):
                         for head, stem in entry:
+                            stem['thin_on'] = index < len(run) - 1     # the thin beam goes on to the next stem
                             stem['thin_before'] = head['tails'].get(direction, 0)
                             head['tails'][direction] = max(1, head['tails'].get(direction, 0))
                             stem['thin_beam'] = True
@@ -3809,9 +3820,31 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                         for piece in stem['marks'])]
         if SHARED_TAILS and len(head['tails']) == 2:
             # One head with two stems is one note that two voices sing: a hand draws its flag at one stem only.
-            most = max(head['tails'].values())
-            head['tails'] = {direction: most for direction in head['tails']}
+            beamed = {stem['direction'] for stem in head['stems'] if SHARED_TAILS == 'flags'
+                      and (stem.get('beam_only') or stem.get('thin_beam')) and head['tails'].get(stem['direction'])
+                      and (any(piece['beam'] and piece['right'] for piece in stem['marks']) or stem.get('thin_on'))}
+            if beamed and not all(_ends_free(layers, stem) for stem in head['stems'] if stem['direction'] not in beamed):
+                beamed = set()
+            most = max([count for direction, count in head['tails'].items() if direction not in beamed] or [0])
+            head['tails'] = {direction: count if direction in beamed else most for direction, count in head['tails'].items()}
 
+
+
+def _ends_free(layers: dict, stem: dict) -> bool:
+    """Whether a stem ends in paper (SHARED_FREE): no beam, flag or line beside its end."""
+    ink, space = layers['ink'], layers['space']
+    side, before, past, share = SHARED_FREE
+    x, end = int(round(stem['x'])), int(round(stem['end']))
+    if stem['direction'] == 'down':
+        top, bottom = end - int(before * space), end + int(past * space)
+    else:
+        top, bottom = end - int(past * space), end + int(before * space)
+    top, bottom = max(0, top), min(ink.shape[0], bottom + 1)
+    for first, last in ((x - int(side * space), x - 3), (x + 4, x + int(side * space))):
+        part = ink[top:bottom, max(0, first):max(0, last)]
+        if part.size and part.mean() > share:
+            return False
+    return True
 
 def _round_ends(layers: dict, one: dict, two: dict) -> tuple[float, float] | None:
     """How round the stroke is that joins the far ends of two stems of one direction (`one` at the left): for each
