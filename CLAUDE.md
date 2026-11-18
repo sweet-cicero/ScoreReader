@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 88 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,894 of 22,595, counted by the page;
-21,850 of 22,608 as typed; 34 of the 78 counted scores at 99 %; 23 scores read every printed note, 35 every
-syllable, 17 both, 18 have no note that is not there, 12 are whole in all three; 699 printed notes and 195 syllables
-are lacking and 738 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 89 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,896 of 22,595, counted by the page;
+21,852 of 22,608 as typed; 35 of the 78 counted scores at 99 %; 24 scores read every printed note, 35 every
+syllable, 18 both, 18 have no note that is not there, 13 are whole in all three; 697 printed notes and 195 syllables
+are lacking and 736 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
 On the fresh test set, which no rule was set on: 95.4 % of the notes (39,820 of 41,761; 92 of 214 pieces at 99 %),
@@ -671,6 +671,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   bar. Two whole notes alone in a bar, the lower one for the second voice, lost in three forms; the false note
   that it was tried for comes from the count (a tie into one note of a chord leaves the other alone in its
   column).
+- The neck of an inside is asked in the rows of the lines that run through heads. A ledger line that is faint
+  inside its head leaves such a neck too, so the rows of the ledger lines count (`layers.HOLE_LEDGER`), but only
+  where the line is seen at both sides of the head: the bowls of a bold letter of a title and the paper between
+  a slur and a head have a neck in such a row, and no line past them.
+- A wider limit for notes that begin together meets a note that sounds with another note of the other voice:
+  two stems back to back are one column (`music.ONE_LINE_BACK`) unless the second note already stands in the
+  column of a note of the other voice. A note that a column moves can free a run of recited notes on a copy by
+  hand: compare `apart` too.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
