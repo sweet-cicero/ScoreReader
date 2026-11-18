@@ -436,6 +436,13 @@ def _mark(mask: np.ndarray, holes: np.ndarray, x: int, y: int, blob: int) -> dic
             'profile': mask[ys.min():ys.max() + 1].sum(axis=1)}
 
 
+HALVES_LEAN = 1.2    # the two half holes of a head on a ledger line need not stand over each other where the inside
+#   leans: the upper half lies right of the lower one, they share a column, both together are at most this many staff
+#   spaces wide, and the line between them is a ledger line, not a line of the staff. One engraver's half notes on a
+#   thick ledger line were cut into two heads each; on the lines of the staff the same shape is two heads a third
+#   apart as often (0: off)
+
+
 def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tuple[float, float]]:
     """The middles (column, row in the mask) of the holes of a hollow mark, one for each head. A head on a staff
     line or a ledger line has two half holes, one over the line and one under it: they are one hole."""
@@ -468,13 +475,19 @@ def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tupl
             shared = min(hole['x1'], other['x1']) - max(hole['x0'], other['x0']) + 1
             gap = hole['y0'] - other['y1']
             between = any(y + other['y1'] - 2 <= line <= y + hole['y0'] + 2 for line in lines)
+            ledger = [line for line in lines[5:] if y + other['y1'] - 2 <= line <= y + hole['y0'] + 2]
+            leans = HALVES_LEAN and ledger and shared >= 1 and other['cx'] > hole['cx'] \
+                and max(hole['x1'], other['x1']) - min(hole['x0'], other['x0']) + 1 <= HALVES_LEAN * space
             # Two half holes are together as high as the inside of one head. The holes of two heads a third apart
             # have a staff line between them too, but together they are much higher.
             if 0 <= gap <= 0.4 * space and between and hole['y1'] - other['y0'] + 1 <= 1.0 * space \
-                    and shared >= 0.5 * min(hole['x1'] - hole['x0'] + 1, other['x1'] - other['x0'] + 1):
+                    and (shared >= 0.5 * min(hole['x1'] - hole['x0'] + 1, other['x1'] - other['x0'] + 1) or leans):
                 total = other['area'] + hole['area']
                 other['cx'] = (other['cx'] * other['area'] + hole['cx'] * hole['area']) / total
                 other['cy'] = (other['cy'] * other['area'] + hole['cy'] * hole['area']) / total
+                if leans and shared < 0.5 * min(hole['x1'] - hole['x0'] + 1, other['x1'] - other['x0'] + 1):
+                    # Two halves that lean apart: the head stands on the ledger line between them.
+                    other['cy'] = min(ledger, key=lambda line: abs(line - y - other['cy'])) - y
                 other.update(x0=min(other['x0'], hole['x0']), x1=max(other['x1'], hole['x1']), y1=hole['y1'], area=total)
                 break
         else:
@@ -4295,6 +4308,57 @@ def without_flag_loops(heads: list[dict], space: float) -> list[dict]:
                        and head['cy'] - other['cy'] > stem['end'] - head['cy'] for stem in other['stems']):
                     gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
+
+
+FLAG_TRAIL = (0.9, 1.2, 1.5, 0.25)   # a hollow mark at the right of a down stem is the loop of a long flag that bends back
+#   along the stem to the head: closed paper hugs the stem's right side (its left edge within the last number of staff
+#   spaces of the stem), from the mark's inside down, in pieces that the staff lines cut, for this many staff spaces
+#   or more in all, in a strip this many staff spaces wide, to at most the third number before the end of the stem.
+#   The inside of the mark itself is one such piece: it lies level and passes the older rules for an upright inside.
+#   The trail begins in the rows of the mark: the paper between a staff line and the top of the lower of two stacked
+#   half notes is a piece too, and taken as the start it took true half notes in its first form (2 on LitChoir's
+#   pages, 8 on the fresh set). The inside of a half note on a down stem is half a staff space high, and the paper
+#   under it is open (None: off)
+
+
+def without_flag_trails(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the hollow marks that are the top of the paper that a long flag closes along its stem
+    (FLAG_TRAIL). It runs after the flags are counted."""
+    if not FLAG_TRAIL:
+        return heads
+    space, ink, out = layers['space'], layers['ink'], []
+    thick = max(staff['thick'] for staff in layers['staves'])
+    for head in heads:
+        if head['hollow'] and _flag_trail(ink, head, space, thick):
+            continue
+        out.append(head)
+    return out
+
+
+def _flag_trail(ink: np.ndarray, head: dict, space: float, thick: float) -> bool:
+    """True where closed paper runs on from a hollow mark along the right side of its down stem to near the stem's
+    end (see FLAG_TRAIL)."""
+    stem = next((stem for stem in head['stems'] if stem['direction'] == 'down' and stem['x'] < head['cx']), None)
+    if stem is None or stem['end'] <= head['y1'] + FLAG_TRAIL[0] * space:
+        return False
+    x = int(round(stem['x']))
+    top, bottom = max(0, int(head['y0'] - 0.3 * space)), min(ink.shape[0], int(stem['end'] + 0.3 * space) + 1)
+    right = min(ink.shape[1], x + int(round(FLAG_TRAIL[1] * space)) + 1)
+    box = np.ascontiguousarray(ink[top:bottom, x:right] == 0).astype(np.uint8)
+    if box.size == 0:
+        return False
+    count, _, stats, _ = cv2.connectedComponentsWithStats(box, connectivity=4)
+    pieces = sorted((int(stats[i, 1]), int(stats[i, 1] + stats[i, 3])) for i in range(1, count)
+                    if 1 <= stats[i, 0] <= FLAG_TRAIL[3] * space and stats[i, 0] + stats[i, 2] < box.shape[1]
+                    and stats[i, 1] > 0 and stats[i, 1] + stats[i, 3] < box.shape[0])
+    own = [(first, last) for first, last in pieces if int(head['y0']) - top - 1 <= first < int(head['y1']) - top]
+    if not own:
+        return False
+    start, reach = min(first for first, _ in own), max(last for _, last in own)
+    for first, last in pieces:
+        if first <= reach + thick + 3 and last > reach:
+            reach = last
+    return reach - start >= FLAG_TRAIL[0] * space and stem['end'] - (top + reach) <= FLAG_TRAIL[2] * space
 
 
 FLAG_CURL = (0.6, 0.6, 1.6)   # the curl at the end of a flag is a small filled mark: under this share of the area of the
