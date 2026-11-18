@@ -25,14 +25,14 @@ TIME_PAIR = 1.5          # the staves of a system change the time at one place: 
 TIME_AFTER = 3.0         # in a system of one staff, a bar line stands at most this far before the numbers
 TIME_HEAD = (0.7, 0.05)  # and no ink is as thick as this in every direction, in staff spaces, over more than this
 #                          share of a square staff space: that is the head of a note (a bold number has small such spots)
-TIME_STACK = (1.25, 1.9, 1.1, 0.85, 0.08, 0.25, 0.81, 0.45)   # two numbers that touch, or bold numbers, fail the checks
+TIME_STACK = (1.25, 1.9, 1.1, 0.85, 0.08, 0.25, 0.85, 0.45)   # two numbers that touch, or bold numbers, fail the checks
 #  for a bar line and for a head. They are numbers all the same when the two are this wide together (least, most),
 #  each is this wide or more, the columns that are ink along this share of the staff's height or more (the stem of a
 #  4 over the stem of a 4, or two numbers that meet) all lie between two shares of the width (from this for numbers
 #  that fill the staff from top to bottom, from this for other numbers; to this), and this share or more of the
 #  inked columns is ink along a part of the staff only. A bar line and a closing bar are full columns at the edges
-#  with little beside them; the stem of a note stands at the edge of its head and is shorter than the staff. (None:
-#  off)
+#  with little beside them; the stem of a note stands at the edge of its head and is shorter than the staff. One
+#  engraving sets the stem of its 4 at 0.83 of the width of two touching numbers. (None: off)
 COMMON = True            # the sign of common time (C) at the start of a staff is found too (False: only numbers)
 COMMON_HIGH = (1.5, 2.7) # the C is this high, in staff spaces
 COMMON_WIDE = (0.35, 2.3)    # and this wide (a hand copy draws a thin bow, and the staff lines take its two ends)

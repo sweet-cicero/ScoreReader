@@ -37,6 +37,10 @@ SECOND_TOUCH = (0.2, 0.95)   # two voices a second apart with the lower voice at
 #                    and heads that touch (at most this many staff spaces of paper between them) begin together. They
 #                    are two whole heads side by side: their middles stand at least the second number apart (the
 #                    slanted stroke of a hand that two voices share is one mark, read as two pieces). (None: off)
+WHOLE_TWIN = (1.9, 0.3)   # two whole notes side by side, on one pitch or a second apart, are two voices that begin
+#                    together: their middles at most the first number of staff spaces apart, and at most the second
+#                    number of paper between their heads (or they touch). A print sets the whole notes of two voices in
+#                    unison so, and one voice cannot hold two whole notes in one bar. (None: off)
 UNISON_LINE = True   # an ison in unison ("Un.") sings every note of the melody's line, also the notes with a stem down,
 #                      which the staff reads as a second voice (False: only the notes of the first voice)
 STACKED = 0.6        # two notes of one voice on two stems begin together when their heads are at most this many staff
@@ -272,7 +276,12 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                          and not other['head'].get('hollow') and not event['head'].get('hollow')
                          and STACKED_NEAR[4] * space <= other['head']['x1'] - other['head']['x0'] + 1
                          <= STACKED_NEAR[3] * (event['head']['x1'] - event['head']['x0'] + 1)) for other in column)
-                if same_stem or other_voice or one_line or stemless or partner or touching or stacked:
+                # Two whole notes side by side on one pitch or a second apart: two voices in unison or a second.
+                twin = WHOLE_TWIN is not None and event['stem_x'] is None and event['head'].get('hollow') and any(
+                    other['stem_x'] is None and other['head'].get('hollow') and abs(other['place'] - event['place']) <= 1
+                    and 0 < event['x'] - other['x'] <= WHOLE_TWIN[0] * space
+                    and event['head']['x0'] - other['head']['x1'] <= WHOLE_TWIN[1] * space for other in column)
+                if same_stem or other_voice or one_line or stemless or partner or touching or stacked or twin:
                     column.append(event)
                     break
             else:

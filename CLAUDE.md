@@ -26,12 +26,12 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
 scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,904 of 22,587, counted by the page;
-21,851 of 22,608 as typed; 35 of the 78 counted scores at 99 %; 24 scores read every printed note, 35 every
-syllable, 18 both, 19 have no note that is not there, 13 are whole in all three; 681 printed notes and 195 syllables
-are lacking and 726 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+21,849 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 24 scores read every printed note, 35 every
+syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 681 printed notes and 195 syllables
+are lacking and 692 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
-On the fresh test set, which no rule was set on: 95.4 % of the notes (39,821 of 41,761; 92 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.3 % of the notes (39,817 of 41,761; 92 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -693,6 +693,21 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   notes by the page with the moments that it holds (`held`). The finder for such places sees both line-ups of a
   held run: the read long note lined up with the first typed note of the run, and with its last. A bow from one
   syllable to the next is a slur, and where it is read as a tie the reader is wrong.
+- Two whole notes side by side on one pitch or a second apart are two voices that begin together
+  (`music.WHOLE_TWIN`): a print sets a unison of two voices so, and one voice holds no two whole notes in one bar.
+  A false note that goes can show a mistake that it hid (a pitch read a step off, a joint between two touching
+  whole notes read as a head) and can free a typed note of a recitation: look at both before a rule is narrowed.
+- A flat, wide filled mark at the end of another note's stem is that stem's beam or a slur over its end
+  (`symbols.STEM_END_MARK`): a printed head is round. The count by parts weighs a wrong pitch at half a missed
+  note, so a false note of wrong pitch can hold the line-up of a part: on the fresh set a rule that took only
+  pieces of beams lost 6 notes by parts and none staff by staff. Compare the sheets staff by staff before such
+  a loss is taken for the rule's.
+- A head that two voices share, with a beamed stem one way and a stem without a flag the other way, is a quarter
+  note in the free voice by the page (64 notes gained and none lost on the fresh set). Typed hymns of LitChoir
+  sing such a place as eighths in unison, and a copy by hand draws its beams as boxes that the reader misses at
+  one stem: such a rule is read place by place on LitChoir, with the list of the notes by the page.
+- The list of the notes by the page also knows a note of a chord that the page prints and the typed hymn leaves
+  out (`add`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
