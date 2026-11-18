@@ -25,6 +25,9 @@ SWING = (0.12, 0.12, 0.03, 0.08)     # the middle of its ink, in eight parts fro
 EDGE = (0.15, 0.85)                  # neither its left nor its right edge is straight: within this many staff spaces of
 #                                      its middle place over at most this share of the rows (a stem is straight)
 HOLE = 0.02                          # it closes in no paper larger than this many square staff spaces
+HOOK = (0.06, 0.7)                   # ... but the hook at its lower end can close: one piece of paper of at most this
+#                                      many square staff spaces whose middle lies this far down the rest or further
+#                                      (four rests of LitChoir's pages, 0.024 to 0.043 at 0.8; None: off)
 OUTSIDE = 1.0                        # its middle lies in the staff or at most this many staff spaces outside it
 REACH = 0.2                          # a head whose middle lies in the rest, or this many staff spaces outside it, is no note
 
@@ -63,7 +66,9 @@ def _rest_shape(piece: np.ndarray, space: float) -> bool:
     # No paper closed in.
     paper = (~np.pad(piece, 1)).astype(np.uint8)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(paper, connectivity=4)
-    if any(labels[0, 0] != number and stats[number][4] >= HOLE * space * space for number in range(1, count)):
+    closed = [number for number in range(1, count) if labels[0, 0] != number and stats[number][4] >= HOLE * space * space]
+    if closed and not (HOOK and len(closed) == 1 and stats[closed[0]][4] <= HOOK[0] * space * space
+                       and stats[closed[0]][1] + stats[closed[0]][3] / 2 - 1 >= HOOK[1] * high):
         return False
     # No straight edge.
     rows = [np.nonzero(row)[0] for row in piece]

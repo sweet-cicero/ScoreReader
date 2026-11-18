@@ -43,6 +43,11 @@ LINE_SLIT = (0.3, 2, 0.15)   # a filled head with a stem and a staff line or a l
 #                     most this many staff spaces from the line) is a half note when a speck of paper of this many
 #                     px or more is closed in over the line and one under it, the upper one this many staff spaces
 #                     further right: the slit of a half note that a heavy print nearly closed (None: off)
+LINE_OUT = 0.12      # ... and one of the two specks lies outside the line: its middle this many staff spaces or more
+#                     from the row of the line. Paper cannot show in the rows of a line that runs through a head: two
+#                     specks of a worn filled head lay there (a census of every scan page: 348 true half notes from
+#                     0.134 on, eleven filled heads up to 0.112). Both specks outside the line by the thickness of a
+#                     staff line lost 30 half notes of thick copies and copies by hand. 0: off
 RIM = 0.8            # a note without a stem has its own ink at this share of the rim of its hole
 FLAG_END = 0.7       # the flag of such a note begins at most this many staff spaces from the end of the stem
 FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
@@ -358,9 +363,10 @@ def _line_slit(layers: dict, mark: dict, staff: dict) -> bool:
     line, specks, _ = _line_specks(layers, mark, staff)
     if abs(line - mark['cy']) > LINE_SLIT[0] * space:
         return False
-    over = max(((area, x) for area, x, row in specks if area >= LINE_SLIT[1] and row < 0), default=None)
-    under = max(((area, x) for area, x, row in specks if area >= LINE_SLIT[1] and row >= 0), default=None)
-    return bool(over and under and over[1] - under[1] >= LINE_SLIT[2] * space)
+    over = max(((area, x, -row) for area, x, row in specks if area >= LINE_SLIT[1] and row < 0), default=None)
+    under = max(((area, x, row) for area, x, row in specks if area >= LINE_SLIT[1] and row >= 0), default=None)
+    return bool(over and under and over[1] - under[1] >= LINE_SLIT[2] * space
+                and max(over[2], under[2]) >= LINE_OUT * space)
 
 
 def _ledger_seen(layers: dict, mark: dict, line: float, space: float) -> float | None:

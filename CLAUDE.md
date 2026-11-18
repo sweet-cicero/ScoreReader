@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.6 % on
-scans; 85 scores at 99 % or more), 96.8 % of the notes on the clean copies (21,876 of 22,597, counted by the page;
-21,832 of 22,612 as typed; 31 of the 78 counted scores at 99 %; 17 scores read every printed note, 31 every
-syllable, 9 both, 13 have no note that is not there, 5 are whole in all three; 719 printed notes and 209 syllables
-are lacking and 794 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
+scans; 86 scores at 99 % or more), 96.8 % of the notes on the clean copies (21,882 of 22,597, counted by the page;
+21,838 of 22,612 as typed; 32 of the 78 counted scores at 99 %; 19 scores read every printed note, 31 every
+syllable, 10 both, 15 have no note that is not there, 8 are whole in all three; 713 printed notes and 209 syllables
+are lacking and 784 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
 files and a list of words (6,030 of 6,239, counted by the page; 5,982 of 6,259 as typed; 94.5 % of the whole words; 32 scores at 99 % of the syllables);
-88.9 % of all syllables with Tesseract (87.8 % on scans), and 90.1 % on the kit (6219 of 6901).
+88.9 % of all syllables with Tesseract (87.8 % on scans), and 90.1 % on the kit (6220 of 6901).
 On the fresh test set, which no rule was set on: 95.1 % of the notes (39,720 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -558,6 +558,22 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   of a C that stands at the pitch of the first note) or had held a line-up: six notes on four scores of one print.
   List the typed notes whose verdict changes and the notes of the page that are gone and new; where no note of the
   page is new and every gone note is a piece of the sign, the rule stays as it is.
+- A limit that is counted in thicknesses of the staff line is a limit of the prints that it was set on. A guard for
+  two specks in the rows of a line (`symbols.LINE_OUT`) parted the half notes of the clean copies from worn filled
+  heads at 0.4 thicknesses and lost 30 half notes of thick copies and copies by hand: their lines are 7 or 8 pixels
+  thick, and the row that the staff gives for a line misses the ink by a few pixels. A census of every scan page
+  (348 true half notes, each head labelled by its typed length) gave the measure: the farther speck, in staff spaces.
+- A line of the scan (a fold, the edge of a pasted slip, the edge of the page) runs upright past a system at both
+  ends; a bar line ends at its staff (`layers.STRAY`). It is taken out only where it stands alone in its row, so a
+  head, a staff line and a letter that it crosses stay whole, and its ink is looked for in the next column too: a
+  line of a scan leans by a pixel.
+- The two heads of a tie stand at one height on the page. A rule that joins a bow which stands free between its
+  heads (`ties.TIE_APART`) asks the rows of the heads, not their read pitches: a slur between two notes a step
+  apart was joined where the reader had one head a step off.
+- The hook of a quarter rest closes in paper on a heavy print (`rests.HOOK`): a guard against closed paper allows
+  the one small piece low in the shape that the census of every rest showed (4 of 364).
+- A census that spies on a function of the reader keeps the function as it was in one place of the module. Wrapped
+  anew for each page, each call ran the one before it too, and a census of 14 minutes ran for 40.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
