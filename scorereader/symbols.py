@@ -4393,6 +4393,35 @@ def without_flag_curls(heads: list[dict], space: float) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+STEM_END_MARK = (1.4, 0.85, 1.5)   # a filled mark that holds the end of another note's stem is that stem's beam or a
+#   slur that passes its end, no head, where it is at least the first number times as wide as the page's heads and at
+#   most the second number times as high (the other head at least the third number of staff spaces away). A printed
+#   head is round: of the filled marks of LitChoir's pages that hold the end of another note's stem, the true heads
+#   are 1.3 times as high as the page's heads or more, and the beams and slurs 0.85 or less. (None: off)
+
+
+def without_stem_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the flat filled marks at the end of another head's stem (STEM_END_MARK): a thick beam that
+    slants across a staff line, or a slur over the end of a stem, cut out as one piece with the line."""
+    if not STEM_END_MARK or not layers.get('head'):
+        return heads
+    space = layers['space']
+    wide, high = layers['head'][0], layers['head'][1]
+    gone = set()
+    for head in heads:
+        if head['hollow'] or head['x1'] - head['x0'] + 1 < STEM_END_MARK[0] * wide \
+                or head['y1'] - head['y0'] + 1 > STEM_END_MARK[1] * high:
+            continue
+        for other in heads:
+            if other is head or other['staff'] != head['staff'] or abs(other['cy'] - head['cy']) < STEM_END_MARK[2] * space:
+                continue
+            if any(head['x0'] - 2 <= stem['x'] <= head['x1'] + 2 and head['y0'] - 3 <= stem['end'] <= head['y1'] + 3
+                   for stem in other['stems']):
+                gone.add(id(head))
+                break
+    return [head for head in heads if id(head) not in gone]
+
+
 JOINT = (0.45, 1.5, 0.6)   # where a slanted head meets its stem inside a thick staff line: a mark at most this high (staff
 #                            spaces), at most this many places from a larger head of that stem at the same side of
 #                            the stem, and at most this share of its area (None: off)

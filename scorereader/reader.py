@@ -20,7 +20,7 @@ from .rests import in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
-    slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_trails, without_flat_cells, without_joints, without_upright_holes
+    slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_trails, without_flat_cells, without_stem_end_marks, without_joints, without_upright_holes
 from .ties import read_ties
 from .triplets import mark_triplets
 from .words import cut_stems, word_bands, word_rows
@@ -162,6 +162,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = without_flat_cells(layers, heads)
     heads = without_flag_trails(layers, heads)
     heads = without_flag_curls(heads, space)
+    heads = without_stem_end_marks(layers, heads)
     dots(layers, heads)
     # The notes under the bracket of a triplet are two thirds as long as they are drawn.
     triplets = mark_triplets(layers, heads)
