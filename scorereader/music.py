@@ -23,6 +23,10 @@ TYPES = {Fraction(4): 'whole', Fraction(2): 'half', Fraction(1): 'quarter', Frac
 DIVISIONS = 24       # a quarter note has this many parts: a triplet's notes need thirds
 TRIPLET = Fraction(2, 3)   # a note under a triplet's bracket has this share of its drawn length
 ONE_LINE = 0.6       # the stems of two voices on one pitch, or a second apart, are one line: at most this far apart
+ONE_LINE_BACK = (0.7, 0.3)   # ... or this far apart (in staff spaces), back to back: the first head at the left of its
+#   stem, the second at the right of its own. A hand draws the two stems of such a pair a little apart, and one print
+#   sets two voices that cross so. Not where the second note has a note of the other voice in its own column (within
+#   the second value): it sounds with that note, and the stem before it is the note before. (None: off)
 BESIDE = 1.8         # a whole note beside a note with a stem, on its pitch or a second from it, is at most this far from it
 BESIDE_DOT = 2.6     # or this far, at the right of a note with a dot
 ACROSS = 0.9         # the columns of two staves of a system are one column when they stand at most this far apart
@@ -239,7 +243,13 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                     and abs(column[0]['x'] - event['x']) <= COLUMN * space
                 # Two voices on one note, or a second apart, stand side by side with their stems on one line.
                 one_line = all(other['voice'] != event['voice'] for other in column) and event['stem_x'] is not None \
-                    and any(other['stem_x'] is not None and abs(other['stem_x'] - event['stem_x']) <= ONE_LINE * space
+                    and any(other['stem_x'] is not None and (
+                        abs(other['stem_x'] - event['stem_x']) <= ONE_LINE * space
+                        or ONE_LINE_BACK is not None and abs(other['stem_x'] - event['stem_x']) <= ONE_LINE_BACK[0] * space
+                        and other['x'] < other['stem_x'] < event['stem_x'] < event['x']
+                        and not any(third is not event and third['voice'] != event['voice']
+                                    and all(third is not one for one in column)
+                                    and abs(third['x'] - event['x']) <= ONE_LINE_BACK[1] * space for third in measure))
                             for other in column)
                 stemless = event['stem_x'] is None and all(other['stem_x'] is None for other in column) \
                     and abs(column[0]['x'] - event['x']) <= COLUMN * space

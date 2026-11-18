@@ -63,6 +63,11 @@ LINE_WIDE = 1.2      # such a piece may be this many times as wide and as large 
 HOLE_NECK = 0.05     # a staff line that is faint inside a head leaves the two pieces of the inside joined by a neck
                      # (0: off): with the neck filled in the line's rows (this share of the piece or more) the piece
                      # fills LINE_ROUND of its hull; at least this share of it lies over the line and as much under it
+HOLE_LEDGER = (3, 0.9, 0.2)   # the rows of this many ledger lines over and under each staff count as lines for such a
+#                      neck, where the ledger line is seen: at both sides of the paper, within the second number of
+#                      staff spaces, a thin level stroke stands in the line's row over the third number of staff
+#                      spaces or more. The bowls of a bold letter of the title and the paper between a slur and a
+#                      head have a neck in such a row too, and no line that stands out past them (None: off)
 CROSS = 0.2          # a mark goes through a staff line when its ink over and under the line is this near, sideways
 WEAK = (0.05, 0.2)   # the share of long strokes with gaps: a whole copy has at most the first, a weak copy the second
 WHOLE_GAP = 0.3      # on a whole copy, the gaps that are bridged are this share of the gaps bridged on a weak copy
@@ -206,7 +211,8 @@ def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: floa
 
 
 def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[float] | None = None,
-               clefs: list[tuple[float, float, float, float]] | None = None, least: float | None = None) -> np.ndarray:
+               clefs: list[tuple[float, float, float, float]] | None = None, least: float | None = None,
+               ledgers: list[float] | None = None) -> np.ndarray:
     """1 where paper is closed in by ink and can be the inside of a hollow note head.
 
     The inside of a head is round: it has no dent. Paper that is closed in between two marks has one. A sharp or a
@@ -219,8 +225,10 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
     with a band of ink as thick as a line between them, are one inside when the two and the band are round together.
     With `rows` (the rows of the page's staff lines), a line that is faint inside a head is seen too: _necked().
     `clefs` are the boxes (first column, last column, first row, last row) where HOLE_SIDE does not hold. `least` is
-    the share of its hull that an inside fills (ROUND when None; see RAGGED)."""
+    the share of its hull that an inside fills (ROUND when None; see RAGGED). `ledgers` are the rows where ledger
+    lines can run: a ledger line that is faint inside its head leaves a neck too (HOLE_LEDGER)."""
     lined = np.array(sorted(rows), float) if rows else None
+    beside = np.array(sorted(ledgers), float) if ledgers else None
     count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
     keep = np.zeros(count, bool)
     dented = []
@@ -244,7 +252,9 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
             continue
         if area >= 0.06 * space * space and not _round(part, area, least):
             if not (line and HOLE_NECK and lined is not None and _necked(part, area, line, y, lined)):
-                continue
+                if not (line and HOLE_NECK and beside is not None and _necked(part, area, line, y, beside)
+                        and _ledger_at(ink, x, y, width, height, beside, line, space)):
+                    continue
         keep[index] = True
     if line and HOLE_LINE:
         for upper in dented:
@@ -293,6 +303,32 @@ def _straight_side(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: flo
         while bottom < ink.shape[0] - 1 and ink[bottom + 1, column]:
             bottom += 1
         if bottom - top + 1 >= long * space:
+            return True
+    return False
+
+
+def _ledger_at(ink: np.ndarray, x: int, y: int, width: int, height: int, rows: np.ndarray, line: float, space: float) -> bool:
+    """True where a ledger line goes through a piece of closed paper (HOLE_LEDGER): in one of the rows where a ledger
+    line can run, a thin level stroke stands out at both sides of the piece, past the rim of the head."""
+    reach, least = int(round(HOLE_LEDGER[1] * space)), HOLE_LEDGER[2] * space
+    thin = line + 3
+    for row in rows[(rows > y) & (rows < y + height - 1)]:
+        at = int(round(row))
+        sides = 0
+        for columns in (range(x - 1, max(-1, x - 1 - reach), -1), range(x + width, min(ink.shape[1], x + width + reach))):
+            seen = 0
+            for column in columns:
+                rows_here = [near for near in (at - 1, at, at + 1) if 0 <= near < ink.shape[0] and ink[near, column]]
+                if not rows_here:
+                    continue
+                top = bottom = rows_here[0]
+                while top > 0 and ink[top - 1, column]:
+                    top -= 1
+                while bottom < ink.shape[0] - 1 and ink[bottom + 1, column]:
+                    bottom += 1
+                seen += bottom - top + 1 <= thin
+            sides += seen >= least
+        if sides == 2:
             return True
     return False
 
@@ -396,7 +432,10 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     ink = ink & (1 - stray_lines(ink, places))
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
              for staff in staves] if HOLE_SIDE else None
-    holes = head_holes(ink, space, max(staff['thick'] for staff in staves), [row for staff in staves for row in staff['rows']], clefs)
+    ledgers = [staff['rows'][end] + side * step * staff['space'] for staff in staves for end, side in ((0, -1), (4, 1))
+               for step in range(1, HOLE_LEDGER[0] + 1)] if HOLE_LEDGER else None
+    holes = head_holes(ink, space, max(staff['thick'] for staff in staves), [row for staff in staves for row in staff['rows']], clefs,
+                       ledgers=ledgers)
     # The rim of a hollow head can have a small break, in print and in a copy: the paper inside is closed in again
     # when the break is closed. These open holes are kept apart: they are asked only where a head is missing.
     size = int(max(3, round(HOLE_GAP * space))) | 1
