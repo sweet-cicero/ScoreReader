@@ -602,6 +602,58 @@ def _without_arm(mask: np.ndarray, holes: np.ndarray, space: float, usual: float
     return left if (left & holes).any() else mask
 
 
+CELL_OUT = (0.6, 0.95, 2.0, 0.75, 0.4, 0.55)   # a cell along a staff line in a thick mark that also holds a filled head
+#   (see FLAT_CELL for the first three numbers) is paper, not the inside of a head: a head and the stem of the note
+#   before it, or a head and its sign, close such a cell with the staff lines, and the mark was read as one hollow
+#   head. The mark holds a filled head where an oval of the fourth share of a head goes through its ink. The cell
+#   stands between a thin stroke and a head: in its middle rows the ink at one side is at most the fifth number of
+#   staff spaces wide (a stem, the stroke of a sign) and at the other side the sixth number or more (the head). The
+#   loop of a flag has thin ink at both sides, and older rules read the flag from it; a cell under a beam has its
+#   heads below it. (None: off)
+
+
+def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float) -> np.ndarray | None:
+    """The closed paper of a thick piece that is a cell along a staff line (CELL_OUT), as a mask of the piece's box;
+    None where there is none or where the piece holds no filled head."""
+    space = layers['space']
+    inside = (whole & holes).astype(np.uint8)
+    if not inside.any():
+        return None
+    rows = np.array(sorted(row for staff in layers['staves'] for row in staff['rows']), float)
+    thick = max(staff['thick'] for staff in layers['staves'])
+    half, slack = thick / 2, max(CELL_OUT[2], thick / 2)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(inside, connectivity=4)
+    cells = np.zeros(whole.shape, bool)
+    for index in range(1, count):
+        left, top, width, height, _ = (int(value) for value in stats[index])
+        if height < CELL_OUT[0] * space:
+            continue
+        part = labels[top:top + height, left:left + width] == index
+        first, last = part.argmax(axis=0), height - 1 - part[::-1].argmax(axis=0)
+        if not ((first <= 1).mean() >= CELL_OUT[1] and np.abs(rows - (y + top - 0.5 - half)).min() <= slack
+                or (last >= height - 2).mean() >= CELL_OUT[1] and np.abs(rows - (y + top + height - 0.5 + half)).min() <= slack):
+            continue
+        # The ink at the two sides of the cell, in its middle rows: a thin stroke at one side, a head at the other.
+        sides = []
+        for column, step in ((x + left - 1, -1), (x + left + width, 1)):
+            runs = []
+            for row in range(y + top + height // 4, y + top + max(height // 4 + 1, 3 * height // 4)):
+                at, run = column, 0
+                while 0 <= at < layers['ink'].shape[1] and layers['ink'][row, at]:
+                    at, run = at + step, run + 1
+                runs.append(run)
+            sides.append(float(np.median(runs)) / space)
+        if min(sides) <= CELL_OUT[4] and max(sides) >= CELL_OUT[5]:
+            cells |= labels == index
+    if not cells.any():
+        return None
+    ink = (whole & ~holes).astype(np.uint8)
+    oval = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(CELL_OUT[3] * wide) | 1, int(CELL_OUT[3] * high) | 1))
+    if not cv2.morphologyEx(np.pad(ink, max(oval.shape)), cv2.MORPH_OPEN, oval).any():
+        return None
+    return cells
+
+
 def thick_marks(layers: dict) -> list[dict]:
     """The thick marks of the page, cut where two heads touch. Each: its box (x0, y0, x1, y1), area, the middle
     (cx, cy), 'hole' (the share of its area that was the inside of a hollow shape), 'hole_cy' and 'blob' (the
@@ -632,6 +684,38 @@ def thick_marks(layers: dict) -> list[dict]:
                                            and staff['x0'] <= mark['cx'] <= staff['x1'] for staff in layers['staves'])]
     wide, high = head_size(own, space)
     layers['head'] = (wide, high)
+    if CELL_OUT:
+        # A cell along a staff line beside a filled head is taken out of its piece, and the piece is made anew: the
+        # brush goes through what is left, as it went through the marks of the page.
+        from .layers import BRUSH
+        brush = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(max(5, round(BRUSH * space))) | 1,) * 2)
+        again, extra = [], count
+        for index in sorted({piece[0]['blob'] for piece in pieces if piece[0]['hole'] >= HOLLOW}):
+            x, y, own_wide, own_high, _ = (int(value) for value in stats[index])
+            whole = labels[y:y + own_high, x:x + own_wide] == index
+            holes = layers['holes'][y:y + own_high, x:x + own_wide] > 0
+            cells = _cells_out(layers, whole, holes, x, y, wide, high)
+            if cells is None:
+                continue
+            pad = brush.shape[0]
+            left = cv2.morphologyEx(np.pad((whole & ~cells).astype(np.uint8), pad), cv2.MORPH_OPEN, brush)[pad:-pad, pad:-pad]
+            number, parts, sizes, _ = cv2.connectedComponentsWithStats(left, connectivity=8)
+            made = []
+            for label in range(1, number):
+                if sizes[label, cv2.CC_STAT_AREA] < SMALL * space * space:
+                    continue
+                left_x, top, part_wide, part_high = (int(value) for value in sizes[label, :4])
+                part = parts[top:top + part_high, left_x:left_x + part_wide] == label
+                inside = (holes & ~cells)[top:top + part_high, left_x:left_x + part_wide]
+                blob = index if not made else (extra := extra + 1)
+                for first, last in _cut_rows(part, inside, space):
+                    mark = _mark(part[first:last + 1], inside[first:last + 1], x + left_x, y + top + first, blob)
+                    if mark and mark['area'] >= SMALL * space * space:
+                        made.append((mark, part[first:last + 1], inside[first:last + 1], x + left_x, y + top + first))
+            if made:
+                again.append((index, made))
+        for index, made in again:
+            pieces = [piece for piece in pieces if piece[0]['blob'] != index] + made
     marks = []
     for mark, mask, holes, x, y in pieces:
         if STUB:

@@ -46,6 +46,17 @@ SOLID = (0.3, 0.9, 0.5)  # a word of two letters or more is no word where this s
 #                          letter fills its column over the row or under it, not both. The picture that Tesseract
 #                          gets stays as it is: with the edge painted out it read other words of the row otherwise
 #                          (None: off)
+CLEF = (3.0, 50, 2, 1.5)   # a word that ends within this many staff spaces of the left end of the staff over its row, in
+#                          the columns of the clef, and that Tesseract is less sure of than the second number is no
+#                          word: the tail of the clef, the brace, a smudge at the edge of the page. The words of a
+#                          row begin under its first note; a row that goes on under the clef is read surely there.
+#                          The word has the third number of letters or more (a stroke that is read as one letter
+#                          has rules of its own) and begins at most the fourth number of staff spaces before the
+#                          staff: a label in the margin is another matter. Such a word can hold letters of the
+#                          list ('la', 'las') and make a reading win that leaves out a true syllable. (None: off)
+CLEF_WHOLE = True        # a reading that lost such a word is not whole, as a reading with a mended word is not
+#                          (MEND_WHOLE): the other sizes are read too. Without it a first reading that held only
+#                          words of the list beside the stray word won, and a syllable that it misread stayed lost
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
 #                          ink under a staff: a slur, a hairpin, the ends of stems). None: every row is kept
 ROUND_SIDE = ('()[]', '@')   # the word O with a bracket at one side ('0)', '@)'): the ring of a large O is read as
@@ -965,6 +976,15 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     letters = [(sum(sign.isalpha() for sign in text), sure) for text, _, _, sure in words]
     count = sum(number for number, _ in letters)
     sure = sum(number * sure for number, sure in letters) / count if count else 0.0
+    stray = False
+    if CLEF and band.get('clef') is not None:
+        # After the row is judged as a row of words and how sure Tesseract is of it is taken: a stray word that
+        # goes must not make its reading look surer than the others (see CLEF).
+        keep = [not (word[2] <= band['clef'][1] and word[1] >= band['clef'][0] and word[3] < CLEF[1]
+                     and sum(sign.isalpha() for sign in word[0]) >= CLEF[2]) for word in words]
+        words = [word for word, stays in zip(words, keep) if stays]
+        stray = CLEF_WHOLE and not all(keep)
+        letters = [pair for pair, stays in zip(letters, keep) if stays]
     if LONE_I:
         words = _lone_i(words, grey, band)
     if CUT:
@@ -986,7 +1006,7 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     if band.get('few') and (mended or not 0 < total == held or (len(lettered) == 1 and lettered[0].endswith(':'))):
         return [], -1.0, False        # a row of few words (words.SPARSE): only words of the list, and no label
         #                               (one word with a colon: 'Refrain:', 'Women:')
-    return row, held + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE)
+    return row, held + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE) and not stray
 
 
 def _sure(words: list[tuple[str, float, float, float]]) -> float:
@@ -1221,6 +1241,15 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
             readers.append((read, (() if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ())))
                             + (tuple(SECOND * (file + 1) + size for file in range(len(others))
                                      for size in (HIGH,) + tuple(AGAIN or ())) if known else ())))
+        if CLEF:
+            # Each row knows the columns of the clef of the staff over it (see CLEF).
+            staves = layers.get('staves') or []
+            marked = []
+            for band in bands:
+                over = [staff for staff in staves if staff['rows'][4] < band['top']]
+                left = max(over, key=lambda staff: staff['rows'][4])['x0'] if over else None
+                marked.append(band if left is None else dict(band, clef=(left - CLEF[3] * space, left + CLEF[0] * space)))
+            bands = marked
         mend = bool(known) and _fits([(read(HIGH), band) for (read, _), band in zip(readers, bands)], grey, known)
         under: dict[int, list[tuple[list[dict], float]]] = {}
         for number, ((read, more), band) in enumerate(zip(readers, bands)):
