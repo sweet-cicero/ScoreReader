@@ -37,6 +37,15 @@ ROUND = (('Q', 'QO', 'OQ', 'Qo', 'Oo'), '©', 0.7)   # with a list of words that
 #                          number follows it (the sign of a copyright line). (None: off)
 SURE = (20, True)        # a word that Tesseract is less sure of than this (of 100) and that has under three letters is
 #                          left out; with a list of words it stays when the list holds it (True)
+SURE_JOIN = True         # and it stays where the list holds the word that it makes with the pieces beside its hyphens: the
+#                          hyphen was read, so a syllable stands there ('Bless-' and an unsure 'ed', an unsure 'el-'
+#                          before 'der') (False: off)
+SOLID = (0.3, 0.9, 0.5)  # a word of two letters or more is no word where this share of the columns of its box is ink from
+#                          over the row to under it (a column: this share of it; over and under: this many heights
+#                          of the row): the black edge of a scan, a punch hole, a bar line that crosses the row. A
+#                          letter fills its column over the row or under it, not both. The picture that Tesseract
+#                          gets stays as it is: with the edge painted out it read other words of the row otherwise
+#                          (None: off)
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
 #                          ink under a staff: a slur, a hairpin, the ends of stems). None: every row is kept
 JOINS = '-‐‑‒–—~='     # what a hyphen between two syllables can be read as
@@ -230,6 +239,29 @@ def _no_digits(text: str, first: bool = False) -> str:
     return text.replace('0', 'O' if capitals else 'o').replace('1', 'I' if capitals else 'l')
 
 
+def _in_word(found: list[dict], words: list[tuple[str, float, float, float]], number: int, text: str,
+             known: dict[str, int]) -> bool:
+    """Whether a piece of a line stands in a word of the list with the pieces that hyphens join it to (see
+    SURE_JOIN): the syllables found so far, and the words of the line after the piece."""
+    before, at = '', len(found) - 1
+    while at >= 0 and found[at]['join']:
+        before, at = found[at]['text'] + before, at - 1
+    after, goes = '', text[-1] in JOINS
+    for other, _, _, _ in words[number + 1:]:
+        other = other.replace('|', '').strip(LINES)
+        if not other:
+            continue
+        if all(sign in JOINS + LINES + '.,' for sign in other):
+            goes = goes or any(sign in JOINS for sign in other)
+            continue
+        if not goes:
+            break
+        after, goes = after + other, other[-1] in JOINS
+        if not goes:
+            break
+    return bool(before or after) and ''.join(sign for sign in (before + text + after).lower() if sign.isalpha()) in known
+
+
 def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None,
                high: float | None = None) -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows), 'sure'} each. A hyphen
@@ -253,7 +285,8 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
             continue
         letters = sum(sign.isalpha() for sign in text)
         if letters == 0 or (sure < SURE[0] and letters < 3 and not (
-                SURE[1] and known and ''.join(sign for sign in text.lower() if sign.isalpha()) in known)):
+                SURE[1] and known and ''.join(sign for sign in text.lower() if sign.isalpha()) in known)
+                and not (SURE_JOIN and known and _in_word(found, words, number, text, known))):
             continue
         # The pieces between hyphens, each with its share of the word's width.
         wide = (right - left) / max(1, len(text))
@@ -880,6 +913,21 @@ def _lone_i(words: list[tuple[str, float, float, float]], grey: np.ndarray, band
     return found
 
 
+def _no_solid(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[str, float, float, float]]:
+    """The words of a line without those that are solid ink (see SOLID)."""
+    top, bottom = int(band['top']), int(band['bottom'])
+    room = int(round(SOLID[2] * (bottom - top)))
+    top, bottom = max(0, top - room), bottom + room
+    found = []
+    for text, left, right, sure in words:
+        first, last = max(0, int(left)), min(grey.shape[1], int(right) + 1)
+        if sum(sign.isalpha() for sign in text) >= 2 and last > first and bottom > top \
+                and ((grey[top:bottom, first:last] < 128).mean(axis=0) > SOLID[1]).mean() >= SOLID[0]:
+            continue
+        found.append((text, left, right, sure))
+    return found
+
+
 def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
     """Whether a line of text is a row of words: how sure Tesseract is of its letters, each letter counted once."""
     if ROW is None:
@@ -898,6 +946,8 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     look at a row that no reading of the picture as it is took for a row of words; it is tested as a row that
     Tesseract is not sure of. The reading of a row of few words (band['few'], words.SPARSE) must hold only words of
     the list."""
+    if SOLID:
+        words = _no_solid(words, grey, band)
     unsure = alone or not _words_row(words)       # alone: no reading of the picture as it is gave a row of words
     if (unsure or band.get('few')) and not (known and ROW_HELD):
         return [], -1.0, False

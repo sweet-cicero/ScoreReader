@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.6 % on
-scans; 86 scores at 99 % or more), 96.8 % of the notes on the clean copies (21,882 of 22,597, counted by the page;
-21,838 of 22,612 as typed; 32 of the 78 counted scores at 99 %; 19 scores read every printed note, 31 every
-syllable, 10 both, 15 have no note that is not there, 8 are whole in all three; 713 printed notes and 209 syllables
-are lacking and 784 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
-files and a list of words (6,030 of 6,239, counted by the page; 5,982 of 6,259 as typed; 94.5 % of the whole words; 32 scores at 99 % of the syllables);
-88.9 % of all syllables with Tesseract (87.8 % on scans), and 90.1 % on the kit (6220 of 6901).
+scans; 86 scores at 99 % or more), 96.8 % of the notes on the clean copies (21,883 of 22,597, counted by the page;
+21,839 of 22,613 as typed; 32 of the 78 counted scores at 99 %; 20 scores read every printed note, 32 every
+syllable, 12 both, 16 have no note that is not there, 10 are whole in all three; 712 printed notes and 206 syllables
+are lacking and 783 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
+files and a list of words (6,033 of 6,239, counted by the page; 5,984 of 6,259 as typed; 94.5 % of the whole words; 33 scores at 99 % of the syllables);
+88.9 % of all syllables with Tesseract (87.9 % on scans), and 90.1 % on the kit (6220 of 6901).
 On the fresh test set, which no rule was set on: 95.1 % of the notes (39,720 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -574,6 +574,25 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the one small piece low in the shape that the census of every rest showed (4 of 364).
 - A census that spies on a function of the reader keeps the function as it was in one place of the module. Wrapped
   anew for each page, each call ran the one before it too, and a census of 14 minutes ran for 40.
+- A slur that passes the ends of two stems hangs on both sides of each at one level, as the beam of a middle
+  note does, and the flag of the note before is its witness. It is slim against the beams of its own page
+  (`symbols.BEAM_CROSS`: both pieces at most half as thick; 20 such stems of LitChoir's pages, each looked at,
+  the slimmest true beam at 0.52). Between 0.5 and 0.6 slurs and a true beam stand mixed: the rule takes the
+  part of the census that holds no beam.
+- Before a lost syllable is blamed on Tesseract, look at its stored readings at every size and file, and
+  replay the one row with each rule off (a script outside git, with the wide test): every one of 18 readings
+  held a syllable that the words step dropped. A short word that Tesseract is not sure of is left out
+  (`ocr.SURE`); beside a hyphen that was read it stays where the list holds the whole word
+  (`ocr.SURE_JOIN`). A reading that drops a syllable can hold only words of the list, and it wins.
+- The black edge of a scan beside a row is read as a word. Painted out of the picture that Tesseract gets, the
+  false words went and 2 true syllables of the clean copies with them (none gained): the picture stays as it
+  is, and the word is refused by its own box (`ocr.SOLID`). A letter fills its column over the row or under
+  it, not both: measured in the rows of the row alone, the stems of a bold "ni" filled half of its box.
+- The replay of the words hands a rule the columns of a row, not the page. A rule that looks at the ink gets
+  the page there by a wrapper of its own; without it the rule for solid ink dropped nearly every word.
+- A ragged inside of a half note on a ledger line fails two tests at once (how far it leans, and the rim in
+  the row of its middle, which is the ledger line). A wider limit for the lean alone gains 2 notes and loses
+  1 on all pages, and not the note that it was tried for.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
