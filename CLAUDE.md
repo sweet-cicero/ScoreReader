@@ -24,14 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.6 % on
-scans; 87 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,886 of 22,597, counted by the page;
-21,842 of 22,611 as typed; 33 of the 78 counted scores at 99 %; 21 scores read every printed note, 35 every
-syllable, 15 both, 16 have no note that is not there, 11 are whole in all three; 709 printed notes and 197 syllables
-are lacking and 769 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.8 % with Tesseract, its larger
-files and a list of words (6,042 of 6,239, counted by the page; 5,993 of 6,259 as typed; 94.7 % of the whole words; 36 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.1 % on the kit (6220 of 6901).
-On the fresh test set, which no rule was set on: 95.1 % of the notes (39,729 of 41,761; 90 of 214 pieces at 99 %),
+Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
+scans; 87 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,887 of 22,595, counted by the page;
+21,843 of 22,608 as typed; 33 of the 78 counted scores at 99 %; 22 scores read every printed note, 35 every
+syllable, 16 both, 18 have no note that is not there, 12 are whole in all three; 706 printed notes and 196 syllables
+are lacking and 742 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+files and a list of words (6,043 of 6,239, counted by the page; 5,994 of 6,259 as typed; 94.7 % of the whole words; 36 scores at 99 % of the syllables);
+89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.1 % on the kit (6218 of 6901).
+On the fresh test set, which no rule was set on: 95.3 % of the notes (39,809 of 41,761; 92 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -619,6 +619,29 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A rule that does not reach the scores that it was looked for can still be right for what its census
   shows. Say so: two clean scores keep the notes that are read in the black of a binder hole, because the scan
   cuts one staff at its last line and the other staff is followed past its final bar line.
+- The layer of the insides of heads is read by older rules for other things: a flag is read from the room that
+  it closes, a time signature from its cells, and measures of the page come from its hollow heads. Refusing a
+  cell between a staff line and a slanted stroke in that layer gained on LitChoir (102 notes and 46) and lost
+  on the fresh set (108 and 117). The rule is a late step on the read heads (`symbols.FLAT_CELL`), after the
+  flags are counted and after the rules for the loops of flags, and the layers stay as they are. A census of
+  closed paper is made from the reader's own layer, not from the ink: the first census took other pieces.
+- The inside of a printed hollow head touches a staff line at a point; a cell between a line and a stroke (a
+  pencil ring, a slur, the loop of a flag, a piece of a rest or of a clef) has a level side along the line. A
+  sharp or a natural close before a filled head closes in such a cell too, and a hand draws a head as a stroke
+  along a line: the guard is the fattest ink of the mark against the page's filled heads. It parts on a print
+  (0.75 at most against 0.93 or more) and not on a copy by hand, where every stroke is as fat as a head: the
+  rule is a rule for a print, and its guard keeps about 27 false notes of copies by hand.
+- A staff that the scan cuts or that is followed past its bar line ends in nearly solid ink without a whole
+  bar line. A mark past the end of such a staff is no note (`symbols.END_PAST`, by the staff's `end_ink`): of
+  18 such notes of LitChoir's scan pages the 7 from 0.6 on are false and the 4 true ones have 0.43 at most.
+- A false mark that goes can free a run of recited notes: the notes set apart of a clean score with a
+  recitation grew by 2 where a mark at the end of a staff had stood for one of them. Look at the page (an
+  empty staff with the words printed over it) before the count of the drawn notes is taken as moved by a rule.
+- A word that one reading of a row holds whole is not parted as other readings part it: one clean score
+  prints words of one syllable spread under two notes with a line (5 syllables lost on the clean copies, none
+  gained).
+- The kit's count by parts and its own count staff by staff can differ in what a round moves: two false marks
+  that had counted by parts went, and the count staff by staff stayed (6220 to 6218 by parts).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
