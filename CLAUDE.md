@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.1 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.6 % on
-scans; 86 scores at 99 % or more), 96.8 % of the notes on the clean copies (21,883 of 22,597, counted by the page;
-21,839 of 22,613 as typed; 32 of the 78 counted scores at 99 %; 20 scores read every printed note, 32 every
-syllable, 12 both, 16 have no note that is not there, 10 are whole in all three; 712 printed notes and 206 syllables
-are lacking and 783 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.7 % with Tesseract, its larger
-files and a list of words (6,033 of 6,239, counted by the page; 5,984 of 6,259 as typed; 94.5 % of the whole words; 33 scores at 99 % of the syllables);
-88.9 % of all syllables with Tesseract (87.9 % on scans), and 90.1 % on the kit (6220 of 6901).
-On the fresh test set, which no rule was set on: 95.1 % of the notes (39,720 of 41,761; 90 of 214 pieces at 99 %),
+scans; 87 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,886 of 22,597, counted by the page;
+21,842 of 22,611 as typed; 33 of the 78 counted scores at 99 %; 21 scores read every printed note, 35 every
+syllable, 15 both, 16 have no note that is not there, 11 are whole in all three; 709 printed notes and 197 syllables
+are lacking and 769 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.8 % with Tesseract, its larger
+files and a list of words (6,042 of 6,239, counted by the page; 5,993 of 6,259 as typed; 94.7 % of the whole words; 36 scores at 99 % of the syllables);
+89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.1 % on the kit (6220 of 6901).
+On the fresh test set, which no rule was set on: 95.1 % of the notes (39,729 of 41,761; 90 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -593,6 +593,32 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A ragged inside of a half note on a ledger line fails two tests at once (how far it leans, and the rim in
   the row of its middle, which is the ledger line). A wider limit for the lean alone gains 2 notes and loses
   1 on all pages, and not the note that it was tried for.
+- A word that every reading of a row holds with the same letters, at each size and by each language file, has
+  been read: it is a true word that the list lacks twice as often as a misread (about 20 and 10 of 33 on all
+  scan pages), and no measure of the word parts the two. Never mending such a word gained 19 syllables and
+  lost 4; counting it as a word that Tesseract is sure of, which the rules for a sure word still mend, gained
+  27 and lost 3 (`ocr.MEND_ALIKE`). The sizes of the first file alone agree on more misreads (38 and 10).
+- A hyphen at the end of a row does not tell that the next row begins inside a word: many readings end a row
+  with a hyphen that the page does not print. Not mending the first word of such a row gained 4 syllables and
+  lost 8.
+- The curl at the end of a flag is read as a small filled head with a stem of its own. It is told by its place
+  and its size together (`symbols.FLAG_CURL`: in the row of a flag that was counted at another stem, at the
+  flag's side, and under 0.6 of the area of the page's filled heads); a true head of another voice stands at
+  the same place from 0.6 on. Where a rule asks only measures that the stored notes keep, its census is made
+  from the stored notes of a run with the scorer's verdicts, and no page is read for it.
+- Nothing of the music stands at or past the bar line that ends a staff (`symbols.END_MARK`,
+  `layers.END_BAR`): the pieces of a final bar line that a hole or the wear broke, a punch hole, a paperclip
+  and the black edge of a scan were read there, with the bar line as their stem. The distance to the end of
+  the staff alone does not tell: where a staff ends without a bar line (lines that fade on a copy by hand,
+  lines that a punch hole hides) two of three notes at its end are true. The census of 65 such notes named
+  the pages that the rule changes (38 by the census, 37 changed).
+- A rule that takes marks away runs after every finder of heads. Run before them, the end rule took the
+  closed paper between the two strokes of a final bar line early, and a true whole note of that staff was no
+  longer read. Look at each note that the first reading loses before the rule is narrowed: the fault was the
+  place of the step, not a limit.
+- A rule that does not reach the scores that it was looked for can still be right for what its census
+  shows. Say so: two clean scores keep the notes that are read in the black of a binder hole, because the scan
+  cuts one staff at its last line and the other staff is followed past its final bar line.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

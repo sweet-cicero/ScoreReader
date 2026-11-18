@@ -4039,6 +4039,31 @@ def without_bar_pieces(layers: dict, heads: list[dict]) -> list[dict]:
     return out
 
 
+END_MARK = (0.5, 0.25, 1.5)  # nothing of the music stands at or past the bar line that ends a staff: a mark whose middle
+#   is at most this many staff spaces before the end of a staff that ends with a bar line (layers.END_BAR), whose right
+#   edge is at most this many before it, and whose middle is at most this many past it, is no head. What is read there
+#   is the thick stroke of a final bar line that a hole or the wear of the print broke (THICK_BAR asks for whole
+#   columns), a punch hole, a paperclip, tape or the black edge of the scan, with the bar line as its stem. (A census
+#   of every read note of the scan pages at the end of its staff: 65 at such a bar line, each looked at, and none is a
+#   note; where the staff ends without a bar line, true notes stand there, on copies by hand and beside a punch hole
+#   that hides the lines.) The rule runs after every finder of heads: taken away before them, the closed paper between
+#   the two strokes of a final bar line took a true whole note of its staff with it. None: off
+
+
+def without_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the marks at or past the bar line that ends their staff (END_MARK)."""
+    if not END_MARK:
+        return heads
+    space, out = layers['space'], []
+    for head in heads:
+        staff = layers['staves'][head['staff']]
+        if staff.get('end_bar') and head['cx'] >= staff['x1'] - END_MARK[0] * space \
+                and head['x1'] >= staff['x1'] - END_MARK[1] * space and head['cx'] <= staff['x1'] + END_MARK[2] * space:
+            continue
+        out.append(head)
+    return out
+
+
 def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
     """The heads without the hollow marks whose inside stands upright (HOLE_UPRIGHT)."""
     if not HOLE_UPRIGHT and not LOOP_UNDER:
@@ -4130,6 +4155,38 @@ def without_flag_loops(heads: list[dict], space: float) -> list[dict]:
                        and other['cy'] < head['cy'] <= stem['end'] + 0.3 * space
                        and head['cy'] - other['cy'] > stem['end'] - head['cy'] for stem in other['stems']):
                     gone.add(id(head))
+    return [head for head in heads if id(head) not in gone]
+
+
+FLAG_CURL = (0.6, 0.6, 1.6)   # the curl at the end of a flag is a small filled mark: under this share of the area of the
+#                               page's filled heads, in the row of a flag that was counted at another stem (at most this
+#                               many staff spaces from it) and at the flag's side of that stem (at most this many staff
+#                               spaces away). It is no head. Of 83 such notes of LitChoir's pages, each looked at, none
+#                               is a note (curls and tips of flags, the ends of beams, pieces of rests and of numbers);
+#                               from 0.6 on true heads stand there (None: off)
+
+
+def without_flag_curls(heads: list[dict], space: float) -> list[dict]:
+    """The heads without the curls of flags (see FLAG_CURL). Runs after count_tails(), which marks the flags of a stem."""
+    if not FLAG_CURL:
+        return heads
+    areas = [head['alt']['area'] for head in heads if not head['hollow'] and head.get('alt')]
+    if not areas:
+        return heads
+    usual = float(np.median(areas))
+    gone = set()
+    for head in heads:
+        if head['hollow'] or not head.get('alt') or head['alt']['area'] >= FLAG_CURL[0] * usual:
+            continue
+        for other in heads:
+            if other is head or other['staff'] != head['staff']:
+                continue
+            for stem in other['stems']:
+                for mark in stem.get('marks') or ():
+                    apart = head['cx'] - stem['x']
+                    if not mark.get('beam') and abs(head['cy'] - mark['row']) <= FLAG_CURL[1] * space \
+                            and (0 <= apart <= FLAG_CURL[2] * space if mark['right'] else -FLAG_CURL[2] * space <= apart <= 0):
+                        gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
 
 

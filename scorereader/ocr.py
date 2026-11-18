@@ -124,6 +124,10 @@ MEND_OFTEN = (0.06, 0.012)   # and it is mended all the same when the word that 
 #                          'thou', at the end of the word too; not a piece of a word whose hyphen was not read,
 #                          'glori ous'), or the second share where one such run of three letters is in no word of
 #                          the list and the letter is not the word's last ('mishty' is 'mighty') (None: off)
+MEND_ALIKE = 2           # a word that every reading of a row holds with the same letters counts as a word that Tesseract
+#                          is sure of: it is a true word of the hymn that the list lacks more often than a misread,
+#                          and it is mended only as a sure word is (1: every size of the first file; 2: every size
+#                          of every file; 0: off)
 MEND_WHOLE = True        # a reading with a mended word is not whole: the row is read at the other sizes too, and
 #                          the reading that fits best is kept ('Theel' mended, and a syllable left out beside it)
 OTHER_SIZE = (0.7, 2)    # with a list of words: the row is read at three sizes and one reading is kept. A word of it
@@ -697,7 +701,7 @@ def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None
 
 
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
-          agreed: frozenset[str] | set[str] = frozenset()) -> list[dict]:
+          agreed: frozenset[str] | set[str] = frozenset(), alike=None) -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
     there ('tnose', 'orlent', 'trinty'); the hymns of one church use the same words again and again, and the list
     tells which word was meant. A word is the syllables that hyphens join. Only letters count: capitals, commas and
@@ -722,7 +726,7 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
         if len(read) < MEND[0] or read in known or read in agreed:
             continue
         odd = _odd(read, known) if MEND_ODD or MEND_OFTEN else 0
-        firm = sure >= MEND[2] and not (MEND_ODD and odd >= MEND_ODD)
+        firm = (sure >= MEND[2] or (alike is not None and read in alike())) and not (MEND_ODD and odd >= MEND_ODD)
         if firm and (not MEND_OFTEN or parts[-1]['join']):     # a word that goes on in the next row is not whole
             continue
         near = set()
@@ -939,7 +943,7 @@ def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
 
 def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
               known: dict[str, int], mend: bool = True, alone: bool = False, mending: bool = True,
-              agreed: frozenset[str] | set[str] = frozenset()) -> tuple[list[dict], float, bool]:
+              agreed: frozenset[str] | set[str] = frozenset(), alike=None) -> tuple[list[dict], float, bool]:
     """What one reading of a row gives: its syllables, how well the reading fits, and whether the list of words
     holds each of its words. The fit is the number of letters in words that the list holds, and among readings
     that are level there, or with no list, how sure Tesseract is of the letters. `alone`: the reading is a second
@@ -967,7 +971,7 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     if MEND and mend and mending:
         if MEND_PAIR:
             row = _mend_pair(row, known, mended)
-        row = _mend(row, known, mended, agreed)
+        row = _mend(row, known, mended, agreed, alike)
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
         return [], -1.0, False
@@ -1112,11 +1116,23 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     rows: list[list[dict]] = []
     firsts: set[str] = set()       # the words that the list lacks, as the first file read them
     firm: set[str] | None = None   # those of them that every size of the first file read alike
+    same: list[set[str]] = []
+
+    def alike() -> set[str]:
+        # The words that every reading of the row holds with the same letters (see MEND_ALIKE), read when first asked.
+        if not same:
+            sizes = (HIGH,) + tuple(AGAIN or ()) + (tuple(size for size in more if size > 0) if MEND_ALIKE > 1 else ())
+            same.append(set.intersection(*(
+                {''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
+                 for word in _read_words(_syllables(read(size), known, band['bottom'] - band['top']))} for size in sizes)))
+        return same[0]
+
     for size in (HIGH,) + tuple(AGAIN or ()) + tuple(more):
         again = size < 0 or bool(SECOND and size >= SECOND)      # a second look: another picture or another file
         second = again and size > 0
         row, fit, whole = _text_row(read(size), grey, band, known, mend, again and (best is None or best[1] < 0),
-                                    mending=bool(SECOND_MEND) or not second, agreed=firsts if second else frozenset())
+                                    mending=bool(SECOND_MEND) or not second, agreed=firsts if second else frozenset(),
+                                    alike=alike if MEND_ALIKE and known else None)
         lacking = _lacking(row, known)
         if not again:
             firsts |= lacking
