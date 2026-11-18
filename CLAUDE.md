@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 89 scores at 99 % or more), 96.9 % of the notes on the clean copies (21,896 of 22,595, counted by the page;
-21,852 of 22,608 as typed; 35 of the 78 counted scores at 99 %; 24 scores read every printed note, 35 every
-syllable, 18 both, 18 have no note that is not there, 13 are whole in all three; 697 printed notes and 195 syllables
-are lacking and 736 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,904 of 22,587, counted by the page;
+21,851 of 22,608 as typed; 35 of the 78 counted scores at 99 %; 24 scores read every printed note, 35 every
+syllable, 18 both, 19 have no note that is not there, 13 are whole in all three; 681 printed notes and 195 syllables
+are lacking and 726 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
-On the fresh test set, which no rule was set on: 95.4 % of the notes (39,820 of 41,761; 92 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.4 % of the notes (39,821 of 41,761; 92 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -679,6 +679,20 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   two stems back to back are one column (`music.ONE_LINE_BACK`) unless the second note already stands in the
   column of a note of the other voice. A note that a column moves can free a run of recited notes on a copy by
   hand: compare `apart` too.
+- A rule that follows closed paper from a mark begins at the mark's own inside. A long flag closes a trail of
+  small cells along its stem, and the first cell was read as a half note (`symbols.FLAG_TRAIL`); taken from any
+  paper in the rows of the head, the trail began at the paper between a staff line and the top of the lower of
+  two stacked half notes, and the first form took true half notes (3 notes lost on the clean copies, 9 on the
+  fresh set).
+- A rule that makes the insides of heads larger changes what later steps learn of the page: `hole_heads` takes
+  the page's size of a hole from its read half notes. The halves of an inside that a thick ledger line cuts are
+  one inside where they lean (`symbols.HALVES_LEAN`, at ledger lines only: on the staff lines the same shape is
+  two heads a third apart as often), and on one fresh page the larger inside let a cell between a slur and the
+  lines pass as a head.
+- A bow from a head to the same pitch under one held syllable is a tie by the page, and goes on the list of the
+  notes by the page with the moments that it holds (`held`). The finder for such places sees both line-ups of a
+  held run: the read long note lined up with the first typed note of the run, and with its last. A bow from one
+  syllable to the next is a slur, and where it is read as a tie the reader is wrong.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
