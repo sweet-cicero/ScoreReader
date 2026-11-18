@@ -252,6 +252,13 @@ CHORD_STEM = (0.7, 1.3, 0.75, 1.3, 0.3, 0.25, 1.25, 0.02)   # a filled mark with
                          # staff spaces of paper lie between the two, and the mark closes in at most this much
                          # paper (staff spaces squared; a whole note on a ledger line closes in two slivers)
                          # (None: off)
+MIDDLE_KIND = 0.4     # the middle head of a column on one stem line, with no head of the column within this many staff
+                      # spaces of its height, goes with the neighbour of its own kind (filled or hollow) (None: off)
+MIDDLE_LEAVES = 1.8   # ... where that neighbour's stem leaves the column on its side and ends this many staff spaces from it
+MIDDLE_SURE = (0.08, 0.16)   # ... and where each of the three is surely filled (a share of paper under the first number) or
+#                     surely hollow (the second number or more)
+MIDDLE_OWN = True     # ... and not where the neighbour of its own kind holds a stem on that side that ends within MIDDLE_LEAVES
+#                     of it: the end of a bow that runs into the column is no stem of a note (False: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
 
@@ -367,6 +374,28 @@ def _line_slit(layers: dict, mark: dict, staff: dict) -> bool:
     under = max(((area, x, row) for area, x, row in specks if area >= LINE_SLIT[1] and row >= 0), default=None)
     return bool(over and under and over[1] - under[1] >= LINE_SLIT[2] * space
                 and max(over[2], under[2]) >= LINE_OUT * space)
+
+
+LINE_HALVES = (0.012, 0.35, 0.15)   # a filled head with a stem and a line through it (as LINE_SLIT) is a half note
+#   when a speck of paper of at least this many square staff spaces is closed in over the line and one under it, the
+#   middle of each out of the rows of the line (LINE_OUT) and at most the second number of staff spaces from it, the two
+#   over each other (their middles at most this share of the box apart): the inside of a half note that lies flat, cut
+#   in two by the line and a little smaller than a hole (None: off)
+
+
+def _line_halves(layers: dict, mark: dict, staff: dict) -> bool:
+    """A half note on a line whose inside lies flat: the line cuts it into two halves that stand over each other, one
+    over the line and one under it, each out of the rows of the line. (The slit of a half note that leans is
+    _line_slit(); specks of a worn filled head lie in the rows of the line.)"""
+    space = staff['space']
+    line, specks, wide = _line_specks(layers, mark, staff)
+    if abs(line - mark['cy']) > LINE_SLIT[0] * space:
+        return False
+    halves = [(area, x, row) for area, x, row in specks
+              if area >= LINE_HALVES[0] * space * space and LINE_OUT * space <= abs(row) <= LINE_HALVES[1] * space]
+    over = max((half for half in halves if half[2] < 0), default=None)
+    under = max((half for half in halves if half[2] > 0), default=None)
+    return bool(over and under and abs(over[1] - under[1]) <= LINE_HALVES[2] * wide)
 
 
 def _ledger_seen(layers: dict, mark: dict, line: float, space: float) -> float | None:
@@ -1528,6 +1557,19 @@ def _on_ledger(layers: dict, mark: dict) -> bool:
     return False
 
 
+def _stem_leaves(mark: dict, way: str, far: float) -> bool:
+    """Whether a head holds a stem that goes this way and ends at least this many pixels from its middle (see
+    MIDDLE_LEAVES)."""
+    return any(stem['direction'] == way and abs(stem['end'] - mark['cy']) >= far for stem in mark['stems'])
+
+
+def _stem_stays(mark: dict, way: str, far: float) -> bool:
+    """Whether a head holds a stem that goes this way and each such stem ends within this many pixels of its middle
+    (see MIDDLE_OWN)."""
+    ends = [abs(stem['end'] - mark['cy']) for stem in mark['stems'] if stem['direction'] == way]
+    return bool(ends) and max(ends) < far
+
+
 def _share_stems(marks: list[dict], space: float) -> None:
     """Heads of two voices that stand close share one line of ink: the stem of the upper voice goes up from the
     upper head, the stem of the lower voice goes down from the lower head. Followed from either head, the ink leads
@@ -1564,11 +1606,32 @@ def _share_stems(marks: list[dict], space: float) -> None:
         members.sort(key=lambda mark: mark['cy'])
         middle = (members[0]['cy'] + members[-1]['cy']) / 2
         centre = sum(mark['cx'] for mark in members) / len(members)
-        for mark in members:
+        for index, mark in enumerate(members):
             if abs(mark['cy'] - middle) <= 0.2 * space:
                 # Two voices on one note stand side by side, with their stems on one line between them: the left
                 # head has the stem that goes up, the right head the stem that goes down.
                 keep = 'up' if mark['cx'] < centre else 'down'
+                if MIDDLE_KIND and 0 < index < len(members) - 1 and not any(
+                        other is not mark and abs(other['cy'] - mark['cy']) <= MIDDLE_KIND * space for other in members):
+                    # The middle head of a column, with no head beside it, is no such note: a few pixels chose its
+                    # stem. One stem carries heads of one length, so the head goes with the neighbour of its own kind
+                    # (a filled head between a hollow head over it and a filled head under it is the lower voice's).
+                    # The head of the other kind is a note with a stem of its own that leaves the column on its
+                    # side: the loop of a flag at the end of a stem is a hollow mark too, and its stem is the other.
+                    # Only kinds that are sure count: a worn filled head holds a speck of paper, and on such a print
+                    # the share of paper does not part the heads (one of three filled heads had a speck of 0.11).
+                    kinds = [True if other['hole'] >= MIDDLE_SURE[1] else False if other['hole'] < MIDDLE_SURE[0] else None
+                             for other in (members[index - 1], mark, members[index + 1])]
+                    if None not in kinds:
+                        # The stem that the head takes leaves the column too: a short stroke at the neighbour of its
+                        # own kind is the end of a bow that runs into the column (a tie into a chord read as its stem).
+                        far = MIDDLE_LEAVES * space
+                        if kinds[0] != kinds[1] == kinds[2] and _stem_leaves(members[index - 1], 'up', far) \
+                                and not (MIDDLE_OWN and _stem_stays(members[index + 1], 'down', far)):
+                            keep = 'down'
+                        elif kinds[0] == kinds[1] != kinds[2] and _stem_leaves(members[index + 1], 'down', far) \
+                                and not (MIDDLE_OWN and _stem_stays(members[index - 1], 'up', far)):
+                            keep = 'up'
             else:
                 keep = 'up' if mark['cy'] < middle else 'down'
             kept = [stem for stem in mark['stems'] if stem['direction'] == keep]
@@ -2109,7 +2172,8 @@ def read_symbols(layers: dict) -> dict:
             or_hollow = cy
             hollow, cy = False, mark['solid_cy']
         if LINE_SLIT and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems'] \
-                and _line_slit(layers, mark, layers['staves'][staff]):
+                and (_line_slit(layers, mark, layers['staves'][staff])
+                     or (LINE_HALVES and _line_halves(layers, mark, layers['staves'][staff]))):
             hollow = True
         slit = slit_place = None
         if SLIT_ONE and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems']:

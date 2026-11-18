@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,904 of 22,585, counted by the page;
-21,847 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
-syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 679 printed notes and 195 syllables
-are lacking and 690 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,908 of 22,585, counted by the page;
+21,851 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
+syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 675 printed notes and 195 syllables
+are lacking and 689 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 95 of 214 pieces at 99 %),
@@ -715,6 +715,16 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The list of the notes by the page also knows a note of a chord that the page prints and the typed hymn leaves
   out (`add`), and a typed note that the page does not print for a part (`drop`: the part holds the note before
   it, which the list gives the page's length).
+- A rule that moves a head from one stem of a column to the other reads the stems that the column shows. The end
+  of a tie that runs into a chord is a short stroke at its side, read as a stem, and the cell at the tie's end is
+  a hollow mark: one place of the first forms of `symbols.MIDDLE_KIND` gave a quarter note the flag of that stroke.
+  The count by parts called it a gain, and the count staff by staff (4 lost) and the page did not. A stem that the
+  head takes must leave the column as the other stem does (`MIDDLE_OWN`). Count staff by staff for every rule
+  before the kit's scorer runs, and look at a gain by parts on the page too.
+- Two specks that a line cuts out of a filled mark, one over the line and one under it, are the inside of a half
+  note that lies flat (`symbols.LINE_HALVES`), and also the paper inside the 4 of a time signature: those were
+  read as notes that are not there before, and the rule took them away. Where a page's worn heads hold specks, the
+  specks lie in the rows of the line; the count of the page (`slit_page`) did not part these heads.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
