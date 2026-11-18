@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,904 of 22,587, counted by the page;
-21,849 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 24 scores read every printed note, 35 every
-syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 681 printed notes and 195 syllables
-are lacking and 692 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,904 of 22,585, counted by the page;
+21,847 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
+syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 679 printed notes and 195 syllables
+are lacking and 690 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
-On the fresh test set, which no rule was set on: 95.3 % of the notes (39,817 of 41,761; 92 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 95 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -703,11 +703,18 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   pieces of beams lost 6 notes by parts and none staff by staff. Compare the sheets staff by staff before such
   a loss is taken for the rule's.
 - A head that two voices share, with a beamed stem one way and a stem without a flag the other way, is a quarter
-  note in the free voice by the page (64 notes gained and none lost on the fresh set). Typed hymns of LitChoir
-  sing such a place as eighths in unison, and a copy by hand draws its beams as boxes that the reader misses at
-  one stem: such a rule is read place by place on LitChoir, with the list of the notes by the page.
+  note in the free voice by the page (`symbols.SHARED_TAILS = 'flags'`: 62 notes gained and none lost on the fresh
+  set). Typed hymns of LitChoir sing such a place as eighths in unison, and a copy by hand draws its beams as boxes
+  that the reader misses at one stem: the rule was read place by place on LitChoir, with the list of the notes by
+  the page. The free stem must end in paper (`SHARED_FREE`; a box beam, a slanted beam and a flag leave ink there),
+  and the beam must go on from the shared head to the next note: the free voice holds its quarter under that
+  note. Where the shared head ends its beam the next head is both voices' again, a quarter does not fit, and a
+  hand left the flag out. A rule can gain by a misreading that it does not know: a slur at a stem's end read as a
+  beam from the left gave 2 true notes of a clean copy by chance, and the guard took them. Look at what a gain
+  stands on before a guard is judged by it.
 - The list of the notes by the page also knows a note of a chord that the page prints and the typed hymn leaves
-  out (`add`).
+  out (`add`), and a typed note that the page does not print for a part (`drop`: the part holds the note before
+  it, which the list gives the page's length).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
