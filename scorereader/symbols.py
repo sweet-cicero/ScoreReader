@@ -3108,6 +3108,10 @@ BEAM_STRAIGHT = (1.5, 0.25)   # a beam without a witness at the next stem is str
 #                      this many staff spaces or more and bends this far from the line between its two ends is a slur
 #                      (None: off)
 BEAM_USUAL = 0.8     # a beam without a witness at the next stem is at least this share as thick as the page's beams
+BEAM_CROSS = 0.5     # a slur that passes the end of a stem hangs on both sides of it at one level, as the beam of a
+#                      middle note does, and the flag of the next note can be its witness. At both sides it is at
+#                      most this share as thick as the page's beams (20 such stems of LitChoir's pages, each looked
+#                      at, all slurs and ties; the slimmest true beam that hangs so is 0.52) (0: off)
 BEAM_SECOND = 0.6    # a second beam or flag at a stem is one of its own when it is at least this share as thick as the
 #                    page's usual beam (None: off): slimmer ink beside a beam is a bow that lies on the beam
 BEAM_SIDES = 0.8     # a piece of a beam at the left of a stem and one at its right are one beam when their rows are
@@ -3460,6 +3464,16 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 for piece in stem['marks']:
                     if piece.get('slim'):
                         piece['beam'] = piece['witness'] = True
+    if BEAM_CROSS and usual is not None:
+        for group in groups.values():
+            for stem in group:
+                beams = [piece for piece in stem['marks'] if piece['beam']]
+                if len({piece['right'] for piece in beams}) == 2 \
+                        and max(piece['thick'] for piece in beams) <= BEAM_CROSS * usual \
+                        and max(piece['row'] for piece in beams) - min(piece['row'] for piece in beams) <= 0.35 * space:
+                    for piece in beams:
+                        piece['beam'] = piece['witness'] = False
+                        piece['cross'] = True
     for head in heads:
         head['tails'] = {}
         for stem in head['stems']:
