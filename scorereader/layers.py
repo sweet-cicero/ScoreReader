@@ -50,6 +50,12 @@ WHOLE_INSIDE = (0.33, 0.3, 0.8, 2.4, 1.5)
 #                    ink they are at most this many staff spaces long (two whole notes, one over the other): a stem
 #                    or a bar line at the side of a cell is longer. The inside is at most this many times as high as
 #                    wide. (None: off)
+WHOLE_OVER = (0.25, 0.7)   # two whole notes a third apart touch, and each rim is thinner where the other note presses on
+#                    it: a cell whose sides are this many staff spaces thick or more (and a whole note's inside by
+#                    the rest of WHOLE_INSIDE) is the inside of a whole note where the inside of a whole note (by
+#                    WHOLE_INSIDE itself) stands in the next cell over or under it, across one staff line, in this
+#                    share of its columns or more. (Beside any inside that was taken, 9 of the 10 such cells of
+#                    LitChoir's pages were loops of a clef by hand, and moved notes all over their pages.) None: off
 HOLE_GAP = 0.2       # a break of up to this many staff spaces in the rim of a hollow head is closed for the open holes
 ROUND = 0.85         # the inside of a head fills at least this share of its hull: it has no dent
 RAGGED = 0.75        # closed paper that fills this share of its hull, and not ROUND of it, is no sure inside of a head:
@@ -170,12 +176,15 @@ def blots(ink: np.ndarray, space: float) -> np.ndarray:
     return cv2.dilate(solid, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (rim, rim)))
 
 
-def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: float) -> bool:
+def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: float, slim: float | None = None) -> bool:
     """True when closed paper that is as high as a cell of the staff is the inside of a printed whole note (see
-    WHOLE_INSIDE). `part` is the paper in its box, at (x, y) of the page."""
+    WHOLE_INSIDE). `part` is the paper in its box, at (x, y) of the page. With `slim`, the sides may be that thin
+    (see WHOLE_OVER)."""
     if not WHOLE_INSIDE:
         return False
     corner, thin, thick, long, tall = WHOLE_INSIDE
+    if slim is not None:
+        thin = slim
     height, width = part.shape
     if height > tall * width:
         return False
@@ -232,6 +241,7 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
     count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
     keep = np.zeros(count, bool)
     dented = []
+    pressed = []       # cells that are a whole note's inside but for a side that is a little thin (see WHOLE_OVER)
     for index in range(1, count):
         x, y, width, height, area = stats[index]
         more = LINE_WIDE if line and HOLE_LINE else 1.0
@@ -242,6 +252,9 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
             # A cell between two staff lines and two upright strokes: it is as high as the gap between the lines in
             # most of its columns. The inside of a head is round, so few of its columns have the full height.
             if (part.sum(axis=0) >= 0.9 * height).mean() >= 0.5 and not _whole_inside(ink, part, x, y, space):
+                if WHOLE_OVER and line and area <= HOLE[0] * space * space and width <= HOLE[2] * space \
+                        and _whole_inside(ink, part, x, y, space, WHOLE_OVER[0]) and _round(part, area, least):
+                    pressed.append(index)
                 continue
         if HOLE_SIDE and width >= HOLE_SIDE[0] * space and _straight_side(ink, part, x, y, space) \
                 and not any(left <= x + width / 2 <= right and top <= y + height / 2 <= bottom
@@ -256,6 +269,15 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
                         and _ledger_at(ink, x, y, width, height, beside, line, space)):
                     continue
         keep[index] = True
+    for index in pressed:
+        x, y, width, height, area = stats[index]
+        for other in np.nonzero(keep)[0]:
+            ox, oy, ow, oh, oa = stats[other]
+            gap = oy - (y + height) if oy > y else y - (oy + oh)
+            if 1 <= gap <= line + 3 and min(x + width, ox + ow) - max(x, ox) >= WHOLE_OVER[1] * max(width, ow) \
+                    and _whole_inside(ink, (labels[oy:oy + oh, ox:ox + ow] == other).astype(np.uint8), ox, oy, space):
+                keep[index] = True
+                break
     if line and HOLE_LINE:
         for upper in dented:
             ux, uy, uw, uh, ua = stats[upper]

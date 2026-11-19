@@ -185,6 +185,17 @@ WHOLE_STAFF = 0      # in the staff a whole note is at least this many times as 
 WHOLE_FILLED = 0     # a filled oval without a stem, as large as a whole note, that touches a whole note over or under
 #                    it (their middles at most this many staff spaces apart sideways) is a whole note whose hole
 #                    the print filled (0: off). Off: with 0.5 it gained no note on the clean copies and lost 4.
+WHOLE_STACK = (0.15, 0.75, 0.25)   # whole notes one over the other, in line: on a weak copy the sides of the upper ones
+#                      are followed from the lowest one as its stem, over the staff lines between them. A stem of a
+#                      hollow oval is none where it ends in the rows of another hollow oval that has no stem of its own
+#                      (or at most the second number of staff spaces past it), that is as wide against its height as
+#                      a whole note, and whose two edges stand within the first number of staff spaces of the oval's
+#                      own: the stem of a chord goes on past its last head, and that head has it too. Such a stem has
+#                      no ink of its own: outside the ovals and the staff lines its column holds ink in at most the
+#                      third number of staff spaces. (A census of the 32 stems of the first form on LitChoir's pages:
+#                      the closed paper between a slur, a stem and the lines, and a whole note of the next staff, are
+#                      no ovals of that shape (2 true half notes lost their stems), and the strokes of a sharp go on
+#                      past its cells, 0.35 staff spaces or more; the four true stacks have 0.17 at most.) None: off
 WHOLE_UNISON = 0.25  # two voices on one note, a half note and a whole note side by side: the oval at the far side of
 #                      the stem, its middle at most this many staff spaces from the height of the stem's own head,
 #                      has no stem (0: off)
@@ -1949,6 +1960,25 @@ def _glued_sign(layers: dict, mark: dict) -> list[dict] | None:
     return [sign, head]
 
 
+def _stem_ink(layers: dict, stem: dict, ovals: list[dict]) -> int:
+    """How many rows of a stem hold ink of its own: the rows from the first oval (the stem's own head) to the stem's
+    end, outside every oval and outside the staff lines, with ink in the stem's column (see WHOLE_STACK)."""
+    ink, space = layers['ink'], layers['space']
+    reach = max(2, int(round(0.08 * space)))
+    lines = [row for staff in layers['staves'] for row in staff['rows']]
+    thick = max(staff['thick'] for staff in layers['staves'])
+    up = stem['direction'] == 'up'
+    first, last = sorted((int(round(stem['end'])), int(ovals[0]['y0'] if up else ovals[0]['y1'])))
+    column = int(round(stem['x']))
+    count = 0
+    for row in range(max(0, first), min(ink.shape[0] - 1, last) + 1):
+        if any(oval['y0'] - 1 <= row <= oval['y1'] + 1 for oval in ovals) \
+                or any(abs(row - line) <= thick / 2 + 1.5 for line in lines):
+            continue
+        count += bool(ink[row, max(0, column - reach):column + reach + 1].any())
+    return count
+
+
 def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
     """A stem carries heads of one kind: all filled or all hollow. A print sets a whole note of one voice in the
     column of a stemmed note of the other voice, with their left edges in line; the two heads touch, and followed
@@ -1966,6 +1996,22 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
             continue
         for stem in list(mark['stems']):
             up = stem['direction'] == 'up'
+            # The whole notes that stand in line with this one, toward the stem's end (see WHOLE_STACK).
+            stack = [other for other in marks
+                     if other is not mark and other['kind'] == 'head' and not other['stems'] and other['hole'] >= limit
+                     and (other['cy'] < mark['cy']) == up
+                     and other['x1'] - other['x0'] + 1 >= WHOLE[0] * (other['y1'] - other['y0'] + 1)
+                     and abs(other['x0'] - mark['x0']) <= WHOLE_STACK[0] * space
+                     and abs(other['x1'] - mark['x1']) <= WHOLE_STACK[0] * space] if WHOLE_STACK else []
+            if any(other['y0'] - WHOLE_STACK[1] * space <= stem['end'] <= other['y1'] if up
+                   else other['y0'] <= stem['end'] <= other['y1'] + WHOLE_STACK[1] * space for other in stack) \
+                    and _stem_ink(layers, stem, [mark] + stack) <= WHOLE_STACK[2] * space:
+                mark['stems'].remove(stem)
+                for other in stack:
+                    if other.get('tail_of') is mark:
+                        del other['tail_of']      # no flag at the end of a stem that is none
+                count += 1
+                continue
             # A stem has its head at the left when it goes up, at the right when it goes down, and one head at a
             # height. A second oval at that height on the other side is the whole note of the other voice.
             if WHOLE_UNISON and (mark['x0'] >= stem['x'] - edge if up else mark['x1'] <= stem['x'] + edge) \
@@ -2450,6 +2496,58 @@ def _in_head(sign: dict, heads: list[dict]) -> bool:
                and sign['y0'] <= head['y1'] and sign['y1'] >= head['y0'] for head in heads)
 
 
+HALVES_ACROSS = (1.2, 1.0, 0.5)   # a half note on a staff line whose inside leans: the line cuts the inside into a half
+#   over it at the right and a half under it at the left, which share few columns, so that they are neither one
+#   round inside for the layers nor one over the other (HOLE_THROUGH). Two pieces of closed paper, round or ragged, at
+#   the two sides of one line are the inside of a head on that line where the upper one lies right of the lower one,
+#   they share a column, both together are at most the first number of staff spaces wide and the second number high,
+#   and the line between them is ink. (Pieces that share the third number of the narrower one's columns or more are
+#   one over the other: those are read as they were.) Such a head takes its own stem. A head right over or under it
+#   that was read with two stems, one up and one down, shares them with it: the upper head keeps the stem that goes
+#   up and the lower head the one that goes down. (None: off)
+
+
+def _lean_halves(layers: dict, holes: np.ndarray, ragged: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    """The insides that a staff line or a ledger line cut into two halves that lean apart (HALVES_ACROSS): the paper
+    of both halves with the ink of the line between them, and that ink alone."""
+    space, ink = layers['space'], layers['ink']
+    paper = (holes > 0).astype(np.uint8)
+    if ragged is not None:
+        paper |= (ragged > 0).astype(np.uint8)
+    count, labels, stats, centres = cv2.connectedComponentsWithStats(paper, connectivity=4)
+    both, through = np.zeros_like(paper), np.zeros_like(paper)
+    wide_most, high_most, over = HALVES_ACROSS
+    small = [index for index in range(1, count)
+             if stats[index][4] >= 0.02 * space * space and stats[index][3] <= 0.6 * space]
+    ends = {}           # the pieces by the row under their last one
+    for index in small:
+        ends.setdefault(int(stats[index][1] + stats[index][3]), []).append(index)
+    for lower in small:
+        lx, ly, lw, lh, la = (int(value) for value in stats[lower])
+        index = _staff_of(layers, lx + lw / 2, ly + lh / 2)
+        if index is None:
+            continue
+        staff = layers['staves'][index]
+        step, thick = staff['space'], staff['thick']
+        lines = list(staff['rows']) + [staff['rows'][0] - k * step for k in range(1, 5)] \
+            + [staff['rows'][4] + k * step for k in range(1, 5)]
+        for gap in range(1, int(thick + 3) + 1):
+            for upper in ends.get(ly - gap, []):
+                ux, uy, uw, uh, ua = (int(value) for value in stats[upper])
+                first, last = max(ux, lx), min(ux + uw, lx + lw) - 1
+                if last < first or last - first + 1 >= over * min(uw, lw) or centres[upper][0] <= centres[lower][0]:
+                    continue
+                if max(ux + uw, lx + lw) - min(ux, lx) > wide_most * space or ly + lh - uy > high_most * space:
+                    continue
+                if not any(uy + uh - 2 <= line <= ly + 1 for line in lines) or ink[uy + uh:ly, first:last + 1].mean() < 0.9:
+                    continue
+                both[uy:uy + uh, ux:ux + uw] |= (labels[uy:uy + uh, ux:ux + uw] == upper).astype(np.uint8)
+                both[ly:ly + lh, lx:lx + lw] |= (labels[ly:ly + lh, lx:lx + lw] == lower).astype(np.uint8)
+                both[uy + uh:ly, first:last + 1] = 1
+                through[uy + uh:ly, first:last + 1] = 1
+    return both, through
+
+
 def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[int, list[float]] | None = None,
                signs: list[dict] | None = None) -> list[dict]:
     """Hollow heads that the marks did not give: two half notes or whole notes, one over the other, grow together
@@ -2491,6 +2589,10 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
         through = ink & over & under
         passes.append((False, holes | through, through))
     ragged = layers.get('ragged') if RAGGED_SLIT else None
+    lean = None
+    if HALVES_ACROSS:
+        lean, across = _lean_halves(layers, holes, layers.get('ragged'))
+        passes.append((False, lean, across))
     if OPEN_HEADS and ragged is not None:
         passes.append((True, ragged, None))
     if OPEN_HEADS and layers.get('open_holes') is not None:
@@ -2513,12 +2615,14 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 # Paper that is not quite round: the inside of a head by its own shape only (RAGGED_SLIT).
                 if area > RAGGED_SLIT[3] * space * space or not _slit(labels[y:y + high, x:x + wide] == index):
                     continue
+            elif paper is lean:
+                pass          # two halves that lean apart: their shape was asked (HALVES_ACROSS)
             elif wide < HOLE_HEADS[2] * high:
                 # A printed half note with a thin rim fills the gap between two staff lines: its inside is a slanted
                 # oval that is as high as wide, and fills little of its box.
                 if not (is_open and OPEN_ALONE and wide >= OPEN_SLANT[0] * high and area <= OPEN_SLANT[1] * wide * high):
                     continue
-            if paper is not ragged and not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
+            if paper is not ragged and paper is not lean and not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
                 continue
             inside = [head for head in heads + out
                       if head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2]
@@ -2634,6 +2738,31 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                         continue      # (the second head of a read mark is no letter, and needs no line next to the staff)
                     found = float(round(place))
                 head['place'] = found
+            if paper is lean:
+                if not stems:
+                    continue
+                # A head right over or under this one that found the same stems: of two stems, one up and one down,
+                # the upper head keeps the one that goes up and the lower head the one that goes down; a head with
+                # two stems leaves this one the only stem that it found.
+                same = lambda stem, way: stem['direction'] == way['direction'] and abs(stem['x'] - way['x']) <= 0.2 * space
+                for other in heads:
+                    if len(other['stems']) < 2 or abs(other['cx'] - cx) > 0.5 * space or abs(other['cy'] - cy) > 1.3 * space:
+                        continue
+                    if len(stems) == 1:
+                        spare = [stem for stem in other['stems'] if stem['direction'] != stems[0]['direction']]
+                        if spare and (other['cy'] < cy) == (stems[0]['direction'] == 'up') \
+                                and any(same(stem, stems[0]) for stem in other['stems']):
+                            # The one stem passes the other head on its way: it is that head's, and this one's is
+                            # the stem at the other side (the upper head goes up, the lower one down).
+                            other['stems'] = [stem for stem in other['stems'] if stem['direction'] == stems[0]['direction']]
+                            stems = head['stems'] = spare[:1]
+                        else:
+                            other['stems'] = [stem for stem in other['stems'] if not same(stem, stems[0])]
+                    elif {way['direction'] for way in stems} == {'up', 'down'} \
+                            and all(any(same(stem, way) for stem in other['stems']) for way in stems):
+                        upper = cy < other['cy']
+                        stems = head['stems'] = [way for way in stems if (way['direction'] == 'up') == upper]
+                        other['stems'] = [stem for stem in other['stems'] if (stem['direction'] == 'up') != upper]
             out.append(head)
             pieces.update(id(other) for other in head.get('replaces', []))
     if OPEN_BESIDE:
@@ -3667,6 +3796,82 @@ def _is_slim(piece: dict, under: float = TAIL_THICK) -> bool:
     engraving (BEAM_PAIR)."""
     return bool(BEAM_PAIR and piece['far'] >= BEAM_FAR and BEAM_PAIR[0] <= piece['thick'] < under
                 and piece['high'] <= BEAM_PAIR[1] and piece['from_end'] <= BEAM_PAIR[2])
+
+
+STEM_BROKEN = (4.0, 0.3, 1.2, 0.6)   # a stem that breaks off before its beam, where the copy left a strip of the page white,
+#   goes on after the strip: in its own column, after at most the first number of staff spaces of paper, upright ink
+#   stands that is slim for the second number of staff spaces or more and wider than a stem for at most the third
+#   number (the beam itself); where it ends a beam hangs on it, and the next stem at that side shows that beam too. No
+#   head stands on the way (within the fourth number of staff spaces of the column). The rows of the gap hold no ink
+#   over the whole staff: that is the strip. The stem shows no flag and no beam where it breaks off, and it ends at
+#   the beam. (Without the strip the rule read what stands past the end of a stem: a second beam, the line of a
+#   bracket, and a bold slur over two stems, which is as thick as a beam. Of the 88 stems that the form before led
+#   on over a gap of paper in their own column alone, 3 were right and 81 wrong.) (None: off)
+
+
+def broken_stems(layers: dict, heads: list[dict]) -> int:
+    """Leads each stem that breaks off before its beam on to the beam (see STEM_BROKEN): sets its 'end' and 'x'.
+    Returns how many stems were led on."""
+    if not STEM_BROKEN:
+        return 0
+    ink, space = layers['bare'], layers['space']
+    height, width = ink.shape
+    paper, slim_least, wide_most, clear = STEM_BROKEN
+    band = max(2, int(round(0.13 * space)))
+    trials: dict[int, tuple] = {}
+    for head in heads:
+        for stem in head['stems']:
+            if stem.get('words'):
+                continue
+            step = -1 if stem['direction'] == 'up' else 1
+            x, end = int(round(stem['x'])), int(stem['end'])
+            first, last = max(0, x - band), min(width, x + band + 1)
+            row, gap = end + step, 0
+            while 0 <= row < height and gap <= paper * space and not ink[row, first:last].any():
+                row += step
+                gap += 1
+            if gap < 1 or gap > paper * space or not 0 <= row < height:
+                continue
+            if tail_marks(layers, head, stem):
+                continue      # a stem that shows a flag or a beam where it ends is not broken
+            # The gap is a strip that the copy left white: no ink in its rows over the whole staff.
+            staff = layers['staves'][head['staff']]
+            rows = slice(min(end + 2 * step, row - 2 * step), max(end + 2 * step, row - 2 * step) + 1)
+            if gap < 4 or layers['ink'][rows, max(0, int(staff['x0'])):int(staff['x1']) + 1].any():
+                continue
+            start = first + int(np.nonzero(ink[row, first:last])[0].mean())
+            far, far_x, path = follow(ink, start, row, step, space, bridge=layers.get('bridge', 1.0))
+            path = [(row, start)] + path
+            slim = sum(1 for at, column in path if _run(ink, at, column) <= SLIM_STEM * space)
+            if slim < slim_least * space or len(path) - slim > wide_most * space:
+                continue
+            low, high = min(end, far), max(end, far)
+            if any(other is not head and other['staff'] == head['staff'] and low <= other['cy'] <= high
+                   and other['x0'] - clear * space <= x <= other['x1'] + clear * space for other in heads):
+                continue
+            trial = dict(stem, end=far, x=far_x)
+            pieces = [piece for piece in tail_marks(layers, head, trial) if _is_beam(piece)]
+            if pieces:
+                trials[id(stem)] = (head, stem, trial, pieces)
+    count = 0
+    for head, stem, trial, pieces in trials.values():
+        for piece in pieces:
+            side = [(other, own) for other in heads if other['staff'] == head['staff'] for own in other['stems']
+                    if own['direction'] == stem['direction']
+                    and 0.5 * space < (own['x'] - trial['x'] if piece['right'] else trial['x'] - own['x']) <= BEAM_NEXT * space]
+            if not side:
+                continue
+            other, own = min(side, key=lambda pair: abs(pair[1]['x'] - trial['x']))
+            there = trials[id(own)][2] if id(own) in trials else own
+            if abs(there['end'] - trial['end']) <= 2.5 * space \
+                    and any(_is_beam(back) and back['right'] != piece['right'] for back in tail_marks(layers, other, there)):
+                stem['broken'] = stem['end']
+                stem['length'] = stem.get('length', 0) + abs(trial['end'] - stem['end'])
+                stem['past'] = stem.get('past', 0) + abs(trial['end'] - stem['end'])
+                stem['end'], stem['x'] = trial['end'], trial['x']
+                count += 1
+                break
+    return count
 
 
 def count_tails(layers: dict, heads: list[dict]) -> None:
@@ -4757,6 +4962,43 @@ def chord_wholes(layers: dict, heads: list[dict]) -> int:
             CENSUS.append({'cx': head['cx'], 'cy': head['cy'], 'long': long, 'rise': rise, 'area': area, 'side': side,
                            'mates': len(mates), 'down': down, 'acts': acts})
         if acts:
+            head['stems'] = []
+            head['tails'] = {}
+            head['chord_whole'] = True
+            count += 1
+    return count
+
+
+WHOLE_DOTLESS = 0.2   # a whole note that touches the dotted half notes of another voice was read with their stem: of
+#   the hollow heads that share one stem, the head at the far end from the stem's end is a whole note where it has no
+#   dot, every other head of the stem has one, and its oval is wider than each of theirs by this many staff spaces or
+#   more. The heads of a chord have their dots together, and a print sets a whole note wider than a half note. (A rule
+#   for one case: of 162 such pairs of hollow heads on LitChoir's scan pages 5 have the dot at the other heads only;
+#   the whole note is wider by 0.26 staff spaces, the four others by 0.12 at most.) The other heads stand a third
+#   away or more: one head that was read twice shares its stem with itself. The head stands in the staff: on a ledger
+#   line the line and a dot at its end are one mark with the head, and that mark is wide. None: off
+
+
+def dotless_wholes(layers: dict, heads: list[dict]) -> int:
+    """Takes the stem from a whole note without a dot that touches a chord of dotted half notes (WHOLE_DOTLESS).
+    Runs after the dots are read. Returns how many."""
+    if not WHOLE_DOTLESS:
+        return 0
+    space, count = layers['space'], 0
+    for head in heads:
+        if not head['hollow'] or len(head['stems']) != 1 or head.get('thin') or head.get('dot'):
+            continue
+        stem = head['stems'][0]
+        down = stem['direction'] == 'down'
+        mates = [other for other in heads if other is not head and other['hollow'] and other['staff'] == head['staff']
+                 and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= 0.35 * space
+                         and abs(own['end'] - stem['end']) <= 0.5 * space for own in other['stems'])]
+        if not mates or any((other['cy'] < head['cy']) if down else (other['cy'] > head['cy']) for other in mates):
+            continue
+        if abs(head['place']) > 5 or any(abs(other['cy'] - head['cy']) < 0.75 * space for other in mates):
+            continue
+        wide = head['x1'] - head['x0']
+        if all(other.get('dot') and wide - (other['x1'] - other['x0']) >= WHOLE_DOTLESS * space for other in mates):
             head['stems'] = []
             head['tails'] = {}
             head['chord_whole'] = True

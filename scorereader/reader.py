@@ -21,8 +21,8 @@ from . import music as _music
 from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
-    slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_trails, without_flat_cells, without_stem_end_marks, without_stem_meets, without_joints, without_upright_holes, chord_wholes
+from .symbols import bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
+    slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_trails, without_flat_cells, without_stem_end_marks, without_stem_meets, without_joints, without_upright_holes, chord_wholes, dotless_wholes
 from .ties import read_ties
 from .triplets import mark_triplets
 from .words import cut_stems, word_bands, word_rows
@@ -291,6 +291,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
     cut_stems(layers, heads, words)
+    # A stem that breaks off before its beam ends at the beam.
+    broken_stems(layers, heads)
     count_tails(layers, heads)
     loops_have_flags(layers, heads)
     # A hollow mark whose inside stands upright is the loop of a flag or the room of a double bar line, no head.
@@ -304,6 +306,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # A whole note that touches the half note of another voice keeps no stem of that note.
     chord_wholes(layers, heads)
     dots(layers, heads)
+    # A whole note without a dot keeps no stem of the dotted half notes that it touches.
+    dotless_wholes(layers, heads)
     # The notes under the bracket of a triplet are two thirds as long as they are drawn.
     triplets = mark_triplets(layers, heads)
     # A sharp, a flat or a natural before a head changes that note. Two readers look for it: the strokes of the sign
