@@ -24,12 +24,12 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.8 % on
-scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,924 of 22,585, counted by the page;
-21,863 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
-syllable, 19 both, 21 have no note that is not there, 13 are whole in all three; 659 printed notes and 195 syllables
-are lacking and 672 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
+Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.8 % on
+scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,941 of 22,597, counted by the page;
+21,868 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
+syllable, 19 both, 21 have no note that is not there, 13 are whole in all three; 654 printed notes and 195 syllables
+are lacking and 652 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6224 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 95 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
@@ -747,6 +747,29 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   took a round inside by hand, a letter d and a stroke by hand: a round inside has no direction, so the inside is
   also asked how long it is against its width. Such a whole note was one head of a chord for the rule that makes
   the heads of a chord as long as each other, which then cut a printed dot from the chord's lowest head.
+- An entry that takes typed notes out of the count (a stretch that a scan does not show) is a claim about the page,
+  and it is looked at again on the page as the lists by the page are: a stretch of one clean score that round 37
+  listed as a system that the scan shows only in part is printed whole, and its 12 notes had been read right.
+- A page that a hand wrote whole inside a clean score (responses written in pen on blank staves after the printed
+  pages) is a page by hand: its notes go on the list of the notes that a hand changed, for every staff of the
+  page, and the typed hymn does not hold them.
+- A beam is straight and a slur arches. A thin line between two stem ends that both stand on staff lines is hidden
+  in the lines at both of its ends, and a tie that arches over a half note between two such stem ends looks the
+  same by its ends: the way between is a beam only where its ink is straight (`symbols.THIN_BEAM_HIDDEN`; the
+  rows of the tie bent by 0.22 staff spaces from a straight line, those of the true beam by 0.01). A slim beam is
+  slim at both of its stems: where the piece at one stem was taken as a beam, the slim piece that faces it at the
+  next stem is that beam (`symbols.SLIM_BOTH`).
+- Notes that sound together agree on a dot that the print wore smaller than a dot too: such a speck is a dot where
+  a dot of another head of its column stands in the same column (`symbols.DOT_SPECK`).
+- Notes begin after the clef and the key signature, but the end of the key signature that the reader finds can
+  overshoot a first note that stands close to it, and only a finder that reads a head from its stem
+  (`symbols.thin_heads`) then reads that note: of 13 heads inside the start on all scan pages 5 were true, and
+  the bowl of a flat of the key with a pencil line beside it was one of the false. No rule by the place alone.
+- A filled mark half again as long as the page's filled heads and under 0.7 of their fatness is a piece of a slur
+  or a beam, a fermata or a letter on a print, and a head on a ledger dash on a copy by hand: no rule without a
+  sign of the print.
+- A combined copy of the code is made from main's own files, not from the copy of the round before: a change that
+  went into main with the review was missing from two copies, and patches made against them carried it.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

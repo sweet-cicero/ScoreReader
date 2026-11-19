@@ -3290,6 +3290,9 @@ BEAM_TWO = (1.0, 1.55, 0.45, 0.85, 1.75, 0.8, 0.04, 0.15)   # two printed beams 
 #                      share [7], and two beams too
 BEAM_EDGE = 0.3      # one beam can be TAIL_THICK at one stem and slimmer at the next: a beam under this thickness that the
 #                      next stem does not show as a thick beam is looked at as a slim beam too (see BEAM_PAIR; None: off)
+SLIM_BOTH = True     # one slim beam joins two stems: where the piece at one stem was taken as a slim beam (BEAM_PAIR), the
+#                      slim piece that faces it at the other stem is that beam too, though it is slimmer than the page
+#                      takes a beam alone (a hairline beam swells and thins along its way; False: off)
 LOOP_NEAR = 1.8      # the loop of a flag lies at most this many staff spaces from the far end of the stem
 FLAG_BACK = 0.08     # a printed flag comes back toward the head by this many staff spaces while it leaves the stem
 FLAG_HOLE = (0.7, 0.75, 0.3, 0.7)   # a printed flag that reaches 0.6 staff spaces or a little more (under this) shows no
@@ -3338,6 +3341,10 @@ DOT_BESIDE = (0.5, 12.0, 0.4, 0.3)   # a dot that a print drew as a short dash o
 #                    [1] (on one staff or on two staves next to each other), the dash and that dot at most [2] apart
 #                    sideways, the dash at most [3] over or under the middle of its head, and the two notes of one
 #                    kind (hollow or filled, as many flags or beams). Notes that sound together agree (None: off)
+DOT_SPECK = (0.14, 0.15)   # a dot that the print wore smaller than a dot (DOT_SMALL) but each of its sides at least [0] staff
+#                    spaces, and otherwise of a dot's shape, beside a head without a dot, is its dot where another head
+#                    of the column has a dot (as DOT_BESIDE asks) at most [1] staff spaces from it sideways: a column of
+#                    dots stands in one line (None: off)
 DOT_TIP = (0.5, 5.0, 0.5, 2.0, 0.6)   # the tip of a tie's bow is no dot (None: off). A tie begins beside its head in a
 #                      space and runs flat into the staff line under or over it; the line hides a stretch of the bow, and
 #                      the tip that is left before it is as small and as full as a dot. The whole shape makes it a tip.
@@ -3387,6 +3394,11 @@ THIN_PRINT = 0.45               # a page whose usual beam is this many staff spa
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
+THIN_BEAM_HIDDEN = (0.6, 0.9, 0.1)   # a fine engraving's beam that runs from a staff line at one stem to a staff line
+#                                 at the next is hidden at both ends: each end is in a line for at most this many staff
+#                                 spaces, the way between is ink on this share of its columns, and that ink is straight: the
+#                                 middle of its rows bends from a straight line by at most the last number of staff spaces
+#                                 (a slur that arches between two stem ends on two lines bends by 0.2; None: off)
 THIN_BEAM_OVER = 0.6            # a thin beam passes over a stem between its two stems that ends this many staff spaces before it (0: off)
 THIN_BEAM_STAFF = True          # the thickness of a staff line that hides a beam is that of the beam's own staff
 THIN_BEAM_END = 0.0             # the beam may meet a stem this many staff spaces past the end that was found for it (0: off)
@@ -3630,6 +3642,30 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                     if slim and (usual is None or piece['thick'] >= BEAM_PAIR[3] * usual) \
                             and witness(group, stem, piece['right'], True) and (not BEAM_STRAIGHT or straight(group, stem, piece)):
                         piece['slim'] = True
+        if SLIM_BOTH:
+            # One slim beam joins two stems (see SLIM_BOTH).
+            for group in groups.values():
+                for stem in group:
+                    for piece in stem['marks']:
+                        if piece.get('slim') or piece['beam'] or not _is_slim(piece):
+                            continue
+                        side = [other for other in group
+                                if 0.5 * space < (other['x'] - stem['x'] if piece['right'] else stem['x'] - other['x']) <= BEAM_NEXT * space]
+                        if not side:
+                            continue
+                        near = min(side, key=lambda other: abs(other['x'] - stem['x']))
+                        if abs(near['end'] - stem['end']) <= 2.5 * space \
+                                and any(other.get('slim') and other['right'] != piece['right'] for other in near['marks']) \
+                                and (not BEAM_STRAIGHT or straight(group, stem, piece)):
+                            piece['slim_end'] = True
+                            if CENSUS is not None:
+                                CENSUS.append({'x': stem['x'], 'end': stem['end'], 'thick': piece['thick'], 'usual': usual,
+                                               'right': piece['right'], 'far': piece['far']})
+            for group in groups.values():
+                for stem in group:
+                    for piece in stem['marks']:
+                        if piece.pop('slim_end', False):
+                            piece['slim'] = True
         for group in groups.values():
             for stem in group:
                 for piece in stem['marks']:
@@ -4112,6 +4148,27 @@ def _bow(layers: dict, x: float, row: float, right: bool) -> tuple[float, float]
     return float(abs(x1 - x0)), float(sag)
 
 
+def _bend(ink: np.ndarray, one_x: float, one_end: float, two_x: float, two_end: float, x1: int, x2: int,
+          reach: int) -> float:
+    """How far the ink along the straight line from (one_x, one_end) to (two_x, two_end), between the columns x1 and
+    x2, bends from a straight line: the middle of its rows in each column, fitted with a parabola, rises or falls in
+    its middle by this many pixels against its ends. A beam is straight; a slur arches."""
+    height = ink.shape[0]
+    xs, rows = [], []
+    for x in range(x1, x2 + 1):
+        y = int(round(one_end + (two_end - one_end) * (x - one_x) / (two_x - one_x)))
+        top = max(0, y - reach)
+        found = np.nonzero(ink[top:min(height, y + reach + 1), x])[0]
+        if len(found):
+            xs.append(x)
+            rows.append(top + found.mean())
+    if len(xs) < 5:
+        return 0.0
+    xs = np.array(xs, float)
+    curve = np.polyfit(xs, np.array(rows), 2)[0]
+    return float(abs(curve) * (xs.max() - xs.min()) ** 2 / 4)
+
+
 def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end: float) -> bool:
     """True when ink runs along the straight line from (one_x, one_end) to (two_x, two_end)."""
     space = layers['space']
@@ -4162,6 +4219,19 @@ def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end
         if THIN_BEAM_UNDER:
             # A beam that runs into a staff line at one stem is hidden there: it is seen at the other stem.
             first, last = first or (last and 2 * sum(under[:near]) >= near), last or (first and 2 * sum(under[-near:]) >= near)
+        if THIN_BEAM_HIDDEN and not first and not last and 2 * sum(under[:near]) >= near and 2 * sum(under[-near:]) >= near:
+            # Hidden at both ends (see THIN_BEAM_HIDDEN): the line takes each end, and the way between is ink.
+            lead = next((index for index, value in enumerate(shown) if value), len(shown))
+            tail = next((index for index, value in enumerate(reversed(shown)) if value), len(shown))
+            middle = shown[lead:len(shown) - tail]
+            if max(lead, tail) <= THIN_BEAM_HIDDEN[0] * space and middle \
+                    and sum(middle) >= THIN_BEAM_HIDDEN[1] * len(middle) \
+                    and _bend(ink, one_x, one_end, two_x, two_end, x1 + lead, x2 - tail, reach) <= THIN_BEAM_HIDDEN[2] * space:
+                first = last = True
+                if CENSUS is not None:
+                    CENSUS.append({'one': (one_x, one_end), 'two': (two_x, two_end), 'lead': lead, 'tail': tail,
+                                   'middle': len(middle), 'shown': sum(middle),
+                                   'bend': _bend(ink, one_x, one_end, two_x, two_end, x1 + lead, x2 - tail, reach) / space})
         if not (first and last):
             return False
     return seen + hidden >= THIN_BEAM[1] * count and seen >= THIN_BEAM[2] * count
@@ -4643,6 +4713,18 @@ def dots(layers: dict, heads: list[dict]) -> None:
         found.append((float(centres[index][0]), float(centres[index][1])))
         sizes.append((int(x), int(wide), int(high), int(area)))
         full.append(bool(DOT_CLOSE) and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
+    specks = []
+    for index in range(1, count if DOT_SPECK else 1):
+        # (see DOT_SPECK: the shape of a dot, a little smaller)
+        x, y, wide, high, area = stats[index]
+        if not (DOT_SPECK[0] * space <= min(wide, high) and min(wide, high) < DOT_SMALL * space
+                and wide <= 0.6 * space and high <= DOT_HIGH * space):
+            continue
+        if area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
+            continue
+        if DOT_TIP and _bow_tip(layers, int(x), int(y), int(wide), int(high), labels, stats):
+            continue
+        specks.append((float(centres[index][0]), float(centres[index][1])))
     nearly = []
     for index in range(1, count if DOT_ASK else 1):
         x, y, wide, high, area = stats[index]
@@ -4703,6 +4785,27 @@ def dots(layers: dict, heads: list[dict]) -> None:
                        and abs(other.get('staff', 0) - head.get('staff', 0)) <= 1 and kind(other) == kind(head)
                        and abs(found[first[id(other)]][0] - x) <= side * space for other in dotted):
                     head['dot'] = True
+                    break
+    if DOT_SPECK and specks:
+        # A dot that the print wore small, in the line of another head's dot of the column (see DOT_SPECK).
+        level, reach = DOT_BESIDE[0], DOT_BESIDE[1]
+        dotted = [head for head in heads if id(head) in first]
+        kind = lambda head: (bool(head.get('hollow')), max(head['tails'].values(), default=0))
+        used = set()
+        for head in heads:
+            if head['dot']:
+                continue
+            for number, (x, y) in enumerate(specks):
+                if number in used or not (DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space
+                                          and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space):
+                    continue
+                if any(abs(other['x1'] - head['x1']) <= level * space and abs(other['cy'] - head['cy']) <= reach * space
+                       and abs(other.get('staff', 0) - head.get('staff', 0)) <= 1 and kind(other) == kind(head)
+                       and abs(found[first[id(other)]][0] - x) <= DOT_SPECK[1] * space for other in dotted):
+                    head['dot'] = True
+                    used.add(number)
+                    if CENSUS is not None:
+                        CENSUS.append({'head': (head['cx'], head['cy']), 'speck': (x, y)})
                     break
     for head in heads if DOT_TWO else []:
         # A second dot at the right of the first (see DOT_TWO).
