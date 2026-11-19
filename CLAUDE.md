@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,912 of 22,585, counted by the page;
-21,855 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
-syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 671 printed notes and 195 syllables
-are lacking and 686 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,915 of 22,585, counted by the page;
+21,858 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
+syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 668 printed notes and 195 syllables
+are lacking and 682 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 95 of 214 pieces at 99 %),
@@ -736,6 +736,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   stem hides the stroke from the signs. The guard for a sharp of two strokes (`SHARP_HEAD`) does not see a sharp
   whose two strokes are one mark: such a head is no head where it lies in the columns of the one stroke and the
   stroke has the ends and the closed paper of a sharp (`signs.JOINED_HEAD`).
+- A natural closes paper between its strokes and bars, and that paper was read as a hollow head with the right
+  stroke as its stem, which lay on the sign and hid it: a head stands beside its sign, not between its strokes
+  (`signs.NATURAL_OWN`). The right stroke reaches down past the head after the sign and was that head's only
+  stem; where another head of its column has a stem, it is no stem (`signs.NATURAL_LONE`). A half of a rule that
+  acts only on what the other half finds changes no page alone, and is counted with the other half on.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
