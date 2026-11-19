@@ -28,10 +28,10 @@ Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % o
 scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,948 of 22,597, counted by the page;
 21,875 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
 syllable, 19 both, 22 have no note that is not there, 14 are whole in all three; 647 printed notes and 195 syllables
-are lacking and 640 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+are lacking and 603 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
-On the fresh test set, which no rule was set on: 95.5 % of the notes (39,882 of 41,761; 96 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.5 % of the notes (39,880 of 41,761; 96 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -787,6 +787,22 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   bars. The bars are no sign without the letter: 153 hollow heads of LitChoir's chant pages and 108 of the fresh
   set have them, and are notes. Taken under any letter of the page, the breve that restates the ison at the start
   of a staff went too, and 4 true notes with it: a hand draws the melody's half note between the ison's bars.
+- A printed whole or half rest is written into the music for the voice that it silences (`reader.REST_VOICE`), and
+  the wide scorer then gives a note under which the other voice rests to its own part only, not to both as a
+  unison. The stems say nothing of a part that sings alone: a print and a hand stem it by its place on the staff,
+  and taken from the stems the rest went to the singing alto (8 notes lost). The singer of a bar of one voice is
+  the voice whose notes stand nearer on the page in the bars of two voices.
+- The reader's onsets do not count a rest: where both voices rest for half a bar, the notes beside the rest close
+  the gap and the bar looks like one of one voice. A whole rest hangs from a line and says that one voice rests
+  the whole bar; a half rest says so only where a note stands in its columns or the notes beside it stand as close
+  as the bar's notes do (3 notes lost where a shared half rest was given to one voice).
+- On a thick copy the bow of a tie that lies along a staff line between beamed notes is as solid and as square as
+  a rest, and a hand's bold start of a slur on a line passes as a half rest. A rest stands apart from the stems
+  (`reader.REST_APART`: no stem within 2 staff spaces at both ends; no true rest of 480 blocks has one). A false
+  rest can gain notes by chance in the count: the first form gained 1 there, and 2 by a slur still stand (say so).
+- A fixed order of the parts of a fresh piece can stand crosswise to the voices of a staff that divides for a few
+  bars, and a lone note that the count gave to both parts held its line-up. Score the piece with the parts the
+  other way round before a loss there is taken for the reader's.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
