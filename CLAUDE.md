@@ -896,6 +896,30 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   79 places that the first forms of round 71 changed, 25 were right for the rule's own reason, and the counts
   showed 20 notes gained and 5 lost. The page is then read alone with each rule of the round off, to name the rule
   of a place.
+- A print of its own needs its own reading: four clean scores are one music typewriter's, and their pages lost
+  notes in four ways that no limit of the other prints covers (`symbols.SIDE_TWO`, `WHOLE_FOOT`, `LEDGER_CLOSE`,
+  `DASH_PAIR`). Each way is a shape of that print: a ledger line no wider than its note and set 0.7 of a staff
+  space from the staff, two voices' heads side by side at one stem line, and the head on the dash glued to the
+  head on the first line. Read the pages of such a print together, and say in the code that a rule is a rule for
+  one print.
+- The shapes of such rules meet other things on pages that were never like them: the bowl of the letter p of a
+  dynamic mark is a hollow oval with a level line under it, and the strokes of a tremolo across a stem are two
+  parts at one stem line. The fresh set showed both (35 notes lost by the first forms, 1 gained). The guard comes
+  from the true cases of LitChoir, not from the pages of the fresh set: the eleven true whole notes stand alone in
+  paper, and the true pairs are as fat as the page's heads.
+- A rule that cuts one mark into two leaves two heads where the reader's other rules expect one mark. Keep the
+  box of the whole piece on each part (`symbols.DASH_OWN`): the page's measure of a hollow head's inside is taken
+  from the read heads and counted the pair twice, the rule for a whole note beside a stemmed head took the stem
+  from the part that carries the ledger line (which makes it wider), and the rule for a whole note that touches a
+  chord took the stem of a part whose inside the ledger line cuts into slivers. Each cost notes or made false
+  ones, and none of them showed in the first counts.
+- A census of the pieces that such a rule cuts is measured on the whole piece, not on the halves that the cut
+  makes: the cut ran through the inside of a half note, the inside leaked to the edge of its half, and the
+  measure read 0 where the shape was plain. Measured on the whole piece, the paper that the ink shuts in parts a
+  true pair (0.09 staff spaces squared at most) from a chord of half notes (0.28).
+- A step that is written for a case and changes no note on any page is switched off, with a line that says what
+  it was for (`symbols.DASH_STEM`, `SIDE_WHOLE`). Read it off on every page the round touches before saying so:
+  a guard's own page reads as main while the guard is on, so it is only in the list of the round's pages.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

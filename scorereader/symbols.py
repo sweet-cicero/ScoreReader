@@ -160,6 +160,25 @@ LEDGER_SIT_FOOT = None   # (0.7, 0.1): when that line lies in the lowest part of
 LEDGER_FOOT = (0.7, 0.4, 1.2, 0.3, 0.45)   # a head beside the staff with no ledger line found, but with thin level ink at one
 #                          side of its foot (from this share of its height on), this many to this many staff spaces from
 #                          the staff, at least this long and at most this thick: it sits on its ledger line (None: off)
+LEDGER_CLOSE = (0.85, 6, 0.15, 1.0, 1.7, 0.35)   # a print (a music typewriter) sets its ledger lines closer to each other
+#                      than its staff lines, so a head on its third line measures a third too low and the count of its lines
+#                      was not trusted. The page shows its own gap: the median gap from the staff to the first ledger line
+#                      and from line to line, over its filled heads with a stem whose count holds, where that is at most
+#                      the first number of staff spaces, from the second number of gaps on. A count of two lines or more
+#                      that was not trusted holds there where each of its own gaps is within the third number of the
+#                      page's gap, the place measured with that gap is within the fourth number of the count, and the
+#                      lines are dashes of one length (each end at most the fifth number of staff spaces from the head's
+#                      middle, the ends within the sixth number of each other: a slur runs on) (None: off)
+WHOLE_FOOT = (0.9, 0.4, 1.2, 7.5, 0.3, 0.15, 0.7)   # a hollow oval with no stem (a whole note by its shape) whose edge toward the staff is a
+#                      level line at least this share of the mark wide, from this to this many staff spaces from the
+#                      staff, is a whole note that sits on its first ledger line, up to this measured place: one print
+#                      sets that line no wider than the note, so it shows at neither side, and a head beside the staff
+#                      with no ledger line needs a long stem otherwise. The line is looked for in this many staff
+#                      spaces at the edge of the mark. The note and its line stand alone in paper: the piece of ink
+#                      that holds the mark goes on at most the sixth number of staff spaces over and under the
+#                      mark and the seventh number at its sides (the ends of the line). The bowl of the letter p of
+#                      a dynamic mark is such an oval with a level top too, and its stroke goes on under it: the
+#                      fresh set showed it, and the eleven notes of LitChoir's pages gave the measure (None: off)
 LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from the staff
 LEDGER_PAPER = (0.75, 0.3, 0.15, 0.8, 0.7, 1.3, 0.3)   # a print that sets its first ledger line near the staff (up to this
 #                      many staff spaces from it) has little room for a head past that line: the head is a half moon on
@@ -278,6 +297,23 @@ GLUED_TWO = (1.7, 0.6, 1.6, 0.6)   # a mark that is no head only because it is t
 #                     it is at least the first number times the box of the page's heads, each part from the second to the
 #                     third number times that box, and each part at least the fourth number times as high as the page's
 #                     heads (a clef cut so leaves a large part and a thin one) (): off
+SIDE_TWO = (1.5, 2.4, 1.3, 0.25, 0.3, 0.45, 0.55)   # a mark with one stem line through its middle, up and down, is the two heads
+#                     of two voices on one note, side by side (the upper voice at the left with its stem up, the lower
+#                     one at the right with its stem down: a half note beside a quarter note): the mark is from the
+#                     first to the second number times as wide as the heads of the page and at most the third number
+#                     times as high, the four ways of upright ink that leave it stand within the fourth number of staff
+#                     spaces of one column, that column lies in the mark at least the fifth number of its width from
+#                     each side, and each part holds ink of at least the sixth number times the box of a head and a
+#                     circle of ink at least the seventh number of the page's heads high (its hole counts as ink:
+#                     the strokes across the stem of a tremolo are slim). Two voices a second apart stand so too,
+#                     the upper head at the left (None: off)
+SIDE_WHOLE = False   # off: such a mark would have to be the whole piece of ink, because on a thick copy the staff
+#                     line joins the two heads of a second with the piece under them, and the lower head was read
+#                     twice. With the limits above as they are it changes no note on any page
+SIDE_CELL = True     # the paper between the stem line of such a pair, the staff line over it and the head beside it
+#                     is open paper with a stem, and no head: its stem is the pair's (False: off)
+SIDE_LEDGER = True   # the ledger lines of such a pair are looked for past the pair, not past each head: the rim
+#                     of the hollow head beside a filled one is level ink at its side (False: off)
 GLUED_THROUGH = (0.5, 0.4)   # ... but not where upright ink leaves the mark up and down, each at least the first number
 #                     of staff spaces, in columns at most the second number apart: a bar line or a stem through a box of
 #                     staff lines on a thick copy
@@ -583,6 +619,110 @@ def _line_pair(layers: dict, centres: list[tuple[float, float]], x: int, y: int,
                for stroke in layers['strokes'])
 
 
+DASH_PAIR = (1.35, 1.95, 0.3, 0.85, 0.3, 0.4, 0.45, 0.25, 1.9)   # a filled head on the first ledger line and a filled head on the
+#                     first line of the staff, a third apart, as one piece of ink: a print that sets its ledger line near
+#                     the staff (a music typewriter) lets the two heads run into each other, and the piece is too low
+#                     to be cut as two heads of a chord. The piece is this many heads high (least, most); it ends half
+#                     a head past the staff's line (within the fifth number of heads); the middle of its other head
+#                     lies from the third to the fourth number of staff spaces beside that line; and the ledger line
+#                     shows there: thin level ink that leaves the head at a side, this many staff spaces long or more,
+#                     at most this thick, within this many staff spaces of the head's middle row. The piece is at most
+#                     the last number of heads wide with its line (None: off)
+DASH_STEM = False    # off: the two heads of such a piece hang on one stem, and the head that shows none would take
+#                     the other's. It changes no note on any page: the stem of the pair runs along both heads, and
+#                     each of them was followed into it already
+DASH_OWN = True      # the two heads of such a piece are the one mark that they were, where the page is measured
+#                     (the usual inside of a hollow head: counted twice, a hand's pair moved the measure and a sign
+#                     at a clef was read as a half note), for the rule for a whole note beside a stemmed head of
+#                     the other voice (WHOLE_BESIDE: the lower head of a pair is wider, because it holds its ledger
+#                     line, and it gave its stem away) and for the rule for a whole note that touches a chord
+#                     (CHORD_WHOLE: the ledger line cuts the inside of such a head into slivers)
+DASH_SHUT = 0.15     # such a piece is two filled heads and the ledger line between them: it closes no paper of a
+#                     head's inside size. Two half notes a third apart, with the staff line between them for the
+#                     ledger line, are the same shape, and their insides tell. Measured in staff spaces squared on
+#                     the piece's whole box, as the paper that the ink shuts in (no piece that reaches the box's
+#                     edge): of the 37 pieces that the other limits take on LitChoir's pages, the one chord of half
+#                     notes holds 0.28 and every true pair 0.09 at most. A page whose own hollow heads have insides
+#                     under this measure (a small print: 0.14) is no safer for it. 0: off
+
+
+def _dash_wing(layers: dict, x0: int, x1: int, top: int, bottom: int) -> float | None:
+    """The row of the thin level ink that leaves a head at a side, in the rows from top to bottom: the end of a ledger
+    line that goes through the head (see DASH_PAIR). The longer side counts. None without such ink."""
+    free, space = layers['free'], layers['space']
+    reach = int(round(0.9 * space))
+    top, bottom = max(0, top), min(free.shape[0] - 1, bottom)
+    first, last = max(0, x0 - reach), min(free.shape[1], x1 + reach + 1)
+    window = free[top:bottom + 1, first:last] > 0
+    own = window[:, x0 - first:x1 - first + 1].sum(axis=0)
+    if own.size == 0 or own.max() == 0:
+        return None
+    body = np.nonzero(own >= 0.6 * own.max())[0]
+    left, right = x0 - first + int(body[0]), x0 - first + int(body[-1])
+    best = None
+    for side in (window[:, :left][:, ::-1], window[:, right + 1:]):
+        # How far the ink of each row goes on past the body, without a gap.
+        gaps = np.argmin(side, axis=1)
+        far = np.where(side.all(axis=1), side.shape[1], gaps) if side.shape[1] else np.zeros(side.shape[0], int)
+        rows = np.nonzero(far >= DASH_PAIR[5] * space)[0]
+        if len(rows) == 0 or rows[-1] - rows[0] + 1 != len(rows) or len(rows) > DASH_PAIR[6] * space:
+            continue
+        if best is None or far[rows].max() > best[0]:
+            best = (int(far[rows].max()), top + float(rows.mean()))
+    return best[1] if best else None
+
+
+def _dash_pair(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float, blob: int) -> list:
+    """The two heads of a piece of ink that is a head on the first ledger line and a head on the first line of the
+    staff (DASH_PAIR), each with its place ('line_place'); an empty list when the piece is no such pair."""
+    own_high, own_wide = mask.shape
+    if not (DASH_PAIR[0] * high <= own_high <= DASH_PAIR[1] * high and own_wide <= DASH_PAIR[8] * wide):
+        return []
+    index = _staff_of(layers, x + own_wide / 2, y + own_high / 2)
+    if index is None:
+        return []
+    staff = layers['staves'][index]
+    half = high / 2
+    for above in (True, False):
+        edge = staff['rows'][0] if above else staff['rows'][-1]
+        inner, outer = (y + own_high - 1, y) if above else (y, y + own_high - 1)
+        middle = outer + half if above else outer - half          # the middle row of the head on the ledger line
+        gap = (edge - middle) if above else (middle - edge)
+        if abs(inner - (edge + half if above else edge - half)) > DASH_PAIR[4] * high \
+                or not DASH_PAIR[2] * staff['space'] <= gap <= DASH_PAIR[3] * staff['space']:
+            continue
+        rows = (y - int(0.3 * staff['space']), int(middle + half)) if above else (int(middle - half), y + own_high - 1 + int(0.3 * staff['space']))
+        row = _dash_wing(layers, x, x + own_wide - 1, rows[0], rows[1])
+        if row is None or abs(row - middle) > DASH_PAIR[7] * staff['space']:
+            continue
+        cut = int(round((middle + edge) / 2)) - y
+        if not 0 < cut < own_high:
+            continue
+        # Paper that the two heads close in between them reaches the cut, and is no inside of either head.
+        count, labels = cv2.connectedComponents((mask & holes).astype(np.uint8), connectivity=8)
+        between = [label for label in range(1, count) if (labels[max(0, cut - 2):cut + 2] == label).any()]
+        inside = holes & ~np.isin(labels, between) if between else holes
+        pair = [_mark(mask[:cut], inside[:cut], x, y, blob), _mark(mask[cut:], inside[cut:], x, y + cut, blob)]
+        if not all(pair):
+            continue
+        if DASH_SHUT:
+            # Two half notes a third apart are such a piece too, and their insides tell (see DASH_SHUT).
+            paper = (layers['ink'][y:y + own_high, x:x + own_wide] == 0).astype(np.uint8)
+            number, labels, sizes, _ = cv2.connectedComponentsWithStats(paper, connectivity=4)
+            edge = set(labels[0]) | set(labels[-1]) | set(labels[:, 0]) | set(labels[:, -1])
+            shut = max([int(sizes[label][4]) for label in range(1, number) if label not in edge], default=0)
+            if shut >= DASH_SHUT * staff['space'] * staff['space']:
+                continue
+        places = (6.0, 4.0) if above else (-4.0, -6.0)
+        for part, place in zip(pair, places):
+            part['line_place'] = place
+            part['pair_box'] = (x, y, x + own_wide - 1, y + own_high - 1)
+            if abs(place) == 6.0:
+                part['dash'] = row
+        return pair
+    return []
+
+
 def _pair_at_stem(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float,
                   blob: int) -> list:
     """The two heads of a piece of ink that a stem cuts into a higher part at the left and a lower part at the right
@@ -843,6 +983,8 @@ def thick_marks(layers: dict) -> list[dict]:
                 if cut:
                     parts = [_mark(part, inside, px, py, mark['blob']) for part, inside, px, py in cut]
         elif PAIR_STEM and mark['hole'] < HOLLOW and (pair := _pair_at_stem(layers, mask, holes, x, y, wide, high, mark['blob'])):
+            parts = pair
+        elif DASH_PAIR and mark['hole'] < HOLLOW and (pair := _dash_pair(layers, mask, holes, x, y, wide, high, mark['blob'])):
             parts = pair
         elif mark['hole'] < HOLLOW and own_wide <= 1.5 * wide and 1.6 * high <= own_high <= 4.4 * high:
             number = int(round(own_high / high))
@@ -1268,6 +1410,40 @@ def _wings(layers: dict, mark: dict) -> float | None:
     return (ends[0] + ends[1]) / 2
 
 
+def _whole_foot(layers: dict, staff: dict, mark: dict, above: bool) -> bool:
+    """True when the edge of a mark toward its staff is a level line as wide as the mark, at the height of the first
+    ledger line (see WHOLE_FOOT)."""
+    free, space = layers['free'], staff['space']
+    reach = max(2, int(round(WHOLE_FOOT[4] * space)))
+    rows = range(mark['y1'] - reach + 1, mark['y1'] + 1) if above else range(mark['y0'], mark['y0'] + reach)
+    edge = staff['rows'][0] if above else staff['rows'][-1]
+    wide = mark['x1'] - mark['x0'] + 1
+    for row in rows:
+        if not (0 <= row < free.shape[0] and WHOLE_FOOT[1] * space <= abs(row - edge) <= WHOLE_FOOT[2] * space):
+            continue
+        if free[row, mark['x0']:mark['x1'] + 1].sum() >= WHOLE_FOOT[0] * wide \
+                and not layers['holes'][row, mark['x0']:mark['x1'] + 1].any():
+            return _alone(layers, mark, WHOLE_FOOT[5] * space, WHOLE_FOOT[6] * space)
+    return False
+
+
+def _alone(layers: dict, mark: dict, high: float, wide: float) -> bool:
+    """True when the piece of ink that holds a mark goes on at most `high` pixels over and under the mark's box and
+    at most `wide` pixels at its sides: the mark stands alone in paper."""
+    ink = layers['ink']
+    up, side = int(np.ceil(high)) + 2, int(np.ceil(wide)) + 2
+    top, left = max(0, mark['y0'] - up), max(0, mark['x0'] - side)
+    window = (ink[top:mark['y1'] + up + 1, left:mark['x1'] + side + 1] > 0).astype(np.uint8)
+    count, labels = cv2.connectedComponents(window, connectivity=8)
+    own = labels[mark['y0'] - top:mark['y1'] - top + 1, mark['x0'] - left:mark['x1'] - left + 1]
+    held = np.bincount(own[own > 0], minlength=count)
+    if not held.any():
+        return False
+    rows, columns = np.nonzero(labels == int(np.argmax(held)))
+    return mark['y0'] - (top + rows.min()) <= high and top + rows.max() - mark['y1'] <= high \
+        and mark['x0'] - (left + columns.min()) <= wide and left + columns.max() - mark['x1'] <= wide
+
+
 def _foot_wing(layers: dict, mark: dict) -> float | None:
     """The row of the thin level ink that leaves the body of a mark at one side (the longer one, at least
     LEDGER_FOOT[3] staff spaces long and at most LEDGER_FOOT[4] thick): one end of a ledger line. None without it."""
@@ -1331,12 +1507,12 @@ def _foot_dashes(layers: dict, staff: dict, mark: dict, up: bool) -> bool:
         and LEDGER_DASH[3][0] * space <= abs((rows[0] + rows[1]) / 2 - edge) <= LEDGER_DASH[3][1] * space
 
 
-def ledger_lines(layers: dict, staff: dict, head: dict) -> list[float]:
+def ledger_lines(layers: dict, staff: dict, head: dict, half: float | None = None) -> list[float]:
     """The rows of the ledger lines between a staff and a head beside it, the line through the head too. A ledger
     line is a level run of ink that reaches past the head on both sides and is thinner than a head."""
     free, space = layers['free'], staff['space']
     above = head['cy'] < staff['rows'][0]
-    first, last = int(head['cx'] - 0.95 * space), int(head['cx'] + 0.95 * space)
+    first, last = int(head['cx'] - (half or 0.95 * space)), int(head['cx'] + (half or 0.95 * space))
     if first < 0 or last >= free.shape[1]:
         return []
     if above:
@@ -1550,7 +1726,74 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
     found = float(4 + steps) if up else float(-4 - steps)
     if abs(found) < abs(place) - 2.2:
         return None       # too few ledger lines for a head this far from the staff: a letter over a hyphen
-    return found if abs(found - place) <= reach else place
+    held = abs(found - place) <= reach
+    head['counted'] = (found, merged, held)       # for the page's own gap between its ledger lines: see LEDGER_CLOSE
+    return found if held else place
+
+
+def _ledger_gaps(staff: dict, above: bool, rows: list[float]) -> list[float]:
+    """The gaps from the staff to its first ledger line and from each ledger line to the next, in staff spaces."""
+    gaps, before = [], staff['rows'][0 if above else -1]
+    for row in sorted(rows, reverse=above):
+        gaps.append(abs(row - before) / staff['space'])
+        before = row
+    return gaps
+
+
+def _dashes(layers: dict, head: dict, rows: list[float], space: float) -> bool:
+    """True when the ledger lines of a head are dashes of one length, one over the other: each ends from 0.5 to
+    LEDGER_CLOSE[4] staff spaces from the middle of the head at both sides, and their ends stand within LEDGER_CLOSE[5]
+    staff spaces of each other. A slur or the line of a held syllable that was counted as a ledger line runs on."""
+    free = layers['free']
+    column = int(round(head['cx']))
+    ends = []
+    for row in rows:
+        band = free[max(0, int(round(row)) - 2):int(round(row)) + 3].max(axis=0)
+        sides = []
+        for step in (-1, 1):
+            at, gap = column, 0
+            last = column
+            while 0 <= at + step < len(band) and gap <= 2:
+                at += step
+                if band[at]:
+                    last, gap = at, 0
+                else:
+                    gap += 1
+            sides.append(abs(last - column) / space)
+        if not all(0.5 <= side <= LEDGER_CLOSE[4] for side in sides):
+            return False
+        ends.append(sides)
+    return all(max(side[index] for side in ends) - min(side[index] for side in ends) <= LEDGER_CLOSE[5] for index in (0, 1))
+
+
+def close_ledgers(layers: dict, heads: list[dict]) -> None:
+    """The heads beside the staff of a page whose ledger lines stand closer than its staff lines (see LEDGER_CLOSE): where
+    the count of the lines was not trusted because the measured place is far from it, the count holds when the place is
+    measured with the page's own gap."""
+    if not LEDGER_CLOSE:
+        return
+    gaps = []
+    for head in heads:
+        counted = head.get('counted')
+        if counted and counted[2] and not head['hollow'] and head['stems']:
+            gaps += _ledger_gaps(layers['staves'][head['staff']], counted[0] > 0, counted[1])
+    if len(gaps) < LEDGER_CLOSE[1]:
+        return
+    usual = float(np.median(gaps))
+    if usual > LEDGER_CLOSE[0]:
+        return
+    for head in heads:
+        counted = head.get('counted')
+        if not counted or counted[2] or len(counted[1]) < 2:
+            continue
+        found, rows, _ = counted
+        staff = layers['staves'][head['staff']]
+        if any(abs(gap - usual) > LEDGER_CLOSE[2] for gap in _ledger_gaps(staff, found > 0, rows)):
+            continue
+        if abs(abs(found) - (4 + (abs(head['place']) - 4) / usual)) > LEDGER_CLOSE[3]:
+            continue
+        if _dashes(layers, head, rows, staff['space']):
+            head['place'] = found
 
 
 def _on_ledger(layers: dict, mark: dict) -> bool:
@@ -1848,6 +2091,47 @@ def _two_heads(layers: dict, mark: dict, stacked: bool = False) -> list[dict] | 
     return out
 
 
+def _side_two(layers: dict, mark: dict) -> list[dict] | None:
+    """The two heads of a mark that one stem line goes through, up and down (see SIDE_TWO): [the left head with the
+    stem up, the right head with the stem down]. Two voices that sing one note with different lengths stand side by
+    side, the upper voice at the left, and their stems are one line between the two heads: the strokes that leave
+    the mark at all four corners made it a sharp. None when the mark is no such mark."""
+    space = layers['space']
+    wide, high = layers['head']
+    ways = mark.get('ways')
+    if not ways or not all(is_stem(way, space) for way in ways.values()):
+        return None
+    own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    if not (SIDE_TWO[0] * wide <= own_wide <= SIDE_TWO[1] * wide and own_high <= SIDE_TWO[2] * high):
+        return None
+    columns = [way['mid'] for way in ways.values()]
+    if max(columns) - min(columns) > SIDE_TWO[3] * space:
+        return None
+    column = float(np.mean(columns))
+    if not mark['x0'] + SIDE_TWO[4] * own_wide <= column <= mark['x1'] - SIDE_TWO[4] * own_wide:
+        return None
+    cut = int(round(column)) - mark['x0']
+    mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    up = max((ways['up_left'], ways['up_right']), key=lambda way: way['length'])
+    down = max((ways['down_left'], ways['down_right']), key=lambda way: way['length'])
+    out = []
+    for part, stem in ((_mark(mask[:, :cut], holes[:, :cut], mark['x0'], mark['y0'], mark['blob']), up),
+                       (_mark(mask[:, cut:], holes[:, cut:], mark['x0'] + cut, mark['y0'], mark['blob']), down)):
+        if part is None or part['area'] < SIDE_TWO[5] * wide * high or part['x1'] - part['x0'] + 1 < HEAD_WIDE[0] * space \
+                or part['y1'] - part['y0'] + 1 < HEAD_HIGH[0] * space:
+            return None
+        own = np.pad(mask[part['y0'] - mark['y0']:part['y1'] - mark['y0'] + 1, part['x0'] - mark['x0']:part['x1'] - mark['x0'] + 1], 1)
+        if 2 * float(cv2.distanceTransform(own.astype(np.uint8), cv2.DIST_L2, 5).max()) < SIDE_TWO[6] * high:
+            return None
+        out.append(dict(part, stems=[stem], kind='head', ways=mark['ways'], side_two=True))
+    pair = {'x0': mark['x0'], 'x1': mark['x1'], 'y0': mark['y0'], 'y1': mark['y1'], 'cx': (mark['x0'] + mark['x1']) / 2,
+            'hole': max(part['hole'] for part in out)}
+    for part in out:
+        part['pair'] = pair
+    return out
+
+
 def _glued_two(layers: dict, mark: dict) -> list[dict] | None:
     """The two heads of a mark that read_symbols left without a head (see GLUED_TWO). Two voices a third apart print
     their heads one over the other, the upper head with its stem up at the right and the lower one with its stem down
@@ -2035,6 +2319,8 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
             for other in heads:
                 if other is mark or (other['cy'] > mark['cy']) == up:
                     continue      # the other head stands between the oval and the far end of the stem
+                if DASH_OWN and mark.get('pair_box') is not None and other.get('pair_box') == mark['pair_box']:
+                    continue      # the two heads of one piece that DASH_PAIR cut: the lower one holds its ledger line
                 more = wider if other['hole'] < limit else WHOLE_HALF * space if WHOLE_HALF else None
                 if more is None:
                     continue
@@ -2226,6 +2512,18 @@ def read_symbols(layers: dict) -> dict:
                                    and abs(other['ways'][name]['x'] - stem['x']) <= 0.35 * space for name in back[stem['direction']])]
             if through:
                 mark['stems'].append(dict(through[0], length=abs(mark['cy'] - through[0]['end'])))
+    if DASH_PAIR and DASH_STEM:
+        # The two heads of a piece that DASH_PAIR cut hang on one stem. Where the stem leaves the middle of the one
+        # head, away from the other, the other head shows no stem of its own.
+        for mark in marks:
+            if mark['kind'] != 'head' or mark['stems'] or not mark.get('pair_box'):
+                continue
+            for other in marks:
+                if other is mark or other.get('pair_box') != mark['pair_box'] or other['kind'] != 'head':
+                    continue
+                away = [stem for stem in other['stems'] if (stem['end'] < other['cy']) == (other['cy'] < mark['cy'])]
+                if away:
+                    mark['stems'].append(dict(away[0], length=abs(mark['cy'] - away[0]['end'])))
     if RIM_STEM:
         # Two whole notes a third apart touch, and the side of the one is upright ink that leaves the other. But a
         # stem goes on past the heads that hang on it: upright ink that ends in the box of another head is its rim.
@@ -2251,6 +2549,9 @@ def read_symbols(layers: dict) -> dict:
             parts = _two_heads(layers, mark) if mark['kind'] == 'head' and len(mark['stems']) == 2 else None
             if GLUED_TWO and parts is None and mark['kind'] in (None, 'beam'):
                 parts = _glued_two(layers, mark)
+            if SIDE_TWO and parts is None and mark['kind'] == 'sharp' \
+                    and (not SIDE_WHOLE or sum(1 for other in marks if other['blob'] == mark['blob']) == 1):
+                parts = _side_two(layers, mark)
             split += parts or [mark]
         marks = split
     # The page teaches how large the holes of its hollow heads are. A heavy print leaves a slit of a hole, and there
@@ -2299,6 +2600,8 @@ def read_symbols(layers: dict) -> dict:
             slit = _slit_one(layers, mark, layers['staves'][staff]) or 'none'
             slit_place = (_slit_one(layers, mark, layers['staves'][staff], False) or 'none') if SLIT_LEDGER else slit
         place = pitch_place(layers['staves'][staff], cy)
+        if mark.get('line_place') is not None and mark['kind'] == 'head':
+            place = mark['line_place']      # a head whose line the cut of its piece knows: see DASH_PAIR
         if mark['kind'] != 'head':
             if abs(place) <= 7.5:
                 signs.append({'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': mark['cx'],
@@ -2354,12 +2657,25 @@ def read_symbols(layers: dict) -> dict:
             head['room'] = True
         if mark.get('across'):
             head['across'] = True
+        if mark.get('side_two'):
+            head['side_two'] = True
+        if mark.get('pair_box'):
+            head['pair_box'] = mark['pair_box']
         if or_hollow is not None:
             head['or_hollow'] = or_hollow
         if abs(place) > 4 + 2 * REACH:
             continue
-        if abs(place) > 4.6:
-            head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
+        if mark.get('line_place') is not None:
+            head['ledgers'] = [mark['dash']] if 'dash' in mark else []
+        elif abs(place) > 4.6:
+            if SIDE_LEDGER and mark.get('pair'):
+                # The two heads of a pair at one stem line are one wide head for a ledger line: see SIDE_LEDGER.
+                pair = mark['pair']
+                head['ledgers'] = ledger_lines(layers, layers['staves'][staff],
+                                               dict(head, **pair, hollow=pair['hole'] >= limit),
+                                               (pair['x1'] - pair['x0'] + 1) / 2 + 0.3 * space)
+            else:
+                head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
             found = ledger_place(layers, layers['staves'][staff], head)
             if found is None or (not head['ledgers'] and abs(place) > max(5.6, NO_LEDGER)):
                 # A faint ledger line is lost in the copy. A letter of the words has a bowl and a stem too, but its
@@ -2371,6 +2687,9 @@ def read_symbols(layers: dict) -> dict:
                         and any(stem['past'] >= LEDGER_DASH[5] * space for stem in mark['stems']) \
                         and _foot_dashes(layers, layers['staves'][staff], mark, place > 0):
                     found = 7.0 if place > 0 else -7.0
+                elif WHOLE_FOOT and found is not None and hollow and not mark['stems'] and not orphan \
+                        and abs(place) <= WHOLE_FOOT[3] and _whole_foot(layers, layers['staves'][staff], mark, place > 0):
+                    found = 7.0 if place > 0 else -7.0     # a whole note that sits on its ledger line
                 elif not (FAR_STEM and found is not None and abs(place) <= FAR_STEM[1] and not mark.get('word_stem')
                         and any(stem['past'] + (_pale_on(layers, stem) if PALE_STEM else 0) >= FAR_STEM[0] * space
                                 for stem in mark['stems'])
@@ -2379,6 +2698,7 @@ def read_symbols(layers: dict) -> dict:
                     continue
             head['place'] = found
         (orphans if orphan else heads).append(head)
+    close_ledgers(layers, heads + orphans)
     return {'heads': heads, 'signs': signs, 'marks': marks, 'orphans': orphans}
 
 
@@ -2566,10 +2886,17 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
         return []
     space = layers['space']
     holes, ink = layers['holes'], layers['ink']
-    own = []
+    own, pairs = [], set()
     for head in heads:
         if head['hollow'] and not head.get('thin'):
-            own.append(float((holes[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0).sum()))
+            # The two heads of a piece that DASH_PAIR cut count as the one mark that they were: the page's measure
+            # of a hole stays as it was.
+            x0, y0, x1, y1 = (head.get('pair_box') if DASH_OWN else None) or (head['x0'], head['y0'], head['x1'], head['y1'])
+            if (x0, y0, x1, y1) in pairs:
+                continue
+            if head.get('pair_box') and DASH_OWN:
+                pairs.add((x0, y0, x1, y1))
+            own.append(float((holes[y0:y1 + 1, x0:x1 + 1] > 0).sum()))
     if len(own) < 3:
         return []
     usual = float(np.median(own))
@@ -2718,7 +3045,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                             or any(sign['x0'] - 2 <= way['x'] <= sign['x1'] + 2
                                    and sign['y0'] - space <= cy <= sign['y1'] + space for sign in signs or []
                                    if not (OPEN_BESIDE and _in_head(sign, out)))
-                            or any(not other['hollow'] and abs(stem['x'] - way['x']) <= OPEN_STEM[1] * space
+                            or any((not other['hollow'] or (SIDE_CELL and other.get('side_two')))
+                                   and abs(stem['x'] - way['x']) <= OPEN_STEM[1] * space
                                    and abs(stem['end'] - way['end']) <= OPEN_STEM[2] * space
                                    for other in heads if not (OPEN_BESIDE and id(other) in pieces)
                                    for stem in other['stems'])
@@ -4949,6 +5277,8 @@ def chord_wholes(layers: dict, heads: list[dict]) -> int:
     for head in heads:
         if not head['hollow'] or len(head['stems']) != 1 or head.get('thin'):
             continue
+        if DASH_OWN and head.get('pair_box'):
+            continue      # a head that DASH_PAIR cut from its neighbour: the ledger line cuts its inside into slivers
         stem = head['stems'][0]
         down = stem['direction'] == 'down'
         mates = [other for other in heads if other is not head and other['hollow'] and other['staff'] == head['staff']
