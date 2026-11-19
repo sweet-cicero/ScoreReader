@@ -103,6 +103,8 @@ MEND_PAIR_RARE = 20      # two words side by side are mended into one (MEND_PAIR
 #                          them, where it holds the whole this many times as often ('Al-le-lu la': the list holds
 #                          'la' three times and 'alleluia' two hundred times). None: a piece that the list holds
 #                          is never joined
+MEND_OPEN = True         # a word that a hyphen leaves open at the end of a row ('foun-', the row goes on with
+#                          'tain') is not mended by a letter added at its end ('found'): the word is not whole there
 MEND_S = True            # an s at the end of a word is never taken away and never added by the mending: the list
 #                          holds 'sake' and lacks 'sakes', and the page prints 'sakes'
 LONE_I = (0.1, 0.6, 0.2, 0.7, 1.5)   # a stroke that stands alone between two words ('|') is the word I where its
@@ -757,6 +759,8 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
         if len(meant) != 1:
             continue
         (new, (at, how)), = meant.items()
+        if MEND_OPEN and parts[-1]['join'] and how == 'more' and at == len(read):
+            continue
         last = at >= len(read) - 1 + (how == 'more')
         if MEND_S and last and ((how == 'less' and read[-1] == 's') or (how == 'more' and new[-1] == 's')):
             continue

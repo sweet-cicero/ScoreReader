@@ -26,10 +26,10 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.8 % on
 scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,948 of 22,597, counted by the page;
-21,875 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
-syllable, 19 both, 22 have no note that is not there, 14 are whole in all three; 647 printed notes and 195 syllables
+21,875 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 36 every
+syllable, 20 both, 22 have no note that is not there, 15 are whole in all three; 647 printed notes and 194 syllables
 are lacking and 595 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
+files and a list of words (6,050 of 6,244, counted by the page; 5,996 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 96 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
@@ -815,6 +815,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A rule of the scorer that gives a chord of one voice to its own part where the other part holds a long note
   loses where the reader misreads that long note (50 notes on all scores, 4 on the clean copies): the misread note
   takes the tops of the chords with it.
+- A word that a hyphen leaves open at the end of a row is not whole: the rest of it stands in the next row. Not
+  mending such a word at all lost on all scans (3 syllables gained and 8 lost): a misread letter inside the open
+  piece is mended rightly as often as not, and a row that keeps an unmended word is no longer whole, so another
+  size wins. A census of every mend of an open piece in every reading parted the kinds: a letter added at its end
+  makes the word that the next row goes on from ("foun" to "found"), and only that mend is held back
+  (`ocr.MEND_OPEN`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
