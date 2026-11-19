@@ -73,6 +73,12 @@ SHARP_JOINED = (1.8, 0.5, 1.1, 0.15, 0.5)   # a small sharp of a heavy print who
 JOINED_BARE = True              # the ends of a joined sign are looked at without the staff lines: a line through the top
                                 # of a natural is no second stroke; such a mark with its left stroke alone at the top
                                 # and its right one alone at the bottom is a natural (False: as before)
+JOINED_ENDS = True              # ... and its ends are the first and the last row of its own ink without the staff lines: the
+                                # stroke of a sign is followed into a staff line past its end, over a gap of paper. Such
+                                # a sign lies before its head, not in its box (SHARP_JOINED[4], with a stem too)
+                                # (False: the rows of the stroke)
+JOINED_HEAD = True              # the middle of a joined sharp (SHARP_JOINED) that was taken for a head is no head: a mark whose
+                                # middle and stems lie in the columns of the one wide stroke (False: off)
 SIGN_WORDS = True               # the strokes of a sign are read without the rows of the words (False: with them)
 GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies on all of them and changes the one at
                                 # its place (False: a sign that lies on a head at another place is none)
@@ -274,6 +280,18 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                         any(stroke['x0'] - 1 <= stem['x'] <= stroke['x1'] + 1 for stroke in parts) for stem in head['stems']):
                     ghosts.append(head)     # its middle lies between the two strokes, and its stem is one of them
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
+    if JOINED_HEAD and SHARP_JOINED:
+        # A heavy sharp whose two strokes are one mark, with its middle read as a head and one of its strokes as that
+        # head's stem: the mark is a sharp by its ends and its closed paper, and the head lies inside its columns.
+        for stroke in strokes:
+            if not 0.45 < stroke['wide'] <= 1.2 or stroke['high'] > 3.4:
+                continue
+            inside = [head for head in full if head['stems'] and stroke['x0'] <= head['cx'] <= stroke['x1']
+                      and all(stroke['x0'] - 1 <= stem['x'] <= stroke['x1'] + 1 for stem in head['stems'])]
+            if inside and _joined_sharp(layers, {'x0': stroke['x0'], 'x1': stroke['x1'], 'top': stroke['top'],
+                                                 'bottom': stroke['bottom']}, space) == 'sharp':
+                ghosts.extend(inside)
+        full = [head for head in full if not any(head is ghost for ghost in ghosts)]
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     legs = []
     if SHARP_STEM or NATURAL_STEM:
@@ -350,8 +368,10 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     best = (rank, head)
         if best and sign.get('joined') and SHARP_JOINED and SHARP_JOINED[4]:
             head = best[1]
-            if not head['stems'] and min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) + 1 > SHARP_JOINED[4] * (sign['x1'] - sign['x0'] + 1):
-                continue      # a part of the head, no sign before it
+            if (not head['stems'] or sign.get('cut')) \
+                    and min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) + 1 > SHARP_JOINED[4] * (sign['x1'] - sign['x0'] + 1):
+                continue      # a part of the head, no sign before it (a sign whose ends were cut: also a head with a
+                #               stem, two hollow heads one over the other that a faint copy joined)
         if best:
             for right, head, stem in legs:
                 if sign['kind'] == 'natural' and right['x1'] == sign['x1'] and head is best[1]:
@@ -459,6 +479,11 @@ def _joined_sharp(layers: dict, sign: dict, space: float) -> str | None:
     under the bars, and the strokes and the bars close in a piece of paper. 'natural' when its left stroke stands
     alone at the top and its right one alone at the bottom. None when it is neither."""
     x0, x1, top, bottom = int(sign['x0']), int(sign['x1']) + 1, int(sign['top']), int(sign['bottom']) + 1
+    if JOINED_ENDS and JOINED_BARE:
+        rows = np.nonzero(layers['bare'][top:bottom, x0:x1].any(axis=1))[0]
+        if len(rows) and (rows[0] > 0 or top + int(rows[-1]) + 1 < bottom):
+            top, bottom = top + int(rows[0]), top + int(rows[-1]) + 1
+            sign['cut'] = True
     high, wide = bottom - top, x1 - x0
     if not (SHARP_JOINED[0] * space <= high <= SIGN_STROKE[1] * space and SHARP_JOINED[1] * space <= wide <= SHARP_JOINED[2] * space):
         return None

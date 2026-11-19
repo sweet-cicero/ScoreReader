@@ -79,6 +79,9 @@ KEY_WORN = (0.8, 0.55, 1.6, 1.4, 3.5, 0.45, 1.5, 1.0, 2)    # key signs that the
 FLAT_BEAM = (1.2, 0.65)   # a flat between two beamed notes: its stroke runs up into the beam. The stroke is cut where the
 #                     ink beside it gets slim (at most the second number wide), at most this many staff spaces under
 #                     its top. Only for the signs of notes: a key signature stands under no beam (None: off)
+FLAT_FOOT = 1.5       # a flat whose stroke box goes on under its foot (its lowest rows hold no ink of its own): the stroke
+#                     is cut at the last row of its own ink, and is a flat's where it is still this many staff spaces
+#                     high (a filled head with ink over it is about one). Only for the signs of notes (None: off)
 FLAT_MIDDLE = 0.75    # the middle of the ink of a flat lies this many pitch places over the place of its bowl
 G_TAIL = (0.9, 4.5, 2.4, 1.8)   # a treble clef that does not rise over the top line hangs this far under the
 #                         bottom line, is this high in all, hangs at most this far, and begins at most this far after the
@@ -199,6 +202,21 @@ def stroke_sides(layers: dict, stroke: dict, space: float) -> dict | None:
             'foot': (float(np.median([span[0] for span in foot])) - edge0) / space}
 
 
+def _foot_cut(layers: dict, stroke: dict, space: float) -> dict | None:
+    """The stroke cut at the last row that holds ink of its own (see FLAT_FOOT), or None where its lowest row holds
+    such ink or the cut stroke is lower than FLAT_FOOT."""
+    free = _free(layers)
+    height, width = free.shape
+    x0, x1 = max(0, int(stroke['x0']) - 2), min(width, int(stroke['x1'] + 1.05 * space) + 1)
+    y0, y1 = max(0, int(stroke['top'])), min(height, int(stroke['bottom']) + 1)
+    count, labels = cv2.connectedComponents(free[y0:y1, x0:x1], connectivity=8)
+    own = np.unique(labels[:, stroke['x0'] - x0:stroke['x1'] - x0 + 1])
+    rows = np.nonzero(np.isin(labels, own[own > 0]).any(axis=1))[0]
+    if len(rows) < 2 or y0 + int(rows[-1]) >= y1 - 1 or int(rows[-1]) < FLAT_FOOT * space:
+        return None
+    return dict(stroke, bottom=float(y0 + int(rows[-1])))
+
+
 def _under_beam(layers: dict, stroke: dict, space: float) -> dict | None:
     """The stroke without the wide ink at its top (a beam that it runs into), or None when its top is slim or too
     little of it is left."""
@@ -290,6 +308,11 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
         if FLAT_BEAM and beams and sides and sides['top'] > 0.65 and stroke['wide'] <= 0.45 and (cut := _under_beam(layers, stroke, space)):
             stroke = cut
             sides = stroke_sides(layers, stroke, space)
+        if FLAT_FOOT and beams and sides is None and stroke['high'] >= 1.3 and stroke['wide'] <= 0.45 \
+                and (cut := _foot_cut(layers, stroke, space)) and (cut_sides := stroke_sides(layers, cut, space)):
+            # The foot of a flat that stands on a staff line or touches the stem of its note: the box of the stroke goes
+            # on under it, and its lowest rows hold no ink of its own.
+            stroke, sides = cut, cut_sides
         stroke['sides'] = sides
         if sides and sides['top'] <= 0.65 and 0.3 <= sides['bulge'] <= 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
                 and sides['foot'] <= 0.3:

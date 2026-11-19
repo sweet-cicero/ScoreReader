@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.2 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.7 % on
-scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,908 of 22,585, counted by the page;
-21,851 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
-syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 675 printed notes and 195 syllables
-are lacking and 689 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 89 scores at 99 % or more), 97.0 % of the notes on the clean copies (21,912 of 22,585, counted by the page;
+21,855 of 22,606 as typed; 35 of the 78 counted scores at 99 %; 25 scores read every printed note, 35 every
+syllable, 18 both, 21 have no note that is not there, 13 are whole in all three; 671 printed notes and 195 syllables
+are lacking and 686 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,044 of 6,239, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6222 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 95 of 214 pieces at 99 %),
@@ -725,6 +725,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   note that lies flat (`symbols.LINE_HALVES`), and also the paper inside the 4 of a time signature: those were
   read as notes that are not there before, and the rule took them away. Where a page's worn heads hold specks, the
   specks lie in the rows of the line; the count of the page (`slit_page`) did not part these heads.
+- Of the notes that the clean copies read a semitone off, about two in five have a printed sign that is not read,
+  and most of those signs touch their head or a staff line. The stroke of a sign is followed past its own ink into
+  a staff line, over a gap of paper, and the measures of its ends then read paper: a flat whose lowest rows hold no
+  ink of its own (`starts.FLAT_FOOT`, cut at its last row of ink, and still a flat's height) and a heavy sharp whose
+  strokes are one mark (`signs.JOINED_ENDS`, measured from its first to its last row of ink). Cut so, two faint
+  hollow heads one over the other passed as a sharp: a sign whose ends were cut stands before its head, not in its
+  box. A filled head with ink over it passed as a flat in the first census: a flat is about two staff spaces high.
+- A heavy sharp whose middle closed is read as a filled head, with one of its strokes as that head's stem, and the
+  stem hides the stroke from the signs. The guard for a sharp of two strokes (`SHARP_HEAD`) does not see a sharp
+  whose two strokes are one mark: such a head is no head where it lies in the columns of the one stroke and the
+  stroke has the ends and the closed paper of a sharp (`signs.JOINED_HEAD`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
