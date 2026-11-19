@@ -28,7 +28,7 @@ Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % o
 scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,948 of 22,597, counted by the page;
 21,875 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
 syllable, 19 both, 22 have no note that is not there, 14 are whole in all three; 647 printed notes and 195 syllables
-are lacking and 651 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+are lacking and 640 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,882 of 41,761; 96 of 214 pieces at 99 %),
@@ -783,6 +783,10 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A staff count against a base run whose sheets the kit's scorer wrote over shows the kit's hymns as gained or
   lost: round 63 read 43 notes gained staff by staff where 24 were. Score both runs again before every count
   staff by staff, also the base of the round before.
+- A print can set the ison's note as a breve under its letter (`drone.BREVE`): a hollow head between two short
+  bars. The bars are no sign without the letter: 153 hollow heads of LitChoir's chant pages and 108 of the fresh
+  set have them, and are notes. Taken under any letter of the page, the breve that restates the ison at the start
+  of a staff went too, and 4 true notes with it: a hand draws the melody's half note between the ison's bars.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

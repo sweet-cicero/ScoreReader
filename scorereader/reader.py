@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .drone import letter_marks
+from .drone import letter_marks, without_breves
 from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, musicxml, staff_columns
@@ -220,6 +220,10 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             if marked and len(marked) >= OCTAVE * len(own):
                 for index in own:
                     clefs[index] = 'G8vb'
+    # The ison's letters over the staves of a chant page, and the breve that a print sets under a letter for the
+    # ison's note: it is no note of the melody (scorereader.drone.BREVE).
+    letters = {index: letter_marks(layers, index, clefs[index]) for index in range(len(staves))} if width == 1 else {}
+    heads = without_breves(layers, heads, letters)
     parts = [[] for _ in range(width)]
     notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
@@ -242,7 +246,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         built = build_staff(staff, [], bars[index], clefs[index], keys[index], space, plans[index])
         if width == 1 and built:
             marks = [[] for _ in built]
-            for mark in letter_marks(layers, index, clefs[index]):
+            for mark in letters[index]:
                 later = [number for number, bar in enumerate(plans[index]) if any(column[0]['x'] >= mark['x'] - 0.6 * space for column in bar)]
                 marks[later[0] if later else len(built) - 1].append(mark)
 

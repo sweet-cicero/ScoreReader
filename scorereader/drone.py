@@ -32,6 +32,16 @@ ALONE = 2.5             # a mark stands alone: no word that is no mark within th
 HEAVY = (0.6, 0.75)     # a heavy D: the paper it closes in lies this far to the right, its stem is this share of the height
 ROW = (15.0, 2)         # or in a row of words: this many words that are no marks on its line within this many staff spaces
 FLAT = 0.4              # a piece under this many staff spaces high is no letter: a line after the mark, a hyphen
+BREVE = (3.5, 1.0, 1.0, 0.12, 0.9, 2.4, 1.15, 2.0, 0.45)
+#                       a print can set the ison's note under its letter as a breve |o|, a hollow head between two short
+#                       bars, and that breve is no note of the melody (the ison is read from the letter): a hollow head at
+#                       most the first number of staff spaces before a letter and the second after it, at most the third
+#                       number of places from the letter's note, with a bar at each side of its inside. A bar is the
+#                       column from the fourth to the fifth number of staff spaces outside the inside whose ink through
+#                       the middle row of the inside goes furthest up and down, of the columns whose ink there is at most
+#                       the sixth number long: it is from the seventh to the eighth number long and goes on past that
+#                       row by the ninth number up and down. A half note has its stem at one side, and the stem goes one
+#                       way. (None: off)
 
 
 def _holes(piece: np.ndarray) -> list[tuple[float, float, float]]:
@@ -214,4 +224,60 @@ def letter_marks(layers: dict, index: int, clef: str, after: float = 0.0, trace:
         octave = 4 if clef == 'G' else 3
         place = 7 * octave + STEPS.index(word['mark']) - MIDDLE[clef]
         out.append({'x': x, 'place': place, 'voice': 1, 'head': dict(box, place=place), 'length': Fraction(4), 'stem_x': None})
+    return out
+
+
+def _bar(layers: dict, x_from: int, x_to: int, row: float) -> bool:
+    """Whether a column from x_from to x_to holds a bar of a breve through the row (see BREVE)."""
+    space, ink = layers['space'], layers['bare']
+    best = None
+    near = int(0.25 * space)
+    for x in range(max(0, x_from), min(ink.shape[1], x_to + 1)):
+        column = ink[:, x] > 0
+        y = int(round(row))
+        found = next((yy for d in range(near + 1) for yy in (y - d, y + d) if 0 <= yy < len(column) and column[yy]), None)
+        if found is None:
+            continue
+        top = bottom = found
+        while top - 1 >= 0 and (column[top - 1] or (top - 2 >= 0 and column[top - 2])):
+            top -= 1
+        while bottom + 1 < len(column) and (column[bottom + 1] or (bottom + 2 < len(column) and column[bottom + 2])):
+            bottom += 1
+        if bottom - top + 1 > BREVE[5] * space:
+            continue
+        over = min(row - top, bottom - row)
+        if best is None or over > best[0]:
+            best = (over, bottom - top + 1)
+    return best is not None and BREVE[6] * space <= best[1] <= BREVE[7] * space and best[0] >= BREVE[8] * space
+
+
+def is_breve(layers: dict, head: dict) -> bool:
+    """Whether a hollow head is a breve: a bar at each side of its inside (see BREVE)."""
+    space = layers['space']
+    box = (slice(head['y0'], head['y1'] + 1), slice(head['x0'], head['x1'] + 1))
+    inside = (layers['holes'][box] > 0).astype(np.uint8)
+    count, _, stats, centres = cv2.connectedComponentsWithStats(inside, connectivity=8)
+    if count < 2:
+        return False
+    big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    left = head['x0'] + int(stats[big, cv2.CC_STAT_LEFT])
+    right = left + int(stats[big, cv2.CC_STAT_WIDTH]) - 1
+    row = head['y0'] + float(centres[big][1])
+    return _bar(layers, left - int(BREVE[4] * space), left - int(BREVE[3] * space), row) \
+        and _bar(layers, right + int(BREVE[3] * space), right + int(BREVE[4] * space), row)
+
+
+def without_breves(layers: dict, heads: list[dict], letters: dict[int, list[dict]]) -> list[dict]:
+    """The heads without the breves that a print sets under the ison's letters (see BREVE): the letters of each
+    staff as letter_marks() gives them."""
+    if not BREVE:
+        return heads
+    space = layers['space']
+    out = []
+    for head in heads:
+        if head['hollow'] and any(not mark.get('unison') and -BREVE[0] * space <= head['cx'] - mark['x'] <= BREVE[1] * space
+                                  and abs(head['place'] - mark['place']) <= BREVE[2] for mark in letters.get(head['staff'], [])) \
+                and is_breve(layers, head):
+            continue
+        out.append(head)
     return out
