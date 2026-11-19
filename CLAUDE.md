@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.8 % on
-scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,941 of 22,597, counted by the page;
-21,868 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
-syllable, 19 both, 21 have no note that is not there, 13 are whole in all three; 654 printed notes and 195 syllables
-are lacking and 652 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,948 of 22,597, counted by the page;
+21,875 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
+syllable, 19 both, 22 have no note that is not there, 14 are whole in all three; 647 printed notes and 195 syllables
+are lacking and 651 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6224 of 6901).
-On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 95 of 214 pieces at 99 %),
+89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
+On the fresh test set, which no rule was set on: 95.5 % of the notes (39,882 of 41,761; 96 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -770,6 +770,19 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   sign of the print.
 - A combined copy of the code is made from main's own files, not from the copy of the round before: a change that
   went into main with the review was missing from two copies, and patches made against them carried it.
+- A mark that the reader leaves without a head, because it is too high or because a neighbour's stem leaves it too,
+  can be two heads of two voices that touch (`symbols.GLUED_TWO`). Such a cut meets what any large mark with stems
+  at its sides is: on a thick copy a bar line or a stem runs through a box of staff lines and leaves it up and down
+  in one column, and a bar line, a clef, two whole notes and a thick head were cut too (10 of 23 cuts in the first
+  form, each looked at). A head holds a circle of ink half as high as the page's heads, and the pieces of lines
+  and signs do not; a half note whose rim is thin does not either, so the guard costs such a pair. Paper that two
+  heads close between them with a line, a stem or a sign reaches the cut, and is no hole of either head.
+- A limit of a rule for one engraving that misses its next case by a little is widened only after a census of
+  every pair that the rule's other limits take, on all clean pages: `music.STACKED_NEAR`'s paper from 0.25 to 0.3
+  staff spaces took one more pair there, the true one, and changed one page.
+- A staff count against a base run whose sheets the kit's scorer wrote over shows the kit's hymns as gained or
+  lost: round 63 read 43 notes gained staff by staff where 24 were. Score both runs again before every count
+  staff by staff, also the base of the round before.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
