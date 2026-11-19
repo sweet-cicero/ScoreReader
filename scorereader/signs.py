@@ -79,6 +79,11 @@ JOINED_ENDS = True              # ... and its ends are the first and the last ro
                                 # (False: the rows of the stroke)
 JOINED_HEAD = True              # the middle of a joined sharp (SHARP_JOINED) that was taken for a head is no head: a mark whose
                                 # middle and stems lie in the columns of the one wide stroke (False: off)
+NATURAL_OWN = True              # the paper that the strokes and the bars of a natural close in is no hollow head: a mark whose
+                                # middle lies between the two strokes and each of whose stems is one of them (False: off)
+NATURAL_LONE = True             # the right stroke of a natural is no stem of a hollow head after it either where it is that
+                                # head's only stem, when another head of its column has a stem (a whole note under a
+                                # half note) (False: only a second stem, as NATURAL_STEM says)
 SIGN_WORDS = True               # the strokes of a sign are read without the rows of the words (False: with them)
 GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies on all of them and changes the one at
                                 # its place (False: a sign that lies on a head at another place is none)
@@ -292,6 +297,18 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                                                  'bottom': stroke['bottom']}, space) == 'sharp':
                 ghosts.extend(inside)
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
+    if NATURAL_OWN:
+        # The middle of a natural, closed in by its strokes and bars, read as a hollow head with the right stroke as its
+        # stem. A head stands beside its sign, not between its strokes.
+        for sign in pair_signs(layers, staff, strokes):
+            if sign['kind'] != 'natural':
+                continue
+            parts = [stroke for stroke in strokes if sign['x0'] <= stroke['x'] <= sign['x1']]
+            for head in lying(sign, full):
+                if head.get('hollow') and head['stems'] and sign['x0'] <= head['cx'] <= sign['x1'] and all(
+                        any(stroke['x0'] - 1 <= stem['x'] <= stroke['x1'] + 1 for stroke in parts) for stem in head['stems']):
+                    ghosts.append(head)
+        full = [head for head in full if not any(head is ghost for ghost in ghosts)]
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     legs = []
     if SHARP_STEM or NATURAL_STEM:
@@ -310,7 +327,9 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             elif sign['kind'] == 'natural':
                 for head in full:
                     for stem in head['stems']:
-                        if len(head['stems']) >= 2 and right['x0'] <= stem['x'] <= right['x1'] \
+                        lone = NATURAL_LONE and head.get('hollow') and head['cx'] > right['x1'] and any(
+                            other is not head and other['stems'] and abs(other['cx'] - head['cx']) <= 0.5 * wide for other in full)
+                        if (len(head['stems']) >= 2 or lone) and right['x0'] <= stem['x'] <= right['x1'] \
                                 and abs(stem['end'] - head['cy']) <= NATURAL_STEM * space \
                                 and right['top'] <= head['cy'] <= right['bottom'] and not any(right is leg[0] for leg in legs):
                             legs.append((right, head, stem))
