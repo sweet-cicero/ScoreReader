@@ -4519,6 +4519,47 @@ def without_stem_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+CHORD_WHOLE = (-85.0, -30.0, 1.1, 2.0)   # a whole note that touches the half note of another voice was read with that
+#   note's stem: of the hollow heads that share one stem, the head at the far end from the stem's end (where a stem
+#   begins) is a whole note, and leaves the stem to the others, where its inside leans back: the axis of the inside
+#   (symbols._hole_axis, 0: level, 90: upright, more rises to the right) stands between the first two numbers of
+#   degrees, and the inside is from the third to the fourth number of times as long as wide (a round inside has no
+#   direction, and a long slit is no whole note's inside). The inside of a printed half note lies on its side and
+#   rises to the right, an engraved whole note's leans back. (A census of the far heads of such chords on every scan
+#   page: 11 whole notes at -58 to -80 degrees, 1.16 to 1.66 times as long as wide, and every half note of the clean
+#   copies at 0 to 52 degrees; the first form also took a round inside of a half note by hand, a letter d and a
+#   stroke by hand, at 1.04, 1.05 and 4.3.) None: off
+CENSUS = None      # a list where a rule records what it measured, for a census (None: nothing is kept)
+
+
+def chord_wholes(layers: dict, heads: list[dict]) -> int:
+    """Takes the stem from the whole notes that touch a chord of half notes (CHORD_WHOLE). Returns how many."""
+    if not CHORD_WHOLE:
+        return 0
+    space, count = layers['space'], 0
+    for head in heads:
+        if not head['hollow'] or len(head['stems']) != 1 or head.get('thin'):
+            continue
+        stem = head['stems'][0]
+        down = stem['direction'] == 'down'
+        mates = [other for other in heads if other is not head and other['hollow'] and other['staff'] == head['staff']
+                 and any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= 0.35 * space
+                         and abs(own['end'] - stem['end']) <= 0.5 * space for own in other['stems'])]
+        if not mates or any((other['cy'] < head['cy']) if down else (other['cy'] > head['cy']) for other in mates):
+            continue
+        long, rise, area, side = _hole_axis(layers, head)
+        acts = area >= 6 and CHORD_WHOLE[0] <= rise <= CHORD_WHOLE[1] and CHORD_WHOLE[2] <= long <= CHORD_WHOLE[3]
+        if CENSUS is not None:
+            CENSUS.append({'cx': head['cx'], 'cy': head['cy'], 'long': long, 'rise': rise, 'area': area, 'side': side,
+                           'mates': len(mates), 'down': down, 'acts': acts})
+        if acts:
+            head['stems'] = []
+            head['tails'] = {}
+            head['chord_whole'] = True
+            count += 1
+    return count
+
+
 JOINT = (0.45, 1.5, 0.6)   # where a slanted head meets its stem inside a thick staff line: a mark at most this high (staff
 #                            spaces), at most this many places from a larger head of that stem at the same side of
 #                            the stem, and at most this share of its area (None: off)
