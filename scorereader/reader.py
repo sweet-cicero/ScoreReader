@@ -31,6 +31,10 @@ SIGNS = 'strokes'
 TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scorereader.meter)
 CHECK = True         # the music check: the voices of a system agree on the lengths (scorereader.music.agree_lengths)
 REST_HEADS = True    # a head in a printed whole or half rest is no note (scorereader.rests.BLOCK)
+REST_QUARTER = 0.75  # ... and a printed quarter rest too, for the voice that its place names: the upper voice's stands at least
+#                      this many staff spaces over the middle line, the lower voice's as far under it (one in the middle is
+#                      both voices'), where that voice's notes leave a gap of a quarter note or more; the rest is the
+#                      quarter note before the voice's next note (None: no quarter rest is written)
 REST_VOICE = True    # a printed whole or half rest is written into the music for the voice that is silent there: the voice
 #                      of a staff of two parts that has no note in its bar, or the voice whose notes leave a gap where it
 #                      stands; it lasts from that voice's last note before it to its next note in the bar, or to the end
@@ -88,16 +92,18 @@ def voice_places(staves: list[dict], plans: dict) -> dict:
 
 def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[float], blocks: list[dict], space: float,
                 means: dict | None = None) -> dict:
-    """The printed rests of a staff as rests of its voices (see REST_VOICE): {bar number: [{'voice', 'onset', 'length'}]}.
+    """The printed rests of a staff as rests of its voices (see REST_VOICE and REST_QUARTER): {bar number: [{'voice',
+    'onset', 'length'}]}.
     `means` holds the mean place of each voice of the staff (voice_places())."""
     if not blocks or len(built) != len(plan):
         return {}
     edges = [x for x in sorted(bars) if staff['x0'] + 2 * space < x < staff['x1'] - space]
     measures = [sum(1 for x in edges if x < bar[0][0]['x']) for bar in plan]
-    out, alone = {}, []
+    out, alone, quarters = {}, [], {}
     every = [note for bar in built for note in bar]
     for block in sorted(blocks, key=lambda block: block['x']):
-        if REST_APART is not None and _between_stems(block, every, space):
+        quarter = block.get('kind') != 'block'
+        if not quarter and REST_APART is not None and _between_stems(block, every, space):
             continue
         measure = sum(1 for x in edges if x < block['x'])
         if measure not in measures:
@@ -117,6 +123,12 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
             begin, until = max(before, default=Fraction(0)), min(after, default=end)
             if until > begin:
                 gaps[voice] = (begin, until)
+        if quarter:
+            # A quarter rest is the voice's that its place names, where that voice's notes leave room for it.
+            voice = 1 if block['middle'] <= -REST_QUARTER else 2 if block['middle'] >= REST_QUARTER else None
+            if voice in gaps:
+                quarters[(number, voice) + gaps[voice]] = quarters.get((number, voice) + gaps[voice], 0) + 1
+            continue
         if len({note['voice'] for note in notes}) == 1 and not gaps:
             # A bar of one voice that sings on over the rest: the rest is the other voice's, for the whole bar. A whole
             # rest says so itself; a half rest only where a note stands in its columns, or where the notes beside it
@@ -135,7 +147,14 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
         elif len(gaps) == 1:
             # The voice whose notes leave a gap where the rest stands (in a bar of one voice: both voices rest there).
             voice, span = next(iter(gaps.items()))
-            out.setdefault(number, []).append({'voice': voice, 'onset': span[0], 'length': span[1] - span[0]})
+            if not any(rest['voice'] == voice and rest['onset'] < span[1] and span[0] < rest['onset'] + rest['length']
+                       for rest in out.get(number, [])):
+                out.setdefault(number, []).append({'voice': voice, 'onset': span[0], 'length': span[1] - span[0]})
+    # The quarter rests of a gap are its last quarter notes, where the gap holds them all.
+    for (number, voice, begin, until), count in sorted(quarters.items()):
+        if until - begin >= count and not any(rest['voice'] == voice and rest['onset'] < until and until - count < rest['onset'] + rest['length']
+                                              for rest in out.get(number, [])):
+            out.setdefault(number, []).append({'voice': voice, 'onset': until - count, 'length': Fraction(count)})
     # The bars of one voice, in runs of bars that follow each other: the stems of a part alone say nothing of its voice,
     # so the run's notes are the voice whose notes stand nearer on the page, and the rest is the other voice's.
     runs = []
@@ -375,7 +394,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             for bar in held(built, marks, pitch, space, holding):
                 drone.append({'notes': [{name: value for name, value in note.items() if name != 'head'} for note in bar],
                               'clef': clefs[index], 'key': keys[index]})
-        quiet = voice_rests(staff, built, plans[index], bars[index], [block for block in blocks if block['staff'] == index], space,
+        quiet = voice_rests(staff, built, plans[index], bars[index], [block for block in blocks if block['staff'] == index]
+                            + ([rest for rest in rests if rest['staff'] == index] if REST_QUARTER is not None else []), space,
                             places.get(staff['number'])) if REST_VOICE else {}
         for number, bar in enumerate(built):
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
