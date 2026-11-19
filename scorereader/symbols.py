@@ -261,6 +261,17 @@ MIDDLE_OWN = True     # ... and not where the neighbour of its own kind holds a 
 #                     of it: the end of a bow that runs into the column is no stem of a note (False: off)
 TWO_HEADS = (1.5, 1.35)   # a filled mark with a stem up and a stem down is two heads when it is this many times as wide
                      # as the heads of the page (side by side), or this many times as high (one over the other); (): off
+GLUED_TWO = (1.7, 0.6, 1.6, 0.6)   # a mark that is no head only because it is too high, or that is a beam only
+#                     because the stem of a neighbour leaves it, is the two heads of two voices a third apart that touch,
+#                     where a stem goes up at its right and a stem goes down at its left: it is cut as TWO_HEADS cuts, where
+#                     it is at least the first number times the box of the page's heads, each part from the second to the
+#                     third number times that box, and each part at least the fourth number times as high as the page's
+#                     heads (a clef cut so leaves a large part and a thin one) (): off
+GLUED_THROUGH = (0.5, 0.4)   # ... but not where upright ink leaves the mark up and down, each at least the first number
+#                     of staff spaces, in columns at most the second number apart: a bar line or a stem through a box of
+#                     staff lines on a thick copy
+GLUED_FAT = 0.5      # ... and each part holds a circle of ink at least this share of the page's heads high (a half note
+#                     whose rim is thin is refused too: two pairs of glued half notes on a copy by hand)
 
 
 def pitch_place(staff: dict, y: float) -> float:
@@ -1785,7 +1796,7 @@ def _flag_loop(layers: dict, marks: list[dict], mark: dict) -> bool:
     return False
 
 
-def _two_heads(layers: dict, mark: dict) -> list[dict] | None:
+def _two_heads(layers: dict, mark: dict, stacked: bool = False) -> list[dict] | None:
     """The two heads of a mark that has a stem up at its right and a stem down at its left, when the mark is too
     large for one head. Two voices a second apart: a hand draws the lower head at the left with its stem down and
     the upper head at the right with its stem up, and the two strokes run into each other. Two voices a third
@@ -1801,7 +1812,7 @@ def _two_heads(layers: dict, mark: dict) -> list[dict] | None:
     mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
     holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
     window = max(3, int(round(0.2 * space)) | 1)
-    if own_wide >= TWO_HEADS[0] * wide:
+    if own_wide >= TWO_HEADS[0] * wide and not (stacked and own_high >= TWO_HEADS[1] * high):
         if not (downs[0]['x'] <= mark['x0'] + 0.35 * own_wide and ups[0]['x'] >= mark['x1'] - 0.35 * own_wide):
             return None
         smooth = np.convolve(mask.sum(axis=0).astype(float), np.ones(window) / window, mode='same')
@@ -1824,6 +1835,66 @@ def _two_heads(layers: dict, mark: dict) -> list[dict] | None:
             return None
         out.append(dict(part, stems=stems, kind='head', ways=mark['ways']))
     return out
+
+
+def _glued_two(layers: dict, mark: dict) -> list[dict] | None:
+    """The two heads of a mark that read_symbols left without a head (see GLUED_TWO). Two voices a third apart print
+    their heads one over the other, the upper head with its stem up at the right and the lower one with its stem down
+    at the left, and on a heavy print the two touch: the mark is then higher than a head, or the stem of the next note
+    that stands close leaves it too, and it was read as a beam. Paper that the two heads close with a staff line is no
+    hole of either head. None when the mark is no such mark."""
+    space = layers['space']
+    wide, high = layers['head']
+    ways = mark.get('ways')
+    if not ways or not (is_stem(ways['up_right'], space) and is_stem(ways['down_left'], space)):
+        return None
+    own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    if mark['kind'] is None and not (HEAD_WIDE[0] * space <= own_wide <= HEAD_WIDE[1] * space
+                                     and own_high > HEAD_HIGH[1] * space and not (WORD_MARKS and _in_words(layers, mark))):
+        return None
+    if mark['area'] < GLUED_TWO[0] * wide * high:
+        return None
+    # A bar line or a stem that runs through the mark makes a box with the staff lines, and the box is no head: the
+    # upright ink leaves the mark up and down in one column.
+    for up, down in (('up_right', 'down_right'), ('up_left', 'down_left')):
+        if ways[up] and ways[down] and min(ways[up]['past'], ways[down]['past']) >= GLUED_THROUGH[0] * space \
+                and abs(ways[up]['x'] - ways[down]['x']) <= GLUED_THROUGH[1] * space:
+            return None
+    # One over the other first: the stem of a neighbour can make the mark as wide as it is high.
+    parts = _two_heads(layers, dict(mark, kind='head', stems=[ways['up_right'], ways['down_left']], hole=0.0), True)
+    if not parts or any(not GLUED_TWO[1] * wide * high <= part['area'] <= GLUED_TWO[2] * wide * high
+                        or part['y1'] - part['y0'] + 1 < GLUED_TWO[3] * high for part in parts):
+        return None
+    # The paper that the two heads close between them (with a staff line, a stem or a sign) reaches the cut.
+    box = (slice(mark['y0'], mark['y1'] + 1), slice(mark['x0'], mark['x1'] + 1))
+    inside = ((layers['thick'][box] > 0) & (layers['holes'][box] > 0)).astype(np.uint8)
+    count, labels = cv2.connectedComponents(inside, connectivity=8)
+    upper, lower = parts      # cut across: the upper and the lower head; cut down: the left and the right head
+    across = lower['x0'] <= upper['x1']
+    for part in parts:
+        own = np.zeros_like(inside, dtype=bool)
+        own[part['y0'] - mark['y0']:part['y1'] - mark['y0'] + 1, part['x0'] - mark['x0']:part['x1'] - mark['x0'] + 1] = True
+        keep = np.zeros_like(own)
+        for label in range(1, count):
+            cell = labels == label
+            ys, xs = np.nonzero(cell)
+            if across:
+                meets = ys.min() <= upper['y1'] - mark['y0'] + 1 and ys.max() >= lower['y0'] - mark['y0'] - 1
+            else:
+                meets = xs.min() <= upper['x1'] - mark['x0'] + 1 and xs.max() >= lower['x0'] - mark['x0'] - 1
+            if not meets:
+                keep |= cell
+        hole = keep & own
+        # A head is round and full: a circle of ink half as high as the page's heads fits in it. The pieces of staff
+        # lines, of a sharp or of a clef are thin.
+        ink = (layers['thick'][part['y0']:part['y1'] + 1, part['x0']:part['x1'] + 1] > 0) \
+            & ~(layers['holes'][part['y0']:part['y1'] + 1, part['x0']:part['x1'] + 1] > 0)
+        if 2 * float(cv2.distanceTransform(np.pad(ink, 1).astype(np.uint8), cv2.DIST_L2, 5).max()) < GLUED_FAT * high:
+            return None
+        part['hole'] = float(hole.sum()) / part['area']
+        part['hole_cy'] = float(mark['y0'] + np.nonzero(hole)[0].mean()) if hole.any() else None
+        part['glued_two'] = True
+    return parts
 
 
 def _glued_sign(layers: dict, mark: dict) -> list[dict] | None:
@@ -2132,6 +2203,8 @@ def read_symbols(layers: dict) -> dict:
         split = []
         for mark in marks:
             parts = _two_heads(layers, mark) if mark['kind'] == 'head' and len(mark['stems']) == 2 else None
+            if GLUED_TWO and parts is None and mark['kind'] in (None, 'beam'):
+                parts = _glued_two(layers, mark)
             split += parts or [mark]
         marks = split
     # The page teaches how large the holes of its hollow heads are. A heavy print leaves a slit of a hole, and there

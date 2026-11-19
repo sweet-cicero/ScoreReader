@@ -47,7 +47,7 @@ STACKED = 0.6        # two notes of one voice on two stems begin together when t
 #                      spaces apart (a third voice on a staff: the basses in octaves under the tenors, a part that divides
 #                      with a stem for each note); a note that follows another stands a head's width or more after it
 #                      (0: off)
-STACKED_NEAR = (1.3, 0.25, 2, 0.85, 0.8)   # ... and where a small note stands over a chord, set to the left with a stem of
+STACKED_NEAR = (1.3, 0.3, 2, 0.85, 0.8)   # ... and where a small note stands over a chord, set to the left with a stem of
 #                      its own, so that the chord's upper head stands in the place of its stem: the middles at most
 #                      this many staff spaces apart, at most this much paper between the boxes of the two heads, the
 #                      small note at most this many places higher, both heads filled, and the small head at most the
