@@ -24,14 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.8 % on
-scans; 91 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,950 of 22,597, counted by the page;
-21,877 of 22,606 as typed; 37 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
-syllable, 20 both, 23 have no note that is not there, 16 are whole in all three; 645 printed notes and 195 syllables
+Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.9 % on
+scans; 91 scores at 99 % or more), 97.2 % of the notes on the clean copies (21,953 of 22,597, counted by the page;
+21,880 of 22,606 as typed; 37 of the 78 counted scores at 99 %; 27 scores read every printed note, 35 every
+syllable, 21 both, 23 have no note that is not there, 17 are whole in all three; 642 printed notes and 195 syllables
 are lacking and 592 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
-On the fresh test set, which no rule was set on: 95.5 % of the notes (39,881 of 41,761; 97 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.5 % of the notes (39,884 of 41,761; 97 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -829,6 +829,16 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   counts from a tenth of the staff's notes. A print stems a part that sings alone by its place, so voice 1 of a
   lower staff can be the bass, and a new voice label then crosses the split (a clean score lost a note and a
   syllable). A page's staff holds too few notes to choose the voice by its mean (4 notes of a clean score lost).
+- A sign that the reader finds and does not use is traced through the step that gives signs to their notes
+  (`signs.note_signs`): one reading of the clean pages that writes down every sign of the pairing with the place
+  where it is dropped, set beside the notes that are read a semitone off, named the causes (a census outside git,
+  with the wide test). The column of a stem is that of its far end, and a stem that was followed into a slur ends
+  beside its own ink there: a stroke is asked against the stem's middle column, and it is no part of the stem
+  where a column of paper parts the two (`signs.STEM_APART`).
+- A wrong sign costs every later note of its pitch in the bar. A rule that took a head read from its stem
+  (`symbols.thin_heads`) where that stem is a stroke of a sign gained 2 notes on LitChoir and lost none, and lost 6
+  on one piece of the fresh set by one true head (`signs.THIN_SIGN`, off). Its first form asked only the columns
+  of the sign and took a true head over a natural that stands lower on the staff: a sign is asked in its own rows.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

@@ -87,6 +87,18 @@ NATURAL_LONE = True             # the right stroke of a natural is no stem of a 
 SIGN_WORDS = True               # the strokes of a sign are read without the rows of the words (False: with them)
 GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies on all of them and changes the one at
                                 # its place (False: a sign that lies on a head at another place is none)
+GLUED_BEFORE = 1.0              # a mark that begins at least this many head widths before a sign and ends where the sign
+                                # ends is the head before the sign, with a bar of the sign glued to it: the sign does not
+                                # lie on it (None: such a sign lies on a head, and is none)
+THIN_SIGN = False               # a head that was read from its stem (symbols.thin_heads) whose stem is a stroke of a
+                                # sign of two strokes is no head: the ink at the stroke's end is a slur, or a bar of the
+                                # sign (False: the head stays, and the stroke is its stem). Off: it gained 2 notes on
+                                # the clean copies and took 4 notes that are not there away, and lost 6 notes on one
+                                # piece of the fresh set; the thin heads of LitChoir show no measure that parts them
+STEM_APART = 0.25               # a stroke beside the stem of a head is no part of that stem where a column between the
+                                # stem's middle column and the stroke holds ink (without the staff lines) in under this
+                                # share of the rows that they share: the stroke of a sign close behind the stem of the
+                                # note before it (None: the place alone, as it was)
 
 
 NATURAL_ROWS = 1.9       # the two strokes of a natural stand side by side for at most this many staff spaces (1.5: as it
@@ -224,12 +236,25 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     full = [head for head in own if head.get('thin') or head['x1'] - head['x0'] + 1 >= NARROW * wide]
     small = [head for head in own if not any(head is other for other in full)]
 
+    def apart(stroke: dict, stem: dict, top: float, bottom: float) -> bool:
+        # A column of paper between the stem's middle column and the stroke, in the rows that they share.
+        column = int(stem.get('mid', stem['x']))
+        if column < stroke['x0']:
+            columns = range(column + 1, int(stroke['x0']))
+        else:
+            columns = range(int(stroke['x1']) + 1, column)
+        rows = layers['bare'][int(max(top, stroke['top'])):int(min(bottom, stroke['bottom'])) + 1]
+        return len(columns) > 0 and rows.shape[0] > 0 \
+            and any(float(rows[:, x].mean()) < STEM_APART for x in columns if 0 <= x < rows.shape[1])
+
     def stem_of_head(stroke: dict, beside: float = 0.3) -> bool:
         for head in full:
             for stem in head['stems']:
                 top, bottom = min(head['cy'], stem['end']), max(head['cy'], stem['end'])
                 if stroke['x0'] - beside * space <= stem['x'] <= stroke['x1'] + beside * space \
                         and min(bottom, stroke['bottom']) - max(top, stroke['top']) >= 0.5 * (stroke['bottom'] - stroke['top']):
+                    if STEM_APART is not None and beside > 0 and apart(stroke, stem, top, bottom):
+                        continue
                     return True
         return False
 
@@ -309,6 +334,23 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                         any(stroke['x0'] - 1 <= stem['x'] <= stroke['x1'] + 1 for stroke in parts) for stem in head['stems']):
                     ghosts.append(head)
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
+    strays = []
+    if THIN_SIGN:
+        # A thin head is read from an upright stroke and a small piece of ink at its end. The stroke of a sign has
+        # such pieces at its ends too: the end of a slur that passes under it, the bar of a natural.
+        for sign in pair_signs(layers, staff, strokes):
+            parts = [stroke for stroke in strokes if sign['x0'] <= stroke['x'] <= sign['x1']
+                     and stroke['top'] <= sign['bottom'] and sign['top'] <= stroke['bottom']]
+            if len(parts) < 2:
+                continue
+            for head in full:
+                if head.get('thin') and len(head['stems']) == 1 and any(
+                        stroke['x0'] - 1 <= head['stems'][0]['x'] <= stroke['x1'] + 1
+                        and min(stroke['bottom'], max(head['cy'], head['stems'][0]['end']))
+                        - max(stroke['top'], min(head['cy'], head['stems'][0]['end'])) >= 0.5 * (stroke['bottom'] - stroke['top'])
+                        for stroke in parts):
+                    strays.append((sign, head))
+        full = [head for head in full if not any(head is stray for _, stray in strays)]
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     legs = []
     if SHARP_STEM or NATURAL_STEM:
@@ -360,6 +402,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
         on = lying(sign, full)
+        if GLUED_BEFORE is not None:
+            on = [head for head in on if not (abs(head['x1'] - sign['x1']) <= 1 and sign['x0'] - head['x0'] >= GLUED_BEFORE * wide)]
         if PAIR_FREE and on and (sign.get('wide', 0.0) > 0.45 or sign.get('touch')):
             continue      # a heavy stroke and the rim of a hollow head, or the stroke at the side of a breve; or the
             #               heavy stem of a head on a ledger line, cut in two strokes that touch
@@ -375,7 +419,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         past = [head for head in on if head['x1'] - sign['x1'] >= GLUED * wide]
         if on and (len(past) != len(on) or not glued if GLUED_CHORD else len(glued) != len(on)):
             continue
-        drop = lying(sign, small) + bowls + lying(sign, ghosts)
+        drop = lying(sign, small) + bowls + lying(sign, ghosts) + [head for other, head in strays
+                                                                    if other['x0'] <= sign['x1'] and sign['x0'] <= other['x1']]
         best = None
         for head in own:
             if any(head is other for other in drop):
