@@ -104,6 +104,10 @@ TIE_PAGE = (3.0, 0.45, 1.8, 1.0, 0.9, 0.45, 3.0, 2.0)   # a tie over the end of 
 #                         before the note: the bow begins after the time signature) and the note stands at most this
 #                         many staff spaces after the first note of the system. A page that is read alone marks the
 #                         leaving half only: the ink before a first note (clef, key, time) looks like a short bow.
+TIE_BREAK_BOTH = (0.3, 0.5)   # a head that two voices share (a stem up and a stem down) is tied twice over the end of a line
+#                         too (None: off): the next line sets the two voices side by side where their notes differ in
+#                         length, and the head of the other voice that begins at most [0] staff spaces inside the first
+#                         one's box and [1] after it, at the same place, is tied when a bow comes to it as well
 TIE_BREAK_LINE = 0.5     # the long bow over the end of a line may begin in a staff line beside its head: the line hides
 #                         its first part (None: off). Such a bow ends at the end of the staff: its way stops this many
 #                         staff spaces or more before the column to which it is followed, one staff space past the
@@ -403,6 +407,16 @@ def _over_break(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict)
                 tied = come is not None and come['long'] >= TIE_BREAK[7] and come['seen'] >= TIE_BREAK[8]
             if tied:
                 found.append((one, two))
+                if TIE_BREAK_BOTH and ways == {'up', 'down'} and len(voices[id(two)]) < 2:
+                    for other in theirs:
+                        if other is not two and round(other['place']) == place and voices[id(other)] != voices[id(two)] \
+                                and -TIE_BREAK_BOTH[0] * space <= other['x0'] - two['x1'] <= TIE_BREAK_BOTH[1] * space \
+                                and not other.get('tie_stop'):
+                            mirror = dict(other, x0=width - 1 - other['x1'], x1=width - 1 - other['x0'])
+                            come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - int(staves[target]['x0']), space)
+                            if come is not None and come['long'] >= TIE_BREAK[7] and come['seen'] >= TIE_BREAK[8]:
+                                found.append((one, other))
+                            break
     return found
 
 

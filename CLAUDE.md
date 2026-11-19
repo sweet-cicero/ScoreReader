@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.9 % on
-scans; 91 scores at 99 % or more), 97.2 % of the notes on the clean copies (21,953 of 22,597, counted by the page;
-21,880 of 22,606 as typed; 37 of the 78 counted scores at 99 %; 27 scores read every printed note, 35 every
-syllable, 21 both, 23 have no note that is not there, 17 are whole in all three; 642 printed notes and 195 syllables
-are lacking and 592 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
+scans; 91 scores at 99 % or more), 97.2 % of the notes on the clean copies (21,958 of 22,598, counted by the page;
+21,884 of 22,606 as typed; 37 of the 78 counted scores at 99 %; 29 scores read every printed note, 36 every
+syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 638 printed notes and 193 syllables
+are lacking and 588 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+files and a list of words (6,051 of 6,244, counted by the page; 5,997 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
+89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6227 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,884 of 41,761; 97 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -839,6 +839,33 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   (`symbols.thin_heads`) where that stem is a stroke of a sign gained 2 notes on LitChoir and lost none, and lost 6
   on one piece of the fresh set by one true head (`signs.THIN_SIGN`, off). Its first form asked only the columns
   of the sign and took a true head over a natural that stands lower on the staff: a sign is asked in its own rows.
+- The staves of a system begin in the same columns. A staff that shows no clef and no key of its own is given the
+  room that the page's other staves take from their left ends, and where a scan cuts the left end of a system that
+  room reaches past the first notes. Such a staff begins where a staff of its own system begins that shows its start
+  (`starts.SYSTEM_START`): only earlier, and only by a staff with the same left end. A later start takes notes
+  away (72 staves when each page is read alone) and was not taken. A census of the starts that reads each page
+  alone names more pages than the reading of the hymns changes (six and two): the key and the clefs of the page
+  before go into a start. A page whose staves are found at odd places gave the limit for the left end.
+- A word that a row leaves open goes on in the first row under the same part's staff in the next system, and the
+  words step hands that row the open letters (`ocr.MEND_BEFORE`): the rest of the word is no word of the list
+  alone, and was mended into one or lost to another reading. A piece of one letter is a stray stroke as often as
+  a letter (5 syllables gained and 2 lost on all scan pages with it, 5 and none without). A first word that is
+  taken from another reading can be longer than the word that it replaces, and the words of the row in its columns
+  go with it. A syllable too many costs nothing in the count: the replay prints every row that such a rule changes
+  (`CARRYSEE`), and each is looked at.
+- Two stems that meet end to end in one column, one going down from the upper head and one going up from the lower,
+  are one stroke with a head at each end, and no chord has one. The head with the short stem is a mark at the end
+  of the other note's stem (`symbols.STEM_MEET`: a tick by pen, the end of a bow; four such pairs on LitChoir's
+  pages by a count from the stored notes, none on the fresh set).
+- Two half notes a second apart at one stem are one mark, and only one of the two insides is round enough to be
+  filled; the other is a ragged slit in the box of the head that was read (`symbols.SLIT_BESIDE`: of 15 such slits
+  of the clean pages 2 are a second head, far beside the head's own inside in a wide box). A chord that a hand drew
+  over holds more pieces of inside in that box, and the new head there took a syllable from its note: only the
+  full reading with the words showed it. A head that a rule should make and does not is traced in a copy of the
+  code that numbers every way out of the loop.
+- A head that two voices share at the end of a line is tied twice where the next line sets the two voices side by
+  side (`ties.TIE_BREAK_BOTH`, a rule for one case). The list of the notes by the page also knows a note that the
+  page prints for a part at a moment where the typed hymn gives the part none (`own`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules

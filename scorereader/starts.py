@@ -35,6 +35,12 @@ FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef'
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
 OPENING = 3.0       # a clef begins at most this many staff spaces after the line that opens its system (0: off)
 LOST_CLEF = 3.4     # the room of a clef that the copy lost, in staff spaces from the staff's left end
+SYSTEM_START = 1.0  # the staves of a system begin in the same columns: a staff that shows no clef and no key of its own
+#                     (the scan cut them off, or its "clef" is a note) is given the room that the page's other staves
+#                     take from their left ends. Where a staff of its own system (one that begins within this many
+#                     staff spaces of the staff's left end) shows its clef or key and its notes begin this many staff
+#                     spaces or more before that, the scan cut the left end of the system, and the notes of the staff
+#                     begin there too (None: off)
 KEY_LOST = (0.35, 2)    # where most staves show no key, a key that this many staves show this well (miss) is the page's key (None: off)
 KEY_STRONG = (0.5, 2)   # a key of two or more signs that this many staves show this well wins over fewer signs of its sort (None: off)
 KEY_WEAK = True         # one unclear mark alone (see read_start) is a witness for a lost key only beside a clear one
@@ -836,14 +842,25 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
     for start, staff in zip(starts, staves):
         if start['clef']:
             lefts.setdefault(staff['system'], []).append(start['left'])
+    shows: dict = {}     # for each system: where the staves that show their own clef or key begin
+    guessed = []
     for (end, shown), start, staff in zip(seen, starts, staves):
         left = start['left'] if start['clef'] or staff['system'] not in lefts else float(np.median(lefts[staff['system']]))
         if usual is not None and (end is None or (end - left) / staff['space'] > usual + USUAL_START):
-            end = left + usual * staff['space']
+            end, shown = left + usual * staff['space'], None
         elif end is None:
             end = max(start['x1'], left + min(room, 2 * LOST_CLEF) * staff['space'])
             end += (abs(key) * 1.1 + 1.0) * staff['space'] if key else 0.0
         ends.append(end)
+        guessed.append(shown is None)
+        if shown is not None:
+            shows.setdefault(staff['system'], []).append((end, staff['x0']))
+    if SYSTEM_START is not None:
+        for index, staff in enumerate(staves):
+            # The staves of a system have one left end: a staff that begins elsewhere is no witness.
+            there = [end for end, left in shows.get(staff['system'], []) if abs(left - staff['x0']) <= SYSTEM_START * staff['space']]
+            if guessed[index] and there and ends[index] - float(np.median(there)) >= SYSTEM_START * staff['space']:
+                ends[index] = float(np.median(there))
     keys = system_keys(starts, [staff['system'] for staff in staves], key)
     if TIME:
         # The time signature stands between the key signature and the first note.

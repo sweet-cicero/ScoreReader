@@ -105,6 +105,15 @@ MEND_PAIR_RARE = 20      # two words side by side are mended into one (MEND_PAIR
 #                          is never joined
 MEND_OPEN = True         # a word that a hyphen leaves open at the end of a row ('foun-', the row goes on with
 #                          'tain') is not mended by a letter added at its end ('found'): the word is not whole there
+MEND_BEFORE = 2          # the first word of a row is the rest of the word that the row before leaves open at its
+#                          end ('glo-', and the next row begins 'ri-ous') where the list holds the two together:
+#                          it is not mended alone ('pious'). A letter of it that was read wrongly is mended by the
+#                          whole word ('glo-' and 'yi-ous' is 'glorious') where both pieces have this many letters
+#                          or more, and where Tesseract is not sure of the first word and it is no rest of the open
+#                          word, the first word of another reading that is one, of this many letters or more, takes
+#                          its place ('Moth-' and 'were', another reading begins 'er'). A piece of one letter is a
+#                          stray stroke as often as a letter: 'has-' and 'v' is no 'hast'. The row before is the
+#                          first row under the staff of the same part in the system before. 0: off
 MEND_S = True            # an s at the end of a word is never taken away and never added by the mending: the list
 #                          holds 'sake' and lacks 'sakes', and the page prints 'sakes'
 LONE_I = (0.1, 0.6, 0.2, 0.7, 1.5)   # a stroke that stands alone between two words ('|') is the word I where its
@@ -721,7 +730,7 @@ def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None
 
 
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
-          agreed: frozenset[str] | set[str] = frozenset(), alike=None) -> list[dict]:
+          agreed: frozenset[str] | set[str] = frozenset(), alike=None, carried: str = '') -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
     there ('tnose', 'orlent', 'trinty'); the hymns of one church use the same words again and again, and the list
     tells which word was meant. A word is the syllables that hyphens join. Only letters count: capitals, commas and
@@ -729,7 +738,8 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
     word that another reading of the row holds too, see SECOND), and a letter that is a whole
     syllable is never taken away (it is a word of its own whose hyphen was read wrongly: 'O-joy'). A vowel that is
     missing between two syllables becomes a syllable of its own ('Trin-ty' is 'Trin-i-ty'), unless the syllable
-    before it has no vowel yet ('Gl-ry' is 'Glo-ry'). `mended` takes each word that was mended, as it was read."""
+    before it has no vowel yet ('Gl-ry' is 'Glo-ry'). `mended` takes each word that was mended, as it was read.
+    `carried` are the letters of the word that the row before leaves open (see MEND_BEFORE)."""
     found: list[dict] = []
     word: list[dict] = []
     ahead = ''
@@ -743,6 +753,20 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
         found.extend(word)
         parts, word = word, []
         before, ahead = ahead, read
+        if MEND_BEFORE and carried and len(found) == len(parts) and read and read not in known and read not in agreed:
+            # The first word of the row with the piece that the row before leaves open.
+            if carried + read in known:
+                continue
+            rest = {(at, read[:at] + sign + read[at + 1:]) for at in range(len(read)) for sign in ABC
+                    if sign != read[at] and known.get(carried + read[:at] + sign + read[at + 1:], 0) >= MEND[1]}
+            if len(rest) == 1 and sure < MEND[2] and min(len(carried), len(read)) >= MEND_BEFORE:
+                (at, new), = rest
+                part, place = places[at]
+                text = part['text']
+                part['text'] = text[:place] + (new[at].upper() if text[place].isupper() else new[at]) + text[place + 1:]
+                if mended is not None:
+                    mended.append(read)
+                continue
         if len(read) < MEND[0] or read in known or read in agreed:
             continue
         odd = _odd(read, known) if MEND_ODD or MEND_OFTEN else 0
@@ -1002,7 +1026,7 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     if MEND and mend and mending:
         if MEND_PAIR:
             row = _mend_pair(row, known, mended)
-        row = _mend(row, known, mended, agreed, alike)
+        row = _mend(row, known, mended, agreed, alike, band.get('carried', ''))
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
         return [], -1.0, False
@@ -1137,6 +1161,46 @@ def _other_pair(row: list[dict], others: list[list[dict]], known: dict[str, int]
     return [part for word in words for part in word]
 
 
+def _open(row: list[dict]) -> str:
+    """The letters of the word that a row leaves open at its end (its last syllable has a hyphen), or ''."""
+    if not row or not row[-1].get('join'):
+        return ''
+    word = []
+    for syllable in reversed(row):
+        if word and not syllable.get('join'):
+            break
+        word.append(syllable['text'])
+    return ''.join(sign for text in reversed(word) for sign in text.lower() if sign.isalpha())
+
+
+def _other_before(row: list[dict], others: list[list[dict]], known: dict[str, int], carried: str) -> list[dict]:
+    """The first word of the reading that was kept, where Tesseract is not sure of it and it is not the rest of the
+    word that the row before leaves open, is the first word of another reading that is (see MEND_BEFORE), where
+    the other readings begin with one such word only. That word can be longer than the first word of the row
+    ('rec', 'a', 'tion' and 'rec-tion'): the words of the row in its columns go with the first."""
+
+    def letters(word: list[dict]) -> str:
+        return ''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
+
+    words = _read_words(row)
+    if not words or carried + letters(words[0]) in known or min(part.get('sure', 0.0) for part in words[0]) >= MEND[2]:
+        return row
+    left, right = words[0][0]['x0'], words[0][-1]['x1']
+    meant: dict[str, list[dict]] = {}
+    for other in others:
+        there = _read_words(other)
+        if there and len(letters(there[0])) >= MEND_BEFORE and carried + letters(there[0]) in known \
+                and min(right, there[0][-1]['x1']) > max(left, there[0][0]['x0']):
+            meant[letters(there[0])] = there[0]
+    if len(meant) != 1:
+        return row
+    (_, there), = meant.items()
+    # The words of the row that lie in the columns of that word are pieces of it.
+    after = [word for word in words[1:] if (word[0]['x0'] + word[-1]['x1']) / 2 > there[-1]['x1']]
+    return [dict(part) for part in there[:-1]] + [dict(there[-1], join=words[0][-1]['join'] if len(after) == len(words) - 1 else there[-1]['join'])] \
+        + [part for word in after for part in word]
+
+
 def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True,
           ways: dict[str, tuple[str, ...]] | None = None, more: tuple[int, ...] = ()) -> list[dict]:
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
@@ -1183,6 +1247,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         if whole:
             break
     row = best[0] if best else []
+    if MEND_BEFORE and known and mend and band.get('carried') and len(rows) > 1:
+        row = _other_before(row, [other for other in rows if other is not row], known, band['carried'])
     if OTHER_SIZE and known and mend and len(rows) > 1:
         row = _other_size(row, [other for other in rows if other is not row], known)
     if PAIR_OTHER and known and mend and len(rows) > 1 and getattr(known, 'pairs', None):
@@ -1256,12 +1322,20 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
             bands = marked
         mend = bool(known) and _fits([(read(HIGH), band) for (read, _), band in zip(readers, bands)], grey, known)
         under: dict[int, list[tuple[list[dict], float]]] = {}
+        opened: dict = {}         # the first row under a staff of each part: the word that its last hyphen leaves open
         for number, ((read, more), band) in enumerate(zip(readers, bands)):
-            row = [dict(syllable, band=(page, number)) for syllable in _pick(read, grey, band, known, mend, ways, more)]
             # The rows under one staff, from the top (as scorereader.lyrics.set_under() gives a row to the staff over it).
             over = [index for index, staff in enumerate(layers.get('staves') or []) if staff['rows'][4] < band['top']]
-            if row and over and band.get('with') is None:
-                under.setdefault(max(over, key=lambda index: layers['staves'][index]['rows'][4]), []).append((row, _sure(read(HIGH))))
+            above = max(over, key=lambda index: layers['staves'][index]['rows'][4]) if over else None
+            leads = above is not None and band.get('with') is None and above not in under
+            voice = layers['staves'][above].get('number') if leads else None
+            if MEND_BEFORE and leads and opened.get(voice):
+                band = dict(band, carried=opened[voice])
+            row = [dict(syllable, band=(page, number)) for syllable in _pick(read, grey, band, known, mend, ways, more)]
+            if leads:
+                opened[voice] = _open(row)
+            if row and above is not None and band.get('with') is None:
+                under.setdefault(above, []).append((row, _sure(read(HIGH))))
             found.append(row)
         for rows in under.values():
             if _stray_first(rows):
