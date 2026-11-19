@@ -101,6 +101,8 @@ SLIT_SPAN = 2        # a quarter note (with a dot or without) whose head on a li
 #                      add up to this many times the note's length or more, the note is a half note whose slit the
 #                      print closed (0: off)
 COLUMN = 0.75        # two notes of two voices sound together when their heads are at most this many staff spaces apart
+WHOLE_PAIR = True    # two whole notes one over the other, with no note with a stem beside them and no third head in
+#                      their column, are the two voices of the staff (the upper one voice 1): each votes on its length
 
 
 def key_alters(key: int) -> dict[int, int]:
@@ -228,6 +230,12 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
             partner = min(near, key=lambda item: item[0])[1]
             event['voice'] = 3 - partner['voice']
             event['partner'] = partner
+    if WHOLE_PAIR:
+        lone = [event for event in events if event['stem_x'] is None and 'partner' not in event and event['length'] >= 4]
+        for event in lone:
+            column = [other for other in lone if abs(other['x'] - event['x']) <= COLUMN * space]
+            if len(column) == 2 and column[0]['place'] != column[1]['place']:
+                event['voice'] = 1 if event['place'] == max(other['place'] for other in column) else 2
     edges = [x for x in sorted(bars) if staff['x0'] + 2 * space < x < staff['x1'] - space]
     measures = [[] for _ in range(len(edges) + 1)]
     for event in events:

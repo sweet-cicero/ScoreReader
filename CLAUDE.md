@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.8 % on
-scans; 90 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,948 of 22,597, counted by the page;
-21,875 of 22,606 as typed; 36 of the 78 counted scores at 99 %; 26 scores read every printed note, 36 every
-syllable, 20 both, 22 have no note that is not there, 15 are whole in all three; 647 printed notes and 194 syllables
-are lacking and 595 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,050 of 6,244, counted by the page; 5,996 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
+scans; 91 scores at 99 % or more), 97.1 % of the notes on the clean copies (21,950 of 22,597, counted by the page;
+21,877 of 22,606 as typed; 37 of the 78 counted scores at 99 %; 26 scores read every printed note, 35 every
+syllable, 20 both, 23 have no note that is not there, 16 are whole in all three; 645 printed notes and 195 syllables
+are lacking and 592 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+files and a list of words (6,049 of 6,244, counted by the page; 5,995 of 6,259 as typed; 94.8 % of the whole words; 36 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6226 of 6901).
-On the fresh test set, which no rule was set on: 95.5 % of the notes (39,879 of 41,761; 96 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.5 % of the notes (39,881 of 41,761; 97 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -821,6 +821,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   size wins. A census of every mend of an open piece in every reading parted the kinds: a letter added at its end
   makes the word that the next row goes on from ("foun" to "found"), and only that mend is held back
   (`ocr.MEND_OPEN`).
+- Two whole notes one over the other with no stem near them are the two voices of their staff (`music.WHOLE_PAIR`),
+  and each votes on its length. Set after the vote, the voices alone gained 1 note and lost 4: the gain is in the
+  votes, where two voices count twice. A pair that votes twice carries a misread dot twice too, and the losses of
+  the first form were one engraving's last chord of dotted whole notes, typed as whole notes: the page was right.
+- The count splits a staff by its voices: the voice that sings higher on the whole is the upper part, and a voice
+  counts from a tenth of the staff's notes. A print stems a part that sings alone by its place, so voice 1 of a
+  lower staff can be the bass, and a new voice label then crosses the split (a clean score lost a note and a
+  syllable). A page's staff holds too few notes to choose the voice by its mean (4 notes of a clean score lost).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
