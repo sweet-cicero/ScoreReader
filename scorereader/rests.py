@@ -95,3 +95,58 @@ def in_rest(head: dict, rests: list[dict], space: float) -> bool:
     """Whether the middle of a head lies in a rest of its staff."""
     return any(rest['staff'] == head['staff'] and rest['x0'] - REACH * space <= head['cx'] <= rest['x1'] + REACH * space
                and rest['top'] - REACH * space <= head['cy'] <= rest['bottom'] + REACH * space for rest in rests)
+
+
+BLOCK = (0.95, 1.8, 0.5, 0.9, 0.82, 0.8, 2.25)
+#                                    a whole or a half rest is a block from the first to the second number of staff
+#                                    spaces wide and from the third to the fourth high, whose box is at least the fifth
+#                                    number ink, whose columns are nearly all ink over its height (at least the sixth
+#                                    number of them), and whose middle lies at most the last number of staff spaces from
+#                                    the middle line of its staff (None: the blocks are not read)
+
+
+HANG = (0.15, 0.1)                   # a block hangs from a line where its top is at most the first number of staff spaces
+#                                      over the line and the second under it (the top of a whole rest), and
+SIT = (0.0, 0.2)                     # sits on a line where its bottom is from the first to the second number under it
+#                                      (the bottom of a half rest: the line is ink under the block)
+
+
+def block_rests(layers: dict, ends: list[float], measure: bool = False) -> list[dict]:
+    """The printed whole and half rests of a page, as quarter_rests() gives the quarter rests, with 'kind' 'block'.
+    With measure, every piece of the size of a block with its measures ('fill', 'square', 'middle'), and 'rest'
+    whether it passes."""
+    if BLOCK is None:
+        return []
+    space = layers['space']
+    ink = layers['ink'] > 0
+    free = layers['free'].astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(free, connectivity=8)
+    out = []
+    for number in range(1, count):
+        x, y, wide, high = (int(value) for value in stats[number][:4])
+        if not (0.8 * space <= wide <= 1.9 * space and 0.25 * space <= high <= 0.95 * space):
+            continue
+        at = y + high / 2
+        index = next((index for index, staff in enumerate(layers['staves'])
+                      if staff['rows'][0] - 2 * space <= at <= staff['rows'][4] + 2 * space
+                      and staff['x0'] <= x and x + wide <= staff['x1']), None)
+        if index is None or x <= ends[index]:
+            continue
+        box = ink[y:y + high, x:x + wide]
+        fill = float(box.mean())
+        square = float((box.sum(axis=0) >= 0.8 * high).mean())
+        middle = (at - layers['staves'][index]['rows'][2]) / space
+        rest = (BLOCK[0] * space <= wide <= BLOCK[1] * space and BLOCK[2] * space <= high <= BLOCK[3] * space
+                and fill >= BLOCK[4] and square >= BLOCK[5] and abs(middle) <= BLOCK[6])
+        if rest or measure:
+            # A whole rest hangs from a line, a half rest sits on a line (the lines and the ledger lines next to them).
+            rows = layers['staves'][index]['rows']
+            lines = [rows[0] + step * (rows[4] - rows[0]) / 4 for step in range(-2, 7)]
+            found = {'staff': index, 'x': x + wide / 2, 'x0': x, 'x1': x + wide, 'top': y, 'bottom': y + high,
+                     'middle': middle, 'kind': 'block',
+                     'hangs': any(-HANG[0] * space <= y - line <= HANG[1] * space for line in lines),
+                     'sits': any(SIT[0] * space <= y + high - line <= SIT[1] * space for line in lines)}
+            if measure:
+                found.update(fill=fill, square=square, wide=wide / space, high=high / space, rest=rest)
+            out.append(found)
+    return out

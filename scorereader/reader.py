@@ -9,6 +9,8 @@ two can be measured side by side on the test kit. Nothing of it is loaded here.
 """
 from __future__ import annotations
 
+from fractions import Fraction
+
 import numpy as np
 
 from .drone import letter_marks, without_breves
@@ -16,7 +18,7 @@ from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, musicxml, staff_columns
 from . import music as _music
-from .rests import in_rest, quarter_rests
+from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import bar_lines, bar_marks, faint_bars, big_holes, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
@@ -28,6 +30,13 @@ from .words import cut_stems, word_bands, word_rows
 SIGNS = 'strokes'
 TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scorereader.meter)
 CHECK = True         # the music check: the voices of a system agree on the lengths (scorereader.music.agree_lengths)
+REST_HEADS = True    # a head in a printed whole or half rest is no note (scorereader.rests.BLOCK)
+REST_VOICE = True    # a printed whole or half rest is written into the music for the voice that is silent there: the voice
+#                      of a staff of two parts that has no note in its bar, or the voice whose notes leave a gap where it
+#                      stands; it lasts from that voice's last note before it to its next note in the bar, or to the end
+#                      of the bar's notes, and never longer than the bar's notes. In a bar of one voice the stems say
+#                      nothing of the voice (a part alone is stemmed by its place on the staff): its notes are the part
+#                      whose notes in the bars of two voices of the staff are nearer in pitch, and the rest the other's
 OCTAVE = 0.4         # a treble staff with a small 8 under its clef sounds an octave lower, when this share of the staves at
                      # its place in the systems show the 8 (scorereader.starts.octave_mark); None: the 8 is not read
 TENORS = 2.5         # a number: a treble staff over the bass staff is the tenors' only when its notes do not sound this many
@@ -42,6 +51,111 @@ def page_starts(grey: np.ndarray, places: list[dict]) -> list[dict]:
     layers = read_layers(grey, places)
     layers['words'] = word_bands(layers)
     return [read_start(layers, index) for index in range(len(layers['staves']))]
+
+
+ALONE_STEP = 1.3     # a half rest in a bar of one voice is the other voice's where the notes beside it stand no further
+#                      apart than this many times the bar's middle step from note to note (see voice_rests)
+ALONE_NEAR = 8.0     # ... and no rest of a bar of one voice that stands further than this many staff spaces from every
+#                      note of its bar (a bar whose bar lines were not read)
+REST_APART = 2.0     # a printed rest stands apart from the notes: a block with the stem of a note at each of its ends, within
+#                      this many staff spaces and in the rows of the stem, is the bow of a tie that a thick copy prints into a
+#                      staff line, between the heads and the beam of a group (None: not asked)
+
+
+def _between_stems(block: dict, notes: list[dict], space: float) -> bool:
+    """Whether a block stands between the stems of two notes (see REST_APART)."""
+    middle = (block['top'] + block['bottom']) / 2
+
+    def stem_at(low, high):
+        return any(low <= stem['x'] <= high and min(note['head']['cy'], stem['end']) <= middle <= max(note['head']['cy'], stem['end'])
+                   for note in notes for stem in note['head']['stems'])
+    return stem_at(block['x0'] - REST_APART * space, block['x0']) and stem_at(block['x1'], block['x1'] + REST_APART * space)
+
+
+def voice_places(staves: list[dict], plans: dict) -> dict:
+    """The mean place of each voice of each staff of a system (by its number), over the bars of the page where both
+    voices have notes: {number: {voice: place}}."""
+    found = {}
+    for index, staff in enumerate(staves):
+        for bar in plans[index]:
+            events = [event for column in bar for event in column]
+            if len({event['voice'] for event in events}) == 2:
+                for event in events:
+                    found.setdefault(staff['number'], {}).setdefault(event['voice'], []).append(event['place'])
+    return {number: {voice: sum(places) / len(places) for voice, places in voices.items()}
+            for number, voices in found.items() if len(voices) == 2}
+
+
+def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[float], blocks: list[dict], space: float,
+                means: dict | None = None) -> dict:
+    """The printed rests of a staff as rests of its voices (see REST_VOICE): {bar number: [{'voice', 'onset', 'length'}]}.
+    `means` holds the mean place of each voice of the staff (voice_places())."""
+    if not blocks or len(built) != len(plan):
+        return {}
+    edges = [x for x in sorted(bars) if staff['x0'] + 2 * space < x < staff['x1'] - space]
+    measures = [sum(1 for x in edges if x < bar[0][0]['x']) for bar in plan]
+    out, alone = {}, []
+    every = [note for bar in built for note in bar]
+    for block in sorted(blocks, key=lambda block: block['x']):
+        if REST_APART is not None and _between_stems(block, every, space):
+            continue
+        measure = sum(1 for x in edges if x < block['x'])
+        if measure not in measures:
+            continue
+        number = measures.index(measure)
+        notes = built[number]
+        if not notes:
+            continue
+        end = max(note['onset'] + note['length'] for note in notes)
+        gaps = {}
+        for voice in (1, 2):
+            own = [note for note in notes if note['voice'] == voice]
+            if not own or any(block['x0'] - 0.5 * space <= note['x'] <= block['x1'] + 0.5 * space for note in own):
+                continue
+            before = [note['onset'] + note['length'] for note in own if note['x'] < block['x0']]
+            after = [note['onset'] for note in own if note['x'] > block['x1']]
+            begin, until = max(before, default=Fraction(0)), min(after, default=end)
+            if until > begin:
+                gaps[voice] = (begin, until)
+        if len({note['voice'] for note in notes}) == 1 and not gaps:
+            # A bar of one voice that sings on over the rest: the rest is the other voice's, for the whole bar. A whole
+            # rest says so itself; a half rest only where a note stands in its columns, or where the notes beside it
+            # stand no further apart than the bar's notes do (the onsets do not count the rest: where both voices
+            # rest, the notes beside it stand far apart). A rest far from every note of its bar is in a bar whose bar
+            # lines were not read.
+            xs = sorted(note['x'] for note in notes)
+            steps = sorted(b - a for a, b in zip(xs, xs[1:]) if b - a > 0.3 * space)
+            left = [x for x in xs if x < block['x0'] - 0.5 * space]
+            right = [x for x in xs if x > block['x1'] + 0.5 * space]
+            stacked = any(block['x0'] - 0.5 * space <= x <= block['x1'] + 0.5 * space for x in xs)
+            even = bool(left and right and steps) and right[0] - left[-1] <= ALONE_STEP * steps[len(steps) // 2]
+            near = min(abs(x - block['x']) for x in xs) <= ALONE_NEAR * space
+            if near and (block.get('hangs') or stacked or even) and number not in alone:
+                alone.append(number)
+        elif len(gaps) == 1:
+            # The voice whose notes leave a gap where the rest stands (in a bar of one voice: both voices rest there).
+            voice, span = next(iter(gaps.items()))
+            out.setdefault(number, []).append({'voice': voice, 'onset': span[0], 'length': span[1] - span[0]})
+    # The bars of one voice, in runs of bars that follow each other: the stems of a part alone say nothing of its voice,
+    # so the run's notes are the voice whose notes stand nearer on the page, and the rest is the other voice's.
+    runs = []
+    for number in sorted(alone):
+        if runs and runs[-1][-1] == number - 1:
+            runs[-1].append(number)
+        else:
+            runs.append([number])
+    for run in runs:
+        notes = [note for number in run for note in built[number]]
+        singer = notes[0]['voice']
+        if means and len(means) == 2:
+            place = sum(note['place'] for note in notes) / len(notes)
+            singer = 1 if abs(place - means[1]) <= abs(place - means[2]) else 2
+        for number in run:
+            for note in built[number]:
+                note['voice'] = singer
+            end = max(note['onset'] + note['length'] for note in built[number])
+            out.setdefault(number, []).append({'voice': 3 - singer, 'onset': Fraction(0), 'length': end})
+    return out
 
 
 def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
@@ -95,6 +209,10 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # A printed quarter rest is no note: its thick middle was read as a head and its thin strokes as a stem.
     rests = quarter_rests(layers, ends)
     heads = [head for head in heads if not in_rest(head, rests, space)]
+    # A printed whole or half rest is no note either: it is a block that hangs from a line or sits on it.
+    blocks = block_rests(layers, ends)
+    if REST_HEADS:
+        heads = [head for head in heads if not in_rest(head, blocks, space)]
     # The pieces of a thick bar line between the staff lines are no heads, and the thin line beside it is no stem.
     heads = without_bar_pieces(layers, heads)
     bars = bar_lines(layers, heads)
@@ -147,7 +265,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                         and sign['top'] - 0.3 * space <= head['cy'] <= sign['bottom'] + 0.3 * space and head is not sign['head']
                         for sign in at_bars)]
     # (The other finders of heads can find a rest again.)
-    heads = [head for head in heads if not in_rest(head, rests, space)]
+    heads = [head for head in heads if not in_rest(head, rests + (blocks if REST_HEADS else []), space)]
     heads = without_bar_pieces(layers, heads)
     heads = without_end_marks(layers, heads)
     for head in heads:
@@ -242,6 +360,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scorereader.drone).
     # It is a part of its own after the melody; its notes are in no list of notes, so no syllable is set under them.
     drone, holding = [], {}
+    places = voice_places(staves, plans) if REST_VOICE else {}
     for index, staff in enumerate(staves):
         built = build_staff(staff, [], bars[index], clefs[index], keys[index], space, plans[index])
         if width == 1 and built:
@@ -256,8 +375,12 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             for bar in held(built, marks, pitch, space, holding):
                 drone.append({'notes': [{name: value for name, value in note.items() if name != 'head'} for note in bar],
                               'clef': clefs[index], 'key': keys[index]})
+        quiet = voice_rests(staff, built, plans[index], bars[index], [block for block in blocks if block['staff'] == index], space,
+                            places.get(staff['number'])) if REST_VOICE else {}
         for number, bar in enumerate(built):
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
+            if quiet.get(number):
+                parts[staff['number']][-1]['rests'] = quiet[number]
             for note in bar:
                 head = note.pop('head')
                 part_notes.append(note)

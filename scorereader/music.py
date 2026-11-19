@@ -665,20 +665,23 @@ def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | N
                 out.append(f'<attributes>{divisions}<key><fifths>{bar["key"]}</fifths></key>'
                            f'<clef><sign>{sign}</sign><line>{line}</line>{octave}</clef></attributes>')
                 shown = state
+            written = Fraction(0)
             for voice in (1, 2):
                 notes = sorted((note for note in bar['notes'] if note['voice'] == voice),
                                key=lambda note: (note['onset'], -note['midi']))
-                if not notes:
+                # A printed rest of the voice, where none of its notes sounds (scorereader.reader.REST_VOICE).
+                quiet = [rest for rest in bar.get('rests', []) if rest['voice'] == voice and rest['length'] > 0
+                         and not any(note['onset'] < rest['onset'] + rest['length'] and rest['onset'] < note['onset'] + note['length']
+                                     for note in notes)]
+                if not notes and not quiet:
                     continue
                 position = Fraction(0)
-                if voice == 2:
-                    ends = [note['onset'] + note['length'] for note in bar['notes'] if note['voice'] == 1]
-                    back = max(ends) if ends else Fraction(0)
-                    if back:
-                        out.append(f'<backup><duration>{int(back * DIVISIONS)}</duration></backup>')
+                if voice == 2 and written:
+                    out.append(f'<backup><duration>{int(written * DIVISIONS)}</duration></backup>')
                 last_onset = None
-                for note in notes:
-                    chord = note['onset'] == last_onset
+                for note in sorted(notes + [dict(rest, rest=True) for rest in quiet],
+                                   key=lambda note: (note['onset'], 0 if note.get('rest') else -note['midi'])):
+                    chord = note['onset'] == last_onset and not note.get('rest')
                     if not chord:
                         if note['onset'] > position:
                             out.append(f'<forward><duration>{int((note["onset"] - position) * DIVISIONS)}</duration>'
@@ -686,13 +689,19 @@ def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | N
                         elif note['onset'] < position:
                             out.append(f'<backup><duration>{int((position - note["onset"]) * DIVISIONS)}</duration></backup>')
                         position = note['onset'] + note['length']
+                    if note.get('rest'):
+                        out.append(f'<note><rest/><duration>{int(note["length"] * DIVISIONS)}</duration><voice>{voice}</voice></note>')
+                        last_onset = None
+                        continue
                     out.append(_note_xml(note, chord))
                     last_onset = note['onset']
                 if voice == 1:
-                    # Voice 2 is written from the end of voice 1's last note: see the backup above.
-                    ends = [note['onset'] + note['length'] for note in notes]
+                    # Voice 2 is written from the end of voice 1's last note or rest: see the backup above.
+                    ends = [note['onset'] + note['length'] for note in notes + quiet]
                     if position < max(ends):
                         out.append(f'<forward><duration>{int((max(ends) - position) * DIVISIONS)}</duration></forward>')
+                        position = max(ends)
+                    written = position
             out.append('</measure>')
         out.append('</part>')
     out.append('</score-partwise>')
