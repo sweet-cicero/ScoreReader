@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.9 % on
-scans; 91 scores at 99 % or more), 97.2 % of the notes on the clean copies (21,958 of 22,598, counted by the page;
-21,884 of 22,606 as typed; 37 of the 78 counted scores at 99 %; 29 scores read every printed note, 36 every
-syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 638 printed notes and 193 syllables
-are lacking and 588 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+scans; 93 scores at 99 % or more), 97.3 % of the notes on the clean copies (21,977 of 22,598, counted by the page;
+21,896 of 22,606 as typed; 39 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
+syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 619 printed notes and 193 syllables
+are lacking and 586 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,051 of 6,244, counted by the page; 5,997 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6227 of 6901).
 On the fresh test set, which no rule was set on: 95.5 % of the notes (39,884 of 41,761; 97 of 214 pieces at 99 %),
@@ -866,6 +866,36 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A head that two voices share at the end of a line is tied twice where the next line sets the two voices side by
   side (`ties.TIE_BREAK_BOTH`, a rule for one case). The list of the notes by the page also knows a note that the
   page prints for a part at a moment where the typed hymn gives the part none (`own`).
+- A rule that takes a stem back from an oval because the side of another oval was followed as that stem asks the
+  other oval for the shape of a whole note, and the stem for ink of its own (`symbols.WHOLE_STACK`). A hollow mark
+  without a stem, with its edges in line, is also the paper that a slur, a stem and the staff lines close in, a cell
+  of a sharp, and a whole note of the next staff: of the 32 stems that the first form took back, 4 were such stacks,
+  2 the stems of true half notes, 11 the strokes of sharps and 7 the stems of the 4s of a time signature by hand. A
+  stroke of a sharp goes on past its cells; the side of an oval does not. The stem's own ink is counted outside the
+  ovals and outside the staff lines.
+- A cell that is nearly the inside of a whole note is one only beside the inside of a whole note (`layers.WHOLE_OVER`).
+  Beside any inside that was taken, 9 of 10 such cells were loops of a clef by hand, and each moved notes far from
+  the clef: the page's measure of a hole comes from its read insides. A new inside of the layers is listed cell by
+  cell, with the cell beside it, before the notes are counted.
+- A rule that leads a stem on over a gap of paper reads whatever stands past the end of any stem: a second beam,
+  the line of a bracket, a bold slur over two stems (26 notes gained and 272 lost in its first form; of 88 stems
+  that were led on over a gap in their own column, 3 were right). The cause on the page was a strip that the copy
+  left white across the whole staff, and the rule asks for the strip (`symbols.STEM_BROKEN`). Ask for the cause
+  that the page shows, not for the look of the stem.
+- Two strokes whose ends were cut out of the staff lines are a sharp only before a head (`signs.PAIR_LINE`), as a
+  joined sign whose ends were cut is: on a thick copy the two sides of a hollow head's rim stood as the strokes of
+  a sharp do, inside the head.
+- A new head that shares two stems with the head over or under it takes the stem that does not pass that head:
+  the upper head goes up and the lower one down (`symbols.HALVES_ACROSS`). Given the other stem, a true new half
+  note cost a note in the count of a score with one part.
+- A rule that compares the heads of one stem meets one head that was read twice, which is its own neighbour: the
+  heads stand a third apart or more. On a ledger line the line and a dot at its end are one mark with the head,
+  and the width of that mark says nothing (`symbols.WHOLE_DOTLESS`).
+- The counts hide most of what a first form does wrongly. Every note that differs between two readings is cut out
+  of its page and set on a sheet with the notes before and after (scripts outside git, with the wide test): of the
+  79 places that the first forms of round 71 changed, 25 were right for the rule's own reason, and the counts
+  showed 20 notes gained and 5 lost. The page is then read alone with each rule of the round off, to name the rule
+  of a place.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

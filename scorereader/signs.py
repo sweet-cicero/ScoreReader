@@ -173,51 +173,94 @@ def _out_left(layers: dict, left: dict, top: float, bottom: float, space: float)
     return float(part.any(axis=1).sum()) / space if part.size else 0.0
 
 
+PAIR_LINE = True          # the end of a stroke is not the staff line that it was followed into: two strokes that make no sign
+#   are measured again without an end piece that lies in the rows of a staff line, with paper between it and the rest of
+#   the stroke, and are a sharp where they then stand as the strokes of a sharp do. Such a sharp stands before its head,
+#   not in its box, as a joined sign whose ends were cut does (SHARP_JOINED[4]): on a thick copy the two sides of a
+#   hollow head's rim passed as its strokes (False: off)
+
+
+def _own_ends(layers: dict, staff: dict, stroke: dict) -> dict:
+    """The stroke without an end piece that is a staff line (PAIR_LINE): the stroke itself where it has none."""
+    first, last = int(stroke['top']), int(stroke['bottom'])
+    rows = layers['ink'][first:last + 1, int(stroke['x0']):int(stroke['x1']) + 1].any(axis=1)
+    empty = np.nonzero(~rows)[0]
+    if not len(empty):
+        return stroke
+    reach = staff['thick'] / 2 + 1.5
+    top, bottom = first, last
+    # The piece over the first row of paper, and the piece under the last one: each wholly in the rows of a line.
+    if any(abs(first - line) <= reach and abs(first + empty[0] - 1 - line) <= reach for line in staff['rows']):
+        after = np.nonzero(rows[empty[0]:])[0]
+        if len(after):
+            top = first + int(empty[0] + after[0])
+    if any(abs(first + empty[-1] + 1 - line) <= reach and abs(last - line) <= reach for line in staff['rows']):
+        before = np.nonzero(rows[:empty[-1]])[0]
+        if len(before):
+            bottom = first + int(before[-1])
+    if (top == first and bottom == last) or bottom - top < 3:
+        return stroke
+    return dict(stroke, top=top, bottom=bottom, high=(bottom - top + 1) / staff['space'])
+
+
 def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
     """The signs that two upright strokes show: {'kind', 'x0', 'x1', 'place', 'top', 'bottom'}."""
     space, rows = staff['space'], staff['rows']
     slim = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1] and stroke['wide'] <= PAIR_WIDE]
     found, used = [], set()
+
+    def fit(left: dict, right: dict) -> dict | None:
+        top, bottom = max(left['top'], right['top']), min(left['bottom'], right['bottom'])
+        if bottom - top < 0.45 * space:
+            return None
+        # Ink joins the two strokes, in the rows that both have.
+        gap = max(1.0, right['x0'] - left['x1'] - 1)
+        if not (PAIR_TOUCH and right['x0'] - left['x1'] <= 1) \
+                and _ink(layers, left['x1'] + 1, right['x0'] - 1, top, bottom) < 0.25 * gap * min(0.5 * space, bottom - top):
+            return None
+        higher, lower = (right['top'] - left['top']) / space, (right['bottom'] - left['bottom']) / space
+        even = min(left['high'], right['high']) / max(left['high'], right['high'])
+        if higher >= STEP and lower >= STEP and left['high'] <= 2.6 and right['high'] <= 2.6 \
+                and bottom - top <= NATURAL_ROWS * space:
+            kind, middle = 'natural', (top + bottom) / 2
+        elif higher >= 0.4 and abs(lower) <= 0.45 and even <= 0.75 and left['high'] >= 1.4:
+            kind, middle = 'flat', (right['top'] + right['bottom']) / 2
+        elif abs(higher) <= LEVEL and abs(lower) <= LEVEL and even >= EVEN and left['high'] >= SIGN_STROKE[0]:
+            kind, middle = 'sharp', (min(left['top'], right['top']) + max(left['bottom'], right['bottom'])) / 2
+            if NATURAL_LOW and higher >= NATURAL_LOW[0] and lower >= 0 and higher + lower >= NATURAL_LOW[1] \
+                    and left['high'] <= 2.6 and right['high'] <= 2.6 and bottom - top <= NATURAL_ROWS * space \
+                    and max(left['wide'], right['wide']) <= 0.45 \
+                    and _out_left(layers, left, top, bottom, space) <= NATURAL_LOW[2]:
+                # The natural of a heavy print: its box is high and the free ends of its strokes are short, so
+                # the strokes are nearly level, as a sharp's are. But its right stroke stands lower at both ends
+                # (a sharp's stands level or higher), and no bar sticks out at the left of its left stroke.
+                kind, middle = 'natural', (top + bottom) / 2
+        else:
+            return None
+        if kind != 'sharp' and max(left['wide'], right['wide']) > (NATURAL_WIDE if kind == 'natural' else 0.45):
+            return None      # only a sharp has two heavy strokes: the rim of a large hollow head is no flat
+        return {'kind': kind, 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
+                'touch': bool(PAIR_TOUCH) and right['x0'] - left['x1'] <= 1,
+                'wide': float(max(left['wide'], right['wide'])),
+                'place': 4 - 2 * (middle - rows[0]) / space, 'top': min(left['top'], right['top']),
+                'bottom': max(left['bottom'], right['bottom'])}
+
     for number, left in enumerate(slim):
         if id(left) in used:
             continue
         for right in slim[number + 1:]:
             if id(right) in used or not PAIR[0] * space <= right['x'] - left['x'] <= PAIR[1] * space:
                 continue
-            top, bottom = max(left['top'], right['top']), min(left['bottom'], right['bottom'])
-            if bottom - top < 0.45 * space:
+            sign = fit(left, right)
+            if sign is None and PAIR_LINE:
+                # The end of a stroke is not the staff line that it was followed into.
+                cut = [_own_ends(layers, staff, stroke) for stroke in (left, right)]
+                if cut[0] is not left or cut[1] is not right:
+                    sign = fit(*cut)
+                    sign = dict(sign, cut=True) if sign is not None and sign['kind'] == 'sharp' else None
+            if sign is None:
                 continue
-            # Ink joins the two strokes, in the rows that both have.
-            gap = max(1.0, right['x0'] - left['x1'] - 1)
-            if not (PAIR_TOUCH and right['x0'] - left['x1'] <= 1) \
-                    and _ink(layers, left['x1'] + 1, right['x0'] - 1, top, bottom) < 0.25 * gap * min(0.5 * space, bottom - top):
-                continue
-            higher, lower = (right['top'] - left['top']) / space, (right['bottom'] - left['bottom']) / space
-            even = min(left['high'], right['high']) / max(left['high'], right['high'])
-            if higher >= STEP and lower >= STEP and left['high'] <= 2.6 and right['high'] <= 2.6 \
-                    and bottom - top <= NATURAL_ROWS * space:
-                kind, middle = 'natural', (top + bottom) / 2
-            elif higher >= 0.4 and abs(lower) <= 0.45 and even <= 0.75 and left['high'] >= 1.4:
-                kind, middle = 'flat', (right['top'] + right['bottom']) / 2
-            elif abs(higher) <= LEVEL and abs(lower) <= LEVEL and even >= EVEN and left['high'] >= SIGN_STROKE[0]:
-                kind, middle = 'sharp', (min(left['top'], right['top']) + max(left['bottom'], right['bottom'])) / 2
-                if NATURAL_LOW and higher >= NATURAL_LOW[0] and lower >= 0 and higher + lower >= NATURAL_LOW[1] \
-                        and left['high'] <= 2.6 and right['high'] <= 2.6 and bottom - top <= NATURAL_ROWS * space \
-                        and max(left['wide'], right['wide']) <= 0.45 \
-                        and _out_left(layers, left, top, bottom, space) <= NATURAL_LOW[2]:
-                    # The natural of a heavy print: its box is high and the free ends of its strokes are short, so
-                    # the strokes are nearly level, as a sharp's are. But its right stroke stands lower at both ends
-                    # (a sharp's stands level or higher), and no bar sticks out at the left of its left stroke.
-                    kind, middle = 'natural', (top + bottom) / 2
-            else:
-                continue
-            if kind != 'sharp' and max(left['wide'], right['wide']) > (NATURAL_WIDE if kind == 'natural' else 0.45):
-                continue      # only a sharp has two heavy strokes: the rim of a large hollow head is no flat
-            found.append({'kind': kind, 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
-                          'touch': bool(PAIR_TOUCH) and right['x0'] - left['x1'] <= 1,
-                          'wide': float(max(left['wide'], right['wide'])),
-                          'place': 4 - 2 * (middle - rows[0]) / space, 'top': min(left['top'], right['top']),
-                          'bottom': max(left['bottom'], right['bottom'])})
+            found.append(sign)
             used.add(id(left))
             used.add(id(right))
             break
@@ -430,7 +473,7 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 rank = (not any(head is other for other in glued), abs(head['place'] - place) > 0.8, ahead)
                 if best is None or rank < best[0]:
                     best = (rank, head)
-        if best and sign.get('joined') and SHARP_JOINED and SHARP_JOINED[4]:
+        if best and (sign.get('joined') or (sign.get('pair') and sign.get('cut'))) and SHARP_JOINED and SHARP_JOINED[4]:
             head = best[1]
             if (not head['stems'] or sign.get('cut')) \
                     and min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) + 1 > SHARP_JOINED[4] * (sign['x1'] - sign['x0'] + 1):
