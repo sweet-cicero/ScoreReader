@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,074 of 22,649, counted by the page;
-21,942 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
-syllable, 25 both, 35 have no note that is not there, 24 are whole in all three; 571 printed notes and 187 syllables
-are lacking and 228 notes are read that are not there, each printed head counted once since round 78: 423 by the
+scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,080 of 22,649, counted by the page;
+21,946 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 34 scores read every printed note, 38 every
+syllable, 27 both, 35 have no note that is not there, 26 are whole in all three; 565 printed notes and 187 syllables
+are lacking and 225 notes are read that are not there, each printed head counted once since round 78: 420 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
 files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
-89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6230 of 6901).
+89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6232 of 6901).
 On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -1141,8 +1141,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   sure ones (`symbols.DOT_SURE`, `music.CHORD_DOT`).
 - The scans of one hymn measure a limit: the first limit for a sure dot (a side of 0.28 staff spaces) kept the
   dot in one scan, and the same printed dot has a side of 0.27 in the other. Where the true and the false cases
-  stand a hair apart by one measure (0.22 and 0.27), look for the measure that parts them widely (the ink of the
-  dot: 0.043 and 0.067 staff spaces squared).
+  stand a hair apart by one measure (0.23 and 0.27), look for the measure that parts them widely (the ink of the
+  dot, among the marks that are round: 0.043 and 0.067 staff spaces squared).
 - A new head changes what an older rule does beside it: a half note that is read anew between two heads of one
   stem (`symbols.SLIT_BETWEEN`) made the chord rule take the dot of the head under it, and the rule alone gained
   nothing. A rule whose gain needs another rule of the round is counted alone and with that rule, and the
