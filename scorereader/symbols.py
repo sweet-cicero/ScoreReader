@@ -2300,6 +2300,104 @@ def _glued_sign(layers: dict, mark: dict) -> list[dict] | None:
     return [sign, head]
 
 
+SIGN_WHOLE = ((1.85, 2.6, 1.2, 2.7), (0.2, 1.0), (0.4, 0.85), (0.3, 0.95, 0.35), (1.0, 4.0), (0.8, 1.3, 0.7, 0.5))
+#   a heavy sharp whose bars are as thick as a head is one mark with the head that it touches, the whole of it, and
+#   such a mark is no head for its size: it was read as a beam, for the stroke and the stem that leave it downwards at
+#   its two ends, or as nothing, and the note was lost (SIGN_GLUED cuts the mark that the right stroke alone makes
+#   with the head). None: off. The mark is [0][0] to [0][1] times as wide as the heads of the page and [0][2] to
+#   [0][3] times as high. From its left half one stroke leaves it upwards and another downwards, each [1][0] to
+#   [1][1] staff spaces past the mark and slim there: the two strokes of a sharp, of which the right one stands
+#   higher (a stem is longer, and the strokes of a natural stand the other way round). The stroke that goes up stands
+#   [2][0] to [2][1] staff spaces right of the other. The head has a stem that goes [4][0] to [4][1] staff spaces past
+#   the mark (a bar line goes further): down, [3][0] to [3][1] staff spaces right of the sharp's right stroke, and
+#   the head begins at that stem; or up, in the last [3][2] staff spaces of the mark, with no stem down, and the head
+#   begins where the mark is narrowest between the stroke and the stem. The paper that the sharp closes in with the
+#   stem and the head reaches the cut and is no part of the head. The head is [5][0] to [5][1] times as wide as the
+#   heads of the page, [5][2] to [5][1] times as high, has ink in [5][3] of its box and holds a circle of ink as a head
+#   does (GLUED_FAT). The head keeps the box of its sharp ('sharp'), and scorereader.signs gives it that sharp
+#   (signs.WHOLE_SIGN): the bars can hide the top of a stroke, and the two strokes then make no pair.
+#   The census, at the reader's own step: 243 marks of LitChoir's scan pages are larger than a head with such two
+#   strokes at the left; the 132 with a stem at the right were looked at. Eleven are a sharp and its head, on five
+#   prints (their strokes stand 0.48 to 0.78 staff spaces apart and go 0.24 to 0.71 past the mark; the marks are 2.0 to
+#   2.4 heads wide), and the rule cuts these eleven and no other mark. The others: a treble clef (its strokes stand
+#   0.34 apart), the sharps of a key signature that touch each other (thin: a circle of 0.46 of a head's height
+#   fits, against 0.62 or more in the eleven heads; the share of the box does not part them, 0.57 against 0.58), the
+#   end of a staff with its bar lines (a "stem" of 13 staff spaces), hatching and letters by hand. The eleven
+#   heads are filled, and the circle of ink refuses a hollow one: a rule for filled heads.
+
+def _glued_whole(layers: dict, mark: dict) -> list[dict] | None:
+    """The two parts of a mark that is a heavy sharp, the whole of it, and the head that the sharp touches (see
+    SIGN_WHOLE): [the sharp, the head]. None when the mark is no such mark."""
+    if mark.get('glued'):
+        return None
+    space = layers['space']
+    wide, high = layers['head']
+    size, past, apart, at, long, part = SIGN_WHOLE
+    own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    if not (size[0] * wide <= own_wide <= size[1] * wide and size[2] * high <= own_high <= size[3] * high):
+        return None
+    up, down = _way(layers, mark, True, False), _way(layers, mark, False, False)
+    if not all(way and past[0] * space <= way['past'] <= past[1] * space and way['slim'] >= past[0] * space
+               for way in (up, down)):
+        return None
+    if not apart[0] * space <= up['mid'] - down['mid'] <= apart[1] * space:
+        return None
+    stems = {name: _way(layers, mark, name == 'up', True) for name in ('up', 'down')}
+    fits = {name: bool(is_stem(way, space) and long[0] * space <= way['past'] <= long[1] * space)
+            for name, way in stems.items()}
+    mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
+    if fits['down'] and at[0] * space <= stems['down']['mid'] - up['mid'] <= at[1] * space:
+        # The head begins at its stem. The bars of the sharp reach over the stem: the rows of the head are those
+        # of the mark past them.
+        cut = int(stems['down']['mid']) - mark['x0'] - max(1, int(round(0.08 * space)))
+        clear = cut + int(round(0.45 * space))
+        way = 'down'
+    elif fits['up'] and not is_stem(stems['down'], space) and stems['up']['mid'] >= mark['x1'] - at[2] * space:
+        first, last = int(up['mid']) - mark['x0'] + 2, int(stems['up']['mid'] - mark['x0'] - 0.6 * wide)
+        if last <= first:
+            return None
+        cut = clear = first + int(np.argmin(mask[:, first:last + 1].sum(axis=0)))
+        way = 'up'
+    else:
+        return None
+    if cut < 1 or clear >= own_wide - 2:
+        return None
+    # The paper that the sharp closes in with the stem and the head reaches the cut: it is no part of the head and
+    # no hole of it.
+    count, labels = cv2.connectedComponents((mask & holes).astype(np.uint8), connectivity=8)
+    room = np.zeros_like(mask)
+    for label in range(1, count):
+        cell = labels == label
+        if int(np.nonzero(cell.any(axis=0))[0][0]) <= cut + 1:
+            room |= cell
+    own = mask & ~room
+    rows = np.nonzero(own[:, clear:].any(axis=1))[0]
+    if not len(rows):
+        return None
+    top, bottom = int(rows[0]), int(rows[-1])
+    inside = (holes & ~room)[top:bottom + 1, cut:]
+    if way == 'up':
+        # The room between the stroke and the round side of the head is closed in: it is no hole of the head.
+        inside[:, :int(0.35 * (own_wide - cut))] = False
+    head = _mark(own[top:bottom + 1, cut:], inside, mark['x0'] + cut, mark['y0'] + top, mark['blob'])
+    sign = _mark(mask[:, :cut], holes[:, :cut], mark['x0'], mark['y0'], mark['blob'])
+    if head is None or sign is None:
+        return None
+    part_wide, part_high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
+    if not (part[0] * wide <= part_wide <= part[1] * wide and part[2] * high <= part_high <= part[1] * high
+            and head['area'] >= part[3] * part_wide * part_high):
+        return None
+    # A head is round and full (see GLUED_FAT): the strokes and the bars of a second sharp are thin.
+    ink = (own & ~holes)[top:bottom + 1, cut:]
+    if 2 * float(cv2.distanceTransform(np.pad(ink, 1).astype(np.uint8), cv2.DIST_L2, 5).max()) < GLUED_FAT * high:
+        return None
+    head['glued'] = way
+    head['sharp'] = [sign['x0'], sign['y0'], sign['x1'], sign['y1']]
+    sign['whole_sign'] = True
+    return [sign, head]
+
+
 def _stem_ink(layers: dict, stem: dict, ovals: list[dict]) -> int:
     """How many rows of a stem hold ink of its own: the rows from the first oval (the stem's own head) to the stem's
     end, outside every oval and outside the staff lines, with ink in the stem's column (see WHOLE_STACK)."""
@@ -2477,6 +2575,9 @@ def read_symbols(layers: dict) -> dict:
     if SIGN_GLUED:
         # A sharp that touches its head: the right stroke of the sharp and the head are one mark, and no head.
         marks = [part for mark in marks for part in (_glued_sign(layers, mark) or [mark])]
+    if SIGN_WHOLE:
+        # A heavy sharp that touches its head: the whole sharp and the head are one mark.
+        marks = [part for mark in marks for part in (_glued_whole(layers, mark) or [mark])]
     for mark in marks:
         wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
         mark['stems'] = []
@@ -2486,9 +2587,14 @@ def read_symbols(layers: dict) -> dict:
         mark['ways'] = {f"{'up' if up else 'down'}_{'right' if right else 'left'}": _way(layers, mark, up, right)
                         for up in (True, False) for right in (True, False)}
         mark['kind'] = _kind(mark, space)
+        if mark.get('whole_sign'):
+            mark['kind'] = 'sharp'    # the sharp that was cut off its head (SIGN_WHOLE): no head, whatever leaves it
         if mark.get('glued'):
-            # The head that a sharp touches: the upright ink at its left side is the stroke of the sharp.
-            mark['ways']['up_left'] = mark['ways']['down_left'] = None
+            # The head that a sharp touches: the upright ink at its left side is the stroke of the sharp. (Not the
+            # stem down of a head that was cut at that stem, see SIGN_WHOLE.)
+            mark['ways']['up_left'] = None
+            if mark['glued'] != 'down':
+                mark['ways']['down_left'] = None
             mark['kind'] = 'head'
         if FLAT_HEAD and mark['kind'] == 'flat' and mark['hole'] < HOLLOW \
                 and wide >= FLAT_HEAD * layers['head'][0] and high >= FLAT_HEAD * layers['head'][1] \
@@ -2777,6 +2883,8 @@ def read_symbols(layers: dict) -> dict:
             head['across'] = True
         if mark.get('side_two'):
             head['side_two'] = True
+        if mark.get('sharp'):
+            head['sharp'] = mark['sharp']     # the box of the sharp that was cut off this head (SIGN_WHOLE)
         if mark.get('pair_box'):
             head['pair_box'] = mark['pair_box']
         if or_hollow is not None:

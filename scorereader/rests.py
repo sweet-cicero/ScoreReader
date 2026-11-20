@@ -9,6 +9,9 @@ at its head and a clef close in paper; the rest has neither.
 A rest is no note, and it says where a voice is silent: the note before it is not as long as the way to the next
 note of its voice (scorereader.music.agree_lengths).
 
+One older print sets its quarter rest as an X on the middle line of the staff, with a short upright through the
+crossing (CROSS). The staff lines close the paper between its arms, and those cells were read as whole notes.
+
 Only the printed quarter rest is read. The rests of a hand, the eighth rest and the rests that hang on a staff line
 are not read yet.
 """
@@ -28,6 +31,23 @@ HOLE = 0.02                          # it closes in no paper larger than this ma
 HOOK = (0.06, 0.7)                   # ... but the hook at its lower end can close: one piece of paper of at most this
 #                                      many square staff spaces whose middle lies this far down the rest or further
 #                                      (four rests of LitChoir's pages, 0.024 to 0.043 at 0.8; None: off)
+CROSS = (1.9, 2.5, 1.3, 1.9, 0.3, 0.75, 0.35, 0.7, 0.1, 1.6, 0.5, 0.35)
+#                                      the quarter rest of one older print is an X with a short upright through its
+#                                      crossing, on the middle line of the staff (None: not read). The staff lines
+#                                      close the paper between its arms, and those cells were read as whole notes. It
+#                                      is from the first to the second number of staff spaces high and from the third
+#                                      to the fourth wide; its middle lies at most [4] staff spaces from the middle
+#                                      line. Its waist, the narrowest row of the middle two fifths, is at most [5]
+#                                      staff spaces wide and stands from [6] to [7] of the way across; in the three
+#                                      tenths of the rows around the middle the ink keeps [8] of the width clear at
+#                                      both sides (the sides of two whole notes one over the other, an 8, fill the
+#                                      width there, and the C of common time stands at the left); the ink at the top
+#                                      and at the bottom is [9] times as wide as the waist, and in [10] of the rows of
+#                                      the last quarter its legs stand apart, by [11] staff spaces or more at one row.
+#                                      A rule for one print. The census: 753 pieces of ink of LitChoir's scan pages
+#                                      have a waist; 43 of them are of this size, in the middle of a staff, with two
+#                                      legs: the six rests (three scans of one hymn), 22 signs of common time, 13
+#                                      pairs of whole notes, a number and an eighth rest. The rule reads the six.
 OUTSIDE = 1.0                        # its middle lies in the staff or at most this many staff spaces outside it
 REACH = 0.2                          # a head whose middle lies in the rest, or this many staff spaces outside it, is no note
 
@@ -57,7 +77,51 @@ def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
             continue
         out.append({'staff': index, 'x': x + wide / 2, 'x0': x, 'x1': x + wide, 'top': y, 'bottom': y + high,
                     'middle': (at - layers['staves'][index]['rows'][2]) / space})
+    if CROSS:
+        for number in range(1, count):
+            x, y, wide, high = (int(value) for value in stats[number][:4])
+            if not (CROSS[0] * space <= high <= CROSS[1] * space and CROSS[2] * space <= wide <= CROSS[3] * space):
+                continue
+            at = y + high / 2
+            index = next((index for index, staff in enumerate(layers['staves'])
+                          if abs(at - staff['rows'][2]) <= CROSS[4] * staff['space']
+                          and staff['x0'] <= x and x + wide <= staff['x1']), None)
+            if index is None or x <= ends[index]:
+                continue
+            if _cross_shape(labels[y:y + high, x:x + wide] == number, space):
+                out.append({'staff': index, 'x': x + wide / 2, 'x0': x, 'x1': x + wide, 'top': y, 'bottom': y + high,
+                            'middle': (at - layers['staves'][index]['rows'][2]) / space, 'cross': True})
     return out
+
+
+def _cross_shape(piece: np.ndarray, space: float) -> bool:
+    """Whether a piece of ink has the shape of the X of an older quarter rest (see CROSS)."""
+    high, wide = piece.shape
+    spans = []
+    for row in piece:
+        columns = np.nonzero(row)[0]
+        spans.append((int(columns[0]), int(columns[-1])) if len(columns) else None)
+    # The waist: the crossing of the two strokes.
+    middle = [(last - first + 1, (first + last) / 2) for first, last in
+              (span for span in spans[int(0.3 * high):max(int(0.3 * high) + 1, int(0.7 * high))] if span)]
+    if not middle:
+        return False
+    waist, where = min(middle)
+    if waist > CROSS[5] * space or not CROSS[6] * wide <= where <= CROSS[7] * wide:
+        return False
+    # Around the middle the ink stands clear of both sides of the box.
+    band = np.nonzero(piece[int(0.35 * high):max(int(0.35 * high) + 1, int(0.65 * high))].any(axis=0))[0]
+    if not len(band) or band[0] < CROSS[8] * wide or band[-1] > (1 - CROSS[8]) * wide:
+        return False
+    # The arms: the ink is wide at the top and at the bottom, and two legs stand apart at the bottom.
+    for part in (spans[:max(1, high // 4)], spans[high - max(1, high // 4):]):
+        reach = [span for span in part if span]
+        if not reach or max(last for _, last in reach) - min(first for first, _ in reach) + 1 < CROSS[9] * waist:
+            return False
+    rows = piece[high - max(1, high // 4):]
+    gaps = [int(np.diff(columns).max()) - 1 for columns in (np.nonzero(row)[0] for row in rows) if len(columns) >= 2]
+    gaps = [gap for gap in gaps if gap > 0]
+    return len(gaps) >= CROSS[10] * len(rows) and max(gaps) >= CROSS[11] * space
 
 
 def _rest_shape(piece: np.ndarray, space: float) -> bool:

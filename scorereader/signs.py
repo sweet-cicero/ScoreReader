@@ -96,6 +96,8 @@ GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies 
 GLUED_BEFORE = 1.0              # a mark that begins at least this many head widths before a sign and ends where the sign
                                 # ends is the head before the sign, with a bar of the sign glued to it: the sign does not
                                 # lie on it (None: such a sign lies on a head, and is none)
+WHOLE_SIGN = True               # a heavy sharp that symbols.SIGN_WHOLE cut off its head is that head's sharp, whatever
+#                                 the strokes say: its bars hide the top of a stroke, and the two strokes make no pair
 THIN_SIGN = False               # a head that was read from its stem (symbols.thin_heads) whose stem is a stroke of a
                                 # sign of two strokes is no head: the ink at the stroke's end is a slur, or a bar of the
                                 # sign (False: the head stays, and the stroke is its stem). Off: it gained 2 notes on
@@ -494,6 +496,19 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     head['stems'] = [other for other in head['stems'] if other is not stem]     # no stem: the sign's stroke
                     head.get('tails', {}).pop(stem['direction'], None)
             out.append(dict(sign, head=best[1], drop=drop))
+    if WHOLE_SIGN:
+        for head in own:
+            if not head.get('sharp'):
+                continue
+            x0, y0, x1, y1 = head['sharp']
+            same = [sign for sign in out if sign['head'] is head
+                    or (sign['x0'] <= x1 and x0 <= sign['x1'] and sign['top'] <= y1 and y0 <= sign['bottom'])]
+            drop = [other for sign in same for other in sign['drop'] if other is not head]
+            drop += [other for other in own if other is not head and x0 <= other['cx'] <= x1 and y0 <= other['cy'] <= y1
+                     and not any(other is known for known in drop)]
+            out = [sign for sign in out if not any(sign is other for other in same)]
+            out.append({'kind': 'sharp', 'x0': float(x0), 'x1': float(x1), 'top': float(y0), 'bottom': float(y1),
+                        'place': head['place'], 'whole': True, 'head': head, 'drop': drop})
     if TANGLE:
         signed = {id(sign['head']) for sign in out} | {id(head) for sign in out for head in sign['drop']}
         for head in full:
