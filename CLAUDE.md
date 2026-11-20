@@ -24,14 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.3 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 83.9 % on
-scans; 93 scores at 99 % or more), 97.3 % of the notes on the clean copies (21,977 of 22,598, counted by the page;
-21,896 of 22,606 as typed; 39 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
-syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 619 printed notes and 193 syllables
-are lacking and 586 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+Not reached yet: 87.4 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.0 % on
+scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,005 of 22,595, counted by the page;
+21,921 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
+syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 588 printed notes and 193 syllables
+are lacking and 574 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,051 of 6,244, counted by the page; 5,997 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.2 % on the kit (6227 of 6901).
-On the fresh test set, which no rule was set on: 95.5 % of the notes (39,884 of 41,761; 97 of 214 pieces at 99 %),
+89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.3 % on the kit (6229 of 6901).
+On the fresh test set, which no rule was set on: 95.6 % of the notes (39,924 of 41,761; 98 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -920,6 +920,24 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A step that is written for a case and changes no note on any page is switched off, with a line that says what
   it was for (`symbols.DASH_STEM`, `SIDE_WHOLE`). Read it off on every page the round touches before saying so:
   a guard's own page reads as main while the guard is on, so it is only in the list of the round's pages.
+- A run of notes a step off on a sheet of mistakes is compared across the scans of its hymn and with the scorer's
+  count before a rule is written for the pitches: one note that is not there pushes the sheet's line-up, and
+  every note after it shows as a wrong pitch (19 mistakes on a score that the count holds at 322 of 326, and 10
+  without the false note). Find the note that is not there first.
+- A long flat mark between the ends of two stems is their slur or their beam and no head
+  (`symbols.STEM_END_SPAN`). Its census needed no page read: every read note whose mark is long and flat, from
+  the stored notes, with the nearest stem end of another note at each side. A note that is not there and that
+  both voices of a staff were given counts twice among the notes that are not there.
+- No ledger line of a head lies past the head (`symbols.LEDGER_OWN`). The rule was written for one chord, which
+  it does not mend, and its first runs gained notes elsewhere. A rule that gains where it was not aimed is not
+  kept unread and not dropped unread: every head whose rows it cuts was listed and looked at, and the comment in
+  the code says what the rule was measured to do (a chord on two ledger lines, and a hollow head whose rim one
+  print draws as level and as long as its ledger line).
+- A reading that was right by a wrong count is lost when the count is mended: a half note by hand on top of its
+  dash was read right because its rim counted as a second ledger line. Such a note is said in the worklog and
+  goes on the list of what is left; the rule is not bent for it.
+- A chain of scoring that a restart cuts leaves its earlier files whole and its log without the last line. Look
+  for the last line of a script's log before its figures are used, and run the steps after the cut again.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
