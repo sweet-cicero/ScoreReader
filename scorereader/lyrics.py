@@ -64,6 +64,18 @@ SURE = (0.6, 0.8, 3)    # a hymn teaches its shapes when this share of its words
 #                         such words and has this many glyphs
 DOUBLE = 1.4            # a letter with no name that is this many times as wide as the usual letter can be two letters
 UNDER = 3.0             # a syllable stands at most this many staff spaces beside its note
+ONE_NOTE = 0.65         # two syllables that the list of words made of one piece of the page (ocr._parted: the piece
+#                         as it was read, and nothing else), with one note for the two, between syllables that
+#                         have notes of their own, are one syllable where the piece stands under that note as one
+#                         syllable does, its middle within this many staff spaces of the note (in the columns of
+#                         the head): the page sets 'glo-rious' under two notes. The first form took any two
+#                         syllables that the list parted: a letter that the mending added and a syllable of a
+#                         longer piece whose note was not read were joined too, and it lost as many syllables as
+#                         it gained. The second form asked nothing of the place: where a page prints a word whole
+#                         under two notes and one of them is not read, that note stands over its own syllable and
+#                         beside the middle of the piece (the fresh set: 2 syllables gained and 7 lost). A piece
+#                         that begins under its note, as a held syllable does, is left out with it: a first
+#                         syllable of one letter begins under its note too. None: off
 RECITED = True          # a syllable that has no note of its own is sung on the note before it (a reciting note holds
 #                         many syllables, and a note that was not read must not cost its syllable): it is written
 #                         after that note's syllable. False: such a syllable is left out
@@ -842,6 +854,21 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
                 j -= 1
             else:
                 i -= 1
+        if ONE_NOTE:
+            # Two syllables that the list of words made of one piece of the page ('cut', ocr._parted), with one note
+            # for the two between syllables that have notes of their own, and the piece's middle under that note:
+            # the page sets the piece under one note.
+            for at in range(len(row) - 1, 0, -1):
+                if row[at].get('cut') and row[at - 1].get('join') and (at in under) != (at - 1 in under) \
+                        and (at == 1 or at - 2 in under) and (at + 1 == len(row) or at + 1 in under):
+                    note = under.get(at, under.get(at - 1))
+                    if abs((row[at - 1]['x0'] + row[at]['x1']) / 2 - places[note]) > ONE_NOTE * space:
+                        continue
+                    row[at - 1] = dict(row[at - 1], text=row[at - 1]['text'] + row[at]['text'], x1=row[at]['x1'],
+                                       join=row[at]['join'])
+                    del row[at]
+                    under = {(index if index < at else index - 1): j for index, j in under.items() if index != at}
+                    under[at - 1] = note
         texts: dict[int, str] = {}
         first: dict[int, int] = {}       # for each note with words: its first and its last syllable in the row
         final: dict[int, int] = {}

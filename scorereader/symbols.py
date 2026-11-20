@@ -833,6 +833,33 @@ CELL_OUT = (0.6, 0.95, 2.0, 0.75, 0.4, 0.55)   # a cell along a staff line in a 
 #   heads below it. (None: off)
 
 
+CELL_BETWEEN = (0.65, 2.7)   # and a cell that fills the room between two staff lines, level along both for the first
+#   share of its columns each, is such a cell too where the thin stroke stands at its left and goes on upright for
+#   the second number of staff spaces or more: a bar line or the stroke of a sharp close before a head closes one
+#   with the lines and the head. A flag closes such a cell too, and older rules read the flag from it (the first
+#   form took it, and two eighth notes went): a flag hangs at the right of its stem, so the loop that it closes
+#   with its own head has the thin stroke at the right, and it bends, where a bar line and the stroke of a sign are
+#   straight (the flags of LitChoir's pages go on upright for 1.3 to 2.3 staff spaces, the stroke of the sharp for
+#   3.1 and the bar lines for 3.8 or more). The arc of a pencil ring around a head passes where it stands upright
+#   beside the head (3.2 on one clean page). (None: off)
+
+
+def _upright(layers: dict, column: int, run: int, row: int) -> float:
+    """How far the thin stroke at the left of a cell goes on upright, in staff spaces: the rows above and below `row`,
+    one after the other, that hold ink in the stroke's columns (`run` columns that end at `column`, and one more at
+    each side)."""
+    ink = layers['ink']
+    band = ink[:, max(0, column - max(1, run)):column + 2].any(axis=1)
+    if not band[row]:
+        return 0.0
+    first = last = row
+    while first > 0 and band[first - 1]:
+        first -= 1
+    while last + 1 < len(band) and band[last + 1]:
+        last += 1
+    return (last - first + 1) / layers['space']
+
+
 def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float) -> np.ndarray | None:
     """The closed paper of a thick piece that is a cell along a staff line (CELL_OUT), as a mask of the piece's box;
     None where there is none or where the piece holds no filled head."""
@@ -851,8 +878,11 @@ def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: in
             continue
         part = labels[top:top + height, left:left + width] == index
         first, last = part.argmax(axis=0), height - 1 - part[::-1].argmax(axis=0)
-        if not ((first <= 1).mean() >= CELL_OUT[1] and np.abs(rows - (y + top - 0.5 - half)).min() <= slack
-                or (last >= height - 2).mean() >= CELL_OUT[1] and np.abs(rows - (y + top + height - 0.5 + half)).min() <= slack):
+        level = float((first <= 1).mean()), float((last >= height - 2).mean())
+        lines = (float(np.abs(rows - (y + top - 0.5 - half)).min()), float(np.abs(rows - (y + top + height - 0.5 + half)).min()))
+        along = (level[0] >= CELL_OUT[1] and lines[0] <= slack) or (level[1] >= CELL_OUT[1] and lines[1] <= slack)
+        between = bool(CELL_BETWEEN) and max(lines) <= slack and min(level) >= CELL_BETWEEN[0]
+        if not (along or between):
             continue
         # The ink at the two sides of the cell, in its middle rows: a thin stroke at one side, a head at the other.
         sides = []
@@ -864,7 +894,9 @@ def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: in
                     at, run = at + step, run + 1
                 runs.append(run)
             sides.append(float(np.median(runs)) / space)
-        if min(sides) <= CELL_OUT[4] and max(sides) >= CELL_OUT[5]:
+        if min(sides) <= CELL_OUT[4] and max(sides) >= CELL_OUT[5] and (
+                along or (sides[0] < sides[1] and _upright(layers, x + left - 1, int(round(sides[0] * space)),
+                                                           y + top + height // 2) >= CELL_BETWEEN[1])):
             cells |= labels == index
     if not cells.any():
         return None
