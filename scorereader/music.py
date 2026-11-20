@@ -29,6 +29,16 @@ ONE_LINE_BACK = (0.7, 0.3)   # ... or this far apart (in staff spaces), back to 
 #   the second value): it sounds with that note, and the stem before it is the note before. (None: off)
 BESIDE = 1.8         # a whole note beside a note with a stem, on its pitch or a second from it, is at most this far from it
 BESIDE_DOT = 2.6     # or this far, at the right of a note with a dot
+BESIDE_OVER = (0.3, 2)   # a whole note of the upper voice begins with the lower voice's note that it stands before, at most
+#                      the second number of steps over it, where the two heads stand over each other along the staff by
+#                      the first number of staff spaces or more: a print sets the whole note where a head with a stem up
+#                      would stand, at the left of the stem line that the lower voice's note hangs on, and notes that
+#                      follow each other do not stand over each other. The lower note's stem goes down. (The first form
+#                      asked only for the two heads over each other, and acted at 15 places of LitChoir's pages, each
+#                      looked at: the one on a clean copy is this shape, and 14 on copies by hand were marks that are no
+#                      whole notes, a worn head, a box of two beamed notes, a pencil ring, the letters of a heading:
+#                      more than a third from the note beside them, under it, or beside a note whose stem goes up.
+#                      A rule for one case.) (None: off)
 ACROSS = 0.9         # the columns of two staves of a system are one column when they stand at most this far apart
 AGREE = 2            # this many voices must agree on the length of a step before another voice's note is changed
 AGREE_HOLLOW = True  # where as many voices say a half note as say a quarter note (AGREE or more each), the step is a
@@ -224,7 +234,10 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                 continue
             ahead, apart = (event['x'] - other['x']) / space, abs(other['place'] - event['place'])
             reach = BESIDE_DOT if other['head'].get('dot') else BESIDE
-            if abs(ahead) <= COLUMN or (apart <= 1 and -BESIDE <= ahead <= reach):
+            over = BESIDE_OVER is not None and other['voice'] == 2 and -BESIDE <= ahead < 0 \
+                and 0 < event['place'] - other['place'] <= BESIDE_OVER[1] \
+                and event['head']['x1'] - other['head']['x0'] >= BESIDE_OVER[0] * space
+            if abs(ahead) <= COLUMN or (apart <= 1 and -BESIDE <= ahead <= reach) or over:
                 near.append((abs(ahead), other))
         if near:
             partner = min(near, key=lambda item: item[0])[1]

@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.1 % on
-scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,011 of 22,595, counted by the page;
-21,924 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
-syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 582 printed notes and 193 syllables
-are lacking and 535 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,051 of 6,244, counted by the page; 5,997 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.3 % on the kit (6229 of 6901).
+scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,057 of 22,649, counted by the page;
+21,925 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
+syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 588 printed notes and 192 syllables
+are lacking and 448 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+files and a list of words (6,062 of 6,254, counted by the page; 5,998 of 6,259 as typed; 94.9 % of the whole words; 37 scores at 99 % of the syllables);
+89.0 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6229 of 6901).
 On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -975,6 +975,54 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The fresh set's reading with the words is a chain of readings of the pages that each round changed, and the
   reading of its notes reads every page. Set the two beside each other piece by piece at the end of a round:
   five pieces held pages that were older than main (round 74), and they were read again.
+- A page that prints a stretch of its hymn once more than the hymn is typed (a refrain that the page draws with
+  its notes after a verse, where a hand's remark made the typed hymn leave it out) is told to the scorer with its
+  place (`more`), as a stretch that a scan does not show is. Counted in a window, such a page showed 53 notes that
+  are not there on one clean score, and 5 with the relation. The count of the printed notes and syllables grows
+  with it, `AS_TYPED=1` gives the figures of the round before exactly, and the reading before the round is
+  scored again before a rule is compared with it.
+- A rule that says where a key signature ends moves the start of the notes of its staff. The first form of the
+  rule for a bold key signature (`starts.KEY_PLACES`: the page's key and the staff's clef say where each sign
+  stands) moved the starts of 185 staves. It is a guard now: it acts only where the notes would begin before the
+  last sign of the key, and only moves their start later (21 staves on 18 pages). Other marks stand as a sign
+  does: a quarter rest after a flat, and the dots of a bass clef at the place of its first sharp.
+- A wider limit of an older finder is not set in the place of the closer one. The numbers of a time signature
+  that begin 0.3 staff spaces from their lines in the place of 0.2 (`meter.TIME_LOOSE`) read 44 true signatures
+  and 8 false ones, and lost a true one: two flats of a bass staff's key, one over the other, and a heavy sharp
+  fill the two halves of a staff as two numbers do, and a sharp beside true numbers passed the wider limit, was
+  grouped with them, and the group was no signature. The closer limit is read first and keeps what it finds;
+  the wider one adds numbers in other columns, and at the start of a staff only after the key signature (the 7
+  signs of a key began 1.2 staff spaces or more before its end, the 16 true signatures after it).
+- No count shows a false time signature that takes no note. The stored pages of a run hold the time signatures
+  and the ends of the starts of each staff: two runs are set beside each other, and each changed signature is
+  looked at on a tile that is centred on its own staff (scripts outside git, with the wide test). A tile that is
+  centred on the notes of the staff shows the wrong rows.
+- A time signature that is read is the time of the bars after it until the next one that is read. Where the
+  page changes the time back with a sign that the reader does not read (a thin C by hand at the start of a
+  later staff), a tie of the votes in such a bar is decided by the old time: 1 note lost on a copy by hand by
+  a true signature. Say so and leave the rule.
+- On a page that marks the ison by breves alone, with no letters, the breves are the ison's only notes: the
+  count sets such a page as a melody and an ison on one staff, and a rule that takes every breve lost them. A
+  breve under no letter is taken only on a page that names the ison by letters (`drone.BREVE_BARE`). Its sign is
+  an upright stroke of its own at each side: measured from the edge of the inside, the head's own rim passed as
+  a stroke on 15 to 33 true whole notes, so a column of paper must stand between the rim and the stroke.
+- The marks of a census are stored once with a crop of the page around each (outside git, with the wide test),
+  and the measures of a rule are tried on the crops in seconds, without a page read.
+- A trial in the count (a lone note that is not given to both parts where the other part has a gap) is made on
+  a copy of the scorer and scored on the stored runs: it gained 1 note on the clean copies and lost 42, and the
+  scorer was put back from its copy.
+- A rule of the columns that is written for a whole note acts on every head without a stem, and on a copy by hand
+  such a head is a mark that is no whole note as often as not: a worn head, a box of two beamed notes, a pencil
+  ring, the letters of a heading. The first form of the rule for a whole note that a print sets at the left of the
+  other voice's note (`music.BESIDE_OVER`: the two heads stand over each other along the staff) acted at 15 places.
+  The one on a clean copy was the print's; the 14 others lost 7 notes and gained 2, by parts and staff by staff
+  alike, inside a round whose count showed 13 gained and 5 lost. The rule alone showed it, and a list of every place
+  where the first form acts, with its measures, gave the print's whole shape: the whole note of the upper voice at
+  the left of the stem line of the lower voice's note, a third over it.
+- The software-made PDFs are read with a round's code whenever a rule of `music.py` changes, and compared page
+  by page with main's reading of them (139 pages, a few minutes). The stored reading of the PDFs that the notes
+  runs are joined with is older than the count's lists; the figures of the PDFs are those of the reading with
+  the words.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

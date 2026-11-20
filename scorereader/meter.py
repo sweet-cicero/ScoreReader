@@ -14,6 +14,17 @@ import cv2
 import numpy as np
 
 TIME_EDGE = 0.2          # a number begins and ends at most this far from the top, middle or bottom line, in staff spaces
+TIME_LOOSE = (0.3, 0.5)  # or at most as far as the first number (a print whose numbers stand a little short of the lines,
+#                          or over them), where no numbers are found by TIME_EDGE in the same columns. The signs of a key
+#                          fill the two halves of a staff within the wider limit too (two flats of a bass staff, a heavy
+#                          sharp): at the start of a staff such numbers stand after the key signature, at most the second
+#                          number of staff spaces before its end. After the start of the notes they are numbers as the
+#                          others are: there the staves of a system must agree, or a bar line stands before them.
+#                          Of the 23 such signs at the starts of LitChoir's staves, each looked at, the 7 that are signs
+#                          of a key begin 1.2 staff spaces or more before the key's end, and the 16 time signatures 0.17
+#                          or more after it. Where the key signature is not known yet (the first look at a start, which
+#                          reaches 13 staff spaces past the clef), such numbers do not count: a note with a flag passed
+#                          there (None: off)
 TIME_WIDE = (0.6, 2.2)   # each number is this wide, in staff spaces
 TIME_WIDER = 1.0         # and one of the two is at least this wide (a quarter rest fills the staff too, but it is slim)
 TIME_HIGH = 1.4          # each number is at least this high
@@ -23,6 +34,12 @@ TIME_BAR = 0.97          # no column of the numbers is ink along this share of t
 TIME_WAIST = (0.3, 0.45) # the ink within this many staff spaces of the middle line is at least this wide, or there is none
 TIME_PAIR = 1.5          # the staves of a system change the time at one place: at most this far apart, in staff spaces
 TIME_AFTER = 3.0         # in a system of one staff, a bar line stands at most this far before the numbers
+TIME_MATE = True         # the staves of a system change the time at one place, after a bar line. Where one staff shows
+#                          the numbers by every measure, with a bar line at most TIME_AFTER before them, the ink of
+#                          another staff of the system that stands in the same columns after its bar line, and fills
+#                          the two halves of the staff as two numbers do, is the same signature: it missed a limit of
+#                          the checks for a bar line, a head and a stem by a pixel (two numbers that touch and are a
+#                          hair narrower than TIME_STACK asks). Alone such ink is no signature (False: off)
 TIME_HEAD = (0.7, 0.05)  # and no ink is as thick as this in every direction, in staff spaces, over more than this
 #                          share of a square staff space: that is the head of a note (a bold number has small such spots)
 TIME_STACK = (1.25, 1.9, 1.1, 0.85, 0.08, 0.25, 0.85, 0.45)   # two numbers that touch, or bold numbers, fail the checks
@@ -69,14 +86,35 @@ def _stacked(columns: np.ndarray, wides: list[int], space: float, crosses: bool)
     return (from_cross if crosses else from_other) <= full.min() / len(columns) and full.max() / len(columns) <= to
 
 
-def time_signs(layers: dict, staff: dict, first: float | None = None, last: float | None = None) -> list[dict]:
+def time_signs(layers: dict, staff: dict, first: float | None = None, last: float | None = None, weak: bool = False) -> list[dict]:
     """The time signatures of a staff between the columns first and last (the whole staff when they are not given):
-    each {'x0', 'x1'}."""
+    each {'x0', 'x1'}. The numbers that pass only by the wider limit of TIME_LOOSE are marked ('loose': True). With
+    `weak`, also the ink that fills the two halves of the staff as two numbers do and fails a check for a bar line,
+    a head or a stem ('weak': True): see TIME_MATE."""
+    found = _time_signs(layers, staff, first, last, weak, TIME_EDGE)
+    if TIME_LOOSE:
+        wider = [dict(sign, loose=True) for sign in _time_signs(layers, staff, first, last, weak, TIME_LOOSE[0])]
+
+        def apart(sign: dict, others: list[dict]) -> bool:
+            return not any(sign['x0'] <= other['x1'] and other['x0'] <= sign['x1'] for other in others)
+
+        # Numbers that pass every check come before ink that fails one, and the closer limit before the wider one.
+        sure = [sign for sign in found if not sign.get('weak')]
+        sure += [sign for sign in wider if not sign.get('weak') and apart(sign, sure)]
+        for sign in [sign for sign in found + wider if sign.get('weak')]:
+            if apart(sign, sure):
+                sure.append(sign)
+        found = sorted(sure, key=lambda sign: sign['x0'])
+    return found
+
+
+def _time_signs(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, limit: float) -> list[dict]:
+    """The time signatures of time_signs() whose numbers begin and end at most `limit` staff spaces from their lines."""
     free = _free(layers)
     height, width = free.shape
     space, rows = staff['space'], staff['rows']
     top, middle, bottom = rows[0], rows[2], rows[4]
-    edge = TIME_EDGE * space
+    edge = limit * space
     y0, y1 = max(0, int(top - 1.5 * space)), min(height, int(bottom + 1.5 * space) + 1)
     x0 = max(0, int(staff['x0'] if first is None else first))
     x1 = min(width, int(staff['x1'] if last is None else last) + 1)
@@ -131,19 +169,20 @@ def time_signs(layers: dict, staff: dict, first: float | None = None, last: floa
         columns = inside.mean(axis=0)
         crosses = bool((columns >= TIME_BAR).any())
         stacked = _stacked(columns, [box[1] - box[0] + 1 for box in boxes], space, crosses)
-        if crosses and not stacked:
-            continue
+        refused = crosses and not stacked
         # A note with a flag fills both halves too (its head in one, its flag in the other): a head is a thick blot.
         size = max(3, int(round(TIME_HEAD[0] * space)))
         thick = cv2.erode(mask.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
         if thick.sum() > TIME_HEAD[1] * space * space and not stacked:
-            continue
+            refused = True
         # The stem of a note crosses the middle line as one thin stroke. Two numbers meet there with more ink, or
         # they do not meet.
         waist = mask[max(0, split - int(TIME_WAIST[0] * space)):split + int(TIME_WAIST[0] * space) + 1].any(axis=0).sum()
         if 0 < waist < TIME_WAIST[1] * space and not (crosses and stacked):
+            refused = True
+        if refused and not weak:
             continue
-        found.append({'x0': float(x0 + begin), 'x1': float(x0 + end)})
+        found.append(dict({'x0': float(x0 + begin), 'x1': float(x0 + end)}, **({'weak': True} if refused else {})))
     return found
 
 
@@ -330,11 +369,14 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
     return found
 
 
-def start_sign(layers: dict, staff: dict, first: float, last: float) -> dict | None:
+def start_sign(layers: dict, staff: dict, first: float, last: float, key_end: float | None = None) -> dict | None:
     """The time signature that begins between the columns first and last, at the start of a staff: {'x0', 'x1'};
-    two numbers, or with COMMON the sign of common time ('common': True)."""
+    two numbers, or with COMMON the sign of common time ('common': True). `key_end` is the column where the key
+    signature of the staff ends, where it is known: numbers that pass only by the wider limit stand after it
+    (TIME_LOOSE), and where it is not known they do not count."""
     reach = last + TIME_WIDE[1] * staff['space']
-    found = [sign for sign in time_signs(layers, staff, first, reach) if sign['x0'] <= last]
+    found = [{name: value for name, value in sign.items() if name != 'loose'} for sign in time_signs(layers, staff, first, reach)
+             if sign['x0'] <= last and (not sign.get('loose') or key_end is not None and sign['x0'] >= key_end - TIME_LOOSE[1] * staff['space'])]
     if COMMON:
         found += [sign for sign in common_signs(layers, staff, first, reach) if sign['x0'] <= last]
     return min(found, key=lambda sign: sign['x0']) if found else None
@@ -345,19 +387,30 @@ def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:
     of each staff begin, and `bars` holds the bar lines of each staff. In a system of two or more staves, the
     numbers stand at one place in two staves or more. In a system of one staff, a bar line stands before them."""
     staves = layers['staves']
-    found = {index: [sign for sign in time_signs(layers, staff, ends[index]) if sign['x0'] >= ends[index]]
+    found = {index: [{name: value for name, value in sign.items() if name != 'loose'}
+                     for sign in time_signs(layers, staff, ends[index], weak=bool(TIME_MATE)) if sign['x0'] >= ends[index]]
              for index, staff in enumerate(staves)}
     kept = {index: [] for index in found}
+
+    def after_bar(index: int, sign: dict) -> bool:
+        return any(0 <= sign['x0'] - bar <= TIME_AFTER * staves[index]['space'] for bar in bars.get(index, []))
+
     for index, staff in enumerate(staves):
         space = staff['space']
         mates = [other for other, mate in enumerate(staves) if mate['system'] == staff['system'] and other != index]
         for sign in found[index]:
             middle = (sign['x0'] + sign['x1']) / 2
             if mates:
-                sure = any(abs((other['x0'] + other['x1']) / 2 - middle) <= TIME_PAIR * space
-                           for mate in mates for other in found[mate])
+                there = [(mate, other) for mate in mates for other in found[mate]
+                         if abs((other['x0'] + other['x1']) / 2 - middle) <= TIME_PAIR * space]
+                if sign.get('weak'):
+                    # TIME_MATE: beside the numbers that another staff shows by every measure, both after a bar line.
+                    sure = after_bar(index, sign) and any(not other.get('weak') and after_bar(mate, other) for mate, other in there)
+                else:
+                    sure = any(not other.get('weak') for _, other in there) \
+                        or after_bar(index, sign) and any(after_bar(mate, other) for mate, other in there)
             else:
-                sure = any(0 <= sign['x0'] - bar <= TIME_AFTER * space for bar in bars.get(index, []))
+                sure = not sign.get('weak') and after_bar(index, sign)
             if sure:
                 kept[index].append(sign)
     # The bold C of a print, at the start of the notes or after a bar line (COMMON_BOLD, COMMON_AT).

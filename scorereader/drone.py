@@ -44,6 +44,20 @@ BREVE = (3.5, 1.0, 1.0, 0.12, 0.9, 2.4, 1.15, 2.0, 0.45)
 #                       way. (None: off)
 
 
+BREVE_BARE = (2, 0.3, 0.7, 2.8, 1.4, 0.3)
+#                       on a page that names the ison by letters (the first number of letters or more) a breve is the ison
+#                       written out once more, also where no letter stands over it (a print restates the ison at the start
+#                       of a staff): a hollow head without a stem, with an upright stroke of its own at each side. Outward
+#                       from the inside along its middle row there is, after the rim, a column of paper (ink through the
+#                       row at most the sixth number of staff spaces long: paper, or the ledger line alone), and then, at
+#                       most the fifth number from the inside, a column whose ink through the row goes on past the row by
+#                       the second number up and down and is from the third to the fourth number long. A whole note of the
+#                       melody has no such strokes (none of 49 on the chant pages; all 62 heads with them are breves). A
+#                       hollow head with such strokes whose stem carries a filled head is the breve under the melody's
+#                       note: the notes of a chord are of one kind. On a page without letters the breves are the ison's
+#                       only notes, and they stay. (None: off)
+
+
 def _holes(piece: np.ndarray) -> list[tuple[float, float, float]]:
     """The pieces of paper that the ink of a letter closes in: (share of the box, middle row, middle column), both
     middles as shares of the height and the width."""
@@ -267,17 +281,75 @@ def is_breve(layers: dict, head: dict) -> bool:
         and _bar(layers, right + int(BREVE[3] * space), right + int(BREVE[4] * space), row)
 
 
+def _stroke(layers: dict, edge: int, step: int, row: float) -> bool:
+    """Whether an upright stroke of its own stands beside the inside of a hollow head, outward (step -1 or 1) from the
+    edge of the inside (see BREVE_BARE)."""
+    space, ink = layers['space'], layers['bare']
+    _, over, least, most, far, thin = BREVE_BARE
+    near, y = int(0.25 * space), int(round(row))
+    gap, best = False, None
+    for distance in range(1, int(far * space) + 1):
+        x = edge + step * distance
+        if not 0 <= x < ink.shape[1]:
+            break
+        column = ink[:, x] > 0
+        found = next((yy for d in range(near + 1) for yy in (y - d, y + d) if 0 <= yy < len(column) and column[yy]), None)
+        top = bottom = found
+        if found is not None:
+            while top - 1 >= 0 and (column[top - 1] or (top - 2 >= 0 and column[top - 2])):
+                top -= 1
+            while bottom + 1 < len(column) and (column[bottom + 1] or (bottom + 2 < len(column) and column[bottom + 2])):
+                bottom += 1
+        if found is None or bottom - top + 1 <= thin * space:
+            if best is not None:
+                break
+            gap = True
+            continue
+        if gap and (best is None or min(row - top, bottom - row) > best[0]):
+            best = (min(row - top, bottom - row), bottom - top + 1)
+    return best is not None and best[0] >= over * space and least * space <= best[1] <= most * space
+
+
+def is_bare_breve(layers: dict, head: dict) -> bool:
+    """Whether a hollow head has an upright stroke of its own at each side of its inside (see BREVE_BARE)."""
+    box = (slice(head['y0'], head['y1'] + 1), slice(head['x0'], head['x1'] + 1))
+    inside = (layers['holes'][box] > 0).astype(np.uint8)
+    count, _, stats, centres = cv2.connectedComponentsWithStats(inside, connectivity=8)
+    if count < 2:
+        return False
+    big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    left = head['x0'] + int(stats[big, cv2.CC_STAT_LEFT])
+    right = left + int(stats[big, cv2.CC_STAT_WIDTH]) - 1
+    row = head['y0'] + float(centres[big][1])
+    return _stroke(layers, left, -1, row) and _stroke(layers, right, 1, row)
+
+
 def without_breves(layers: dict, heads: list[dict], letters: dict[int, list[dict]]) -> list[dict]:
-    """The heads without the breves that a print sets under the ison's letters (see BREVE): the letters of each
-    staff as letter_marks() gives them."""
+    """The heads without the breves that a print sets under the ison's letters (see BREVE) and, on a page that names
+    the ison by letters, without the breves that stand under no letter (see BREVE_BARE): the letters of each staff as
+    letter_marks() gives them."""
     if not BREVE:
         return heads
     space = layers['space']
+    named = BREVE_BARE is not None and sum(len(marks) for marks in letters.values()) >= BREVE_BARE[0]
+
+    def filled_mate(head: dict) -> bool:
+        # Each stem of the head is a filled head's: that head hangs on the same stem, or the stem ends at it (the
+        # melody's note over the breve with its stem down).
+        return all(any(other is not head and not other['hollow'] and other['staff'] == head['staff']
+                       and (any(way['direction'] == stem['direction'] and abs(way['x'] - stem['x']) <= 0.2 * space
+                                for way in other['stems'])
+                            or other['x0'] - 0.2 * space <= stem['x'] <= other['x1'] + 0.2 * space
+                            and other['y0'] - 0.5 * space <= stem['end'] <= other['y1'] + 0.5 * space)
+                       for other in heads) for stem in head['stems'])
+
     out = []
     for head in heads:
         if head['hollow'] and any(not mark.get('unison') and -BREVE[0] * space <= head['cx'] - mark['x'] <= BREVE[1] * space
                                   and abs(head['place'] - mark['place']) <= BREVE[2] for mark in letters.get(head['staff'], [])) \
                 and is_breve(layers, head):
+            continue
+        if named and head['hollow'] and (not head['stems'] or filled_mate(head)) and is_bare_breve(layers, head):
             continue
         out.append(head)
     return out

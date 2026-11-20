@@ -82,6 +82,17 @@ KEY_WORN = (0.8, 0.55, 1.6, 1.4, 3.5, 0.45, 1.5, 1.0, 2)    # key signs that the
 #                     and the next at most this far after the end of the last; marks that ran together count as the
 #                     signs that fit in their width. The last number is the least count of signs. On a page whose
 #                     staves show no key, a key that half of the staves show so is the page's key (None: off)
+KEY_PLACES = (0.2, 0.9, 1.0, 2)   # a bold key signature: the strokes of a heavy sharp ran together, the signs touch
+#                     each other and the clef, or pieces of the clef pass as signs, and the notes of the staff would
+#                     begin before the end of its key signature: its signs were read as notes. The page's key and the
+#                     staff's clef say where each sign must stand. The marks after the clef are the key signature
+#                     where each stands at its place and is as large as a sign (the measures of KEY_WORN), and the
+#                     notes begin after them where they would begin before the last sign (at most the first number
+#                     of its width hidden). A mark before the first sign is of the clef: a speck, the last tip of a
+#                     wide clef, and with a bass clef a dot (under the second number of staff spaces wide, at most
+#                     the third number of places from the F line); at most the fourth number of such marks. Where a
+#                     chain of signs shows the key after the clef, the marks begin with that chain: a quarter rest
+#                     after a flat stands as a flat does (None: off)
 FLAT_BEAM = (1.2, 0.65)   # a flat between two beamed notes: its stroke runs up into the beam. The stroke is cut where the
 #                     ink beside it gets slim (at most the second number wide), at most this many staff spaces under
 #                     its top. Only for the signs of notes: a key signature stands under no beam (None: off)
@@ -627,6 +638,53 @@ def worn_key(layers: dict, staff: dict, first: float, last: float) -> dict:
     return out
 
 
+def key_end(layers: dict, staff: dict, first: float, last: float, clef: str, key: int) -> tuple | None:
+    """Where a key signature ends that the marks after a clef show by their places, for a clef and a key that are
+    known: (the first column of its first mark, the last column of its last mark, the first column of its last
+    mark), or None where the marks do not stand as the signs of this key do. A mark is a run of columns with ink
+    (without the staff lines) between the columns first and last; the measures are those of worn_key(). See
+    KEY_PLACES."""
+    free, space, rows = _free(layers), staff['space'], staff['rows']
+    fit, narrow, wide, low, high, least, begin, step, _ = KEY_WORN
+    top, bottom = max(0, int(rows[0] - 2.2 * space)), min(free.shape[0], int(rows[4] + 1.2 * space))
+    first, last = max(0, int(round(first))), min(free.shape[1], int(round(last)))
+    if not key or last - first < space:
+        return None
+    band = free[top:bottom, first:last]
+    inked = np.concatenate(([0], (band.sum(axis=0) > 0).astype(np.int8), [0]))
+    edges = np.flatnonzero(np.diff(inked))
+    marks = []
+    for left, right in zip(edges[::2], edges[1::2]):
+        part = band[:, left:right].sum(axis=1).astype(float)
+        inside = np.flatnonzero(part)
+        marks.append((first + left, first + right - 1, (right - left) / space, (inside[-1] - inside[0] + 1) / space,
+                      part.sum() / space / space, pitch_place(staff, top + float((part * np.arange(len(part))).sum() / part.sum()))))
+    order, lift = (SHARP_PLACES[clef], 0.0) if key > 0 else (FLAT_PLACES[clef], FLAT_MIDDLE)
+    edge = first
+    for skip in range(min(len(marks), KEY_PLACES[3] + 1)):
+        found, last_x, start = 0, edge, None
+        for x0, x1, width, tall, mass, place in marks[skip:]:
+            if x0 - last_x > (step if found else begin) * space:
+                break
+            # Marks that ran together count as the signs that fit in their width, and no more than the key has.
+            signs = min(max(1, int(round(width / 1.05))), abs(key) - found, 3)
+            places = order[found:found + signs]
+            span = (max(places) - min(places)) / 2
+            if not (narrow * signs <= width <= wide * signs and low + span <= tall <= high + span
+                    and mass >= least * signs and abs(place - (sum(places) / signs + lift)) <= fit):
+                break
+            start = x0 if start is None else start
+            found, last_x = found + signs, x1
+            if found == abs(key):
+                return float(start), float(x1), float(x0)
+        # A mark before the first sign is of the clef: a speck, the last tip of a wide clef, a dot of a bass clef.
+        x0, x1, width, _, _, place = marks[skip]
+        if x0 - edge > begin * space or not (width < narrow or clef == 'F' and width < KEY_PLACES[1] and abs(place - 2) <= KEY_PLACES[2]):
+            break
+        edge = x1
+    return None
+
+
 def read_start(layers: dict, index: int) -> dict:
     """The beginning of a staff: {'clef' (from its shape), 'x0', 'x1' (of the clef), 'key' (sharps (+) or flats (-)),
     'key_clef' (the clef that the heights of the key signature show, or None), 'miss' (how far the signs stand from
@@ -862,10 +920,26 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
             if guessed[index] and there and ends[index] - float(np.median(there)) >= SYSTEM_START * staff['space']:
                 ends[index] = float(np.median(there))
     keys = system_keys(starts, [staff['system'] for staff in staves], key)
+    if KEY_PLACES and key:
+        # A bold key signature that the notes of the staff would begin in: they begin after it.
+        for index, (start, staff) in enumerate(zip(starts, staves)):
+            if not start['clef']:
+                continue
+            time = start.get('time')
+            placed = key_end(layers, staff, start['x1'] + 1, min(start['x0'] + 13 * staff['space'], time['x0'] - 1 if time else float('inf')),
+                             clefs[index], key)
+            if placed is None or ends[index] > placed[2] + KEY_PLACES[0] * (placed[1] - placed[2]):
+                continue
+            shown = [found for (_, sort), (found, _) in start['chains'].items() if sort == kind and len(found) >= abs(key)
+                     and found[0]['x0'] >= start['x1'] - 0.25 * staff['space']]
+            if shown and all(placed[0] > found[0]['x1'] for found in shown):
+                continue
+            ends[index] = placed[1]
+            start['placed'] = placed
     if TIME:
         # The time signature stands between the key signature and the first note.
         for index, (start, staff) in enumerate(zip(starts, staves)):
-            sign = start_sign(layers, staff, start['x1'] - TIME[0] * staff['space'], ends[index] + TIME[1] * staff['space'])
+            sign = start_sign(layers, staff, start['x1'] - TIME[0] * staff['space'], ends[index] + TIME[1] * staff['space'], key_end=ends[index])
             if sign:
                 start['time'] = sign
                 ends[index] = max(ends[index], sign['x1'])
