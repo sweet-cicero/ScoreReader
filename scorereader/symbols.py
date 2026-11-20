@@ -3473,6 +3473,40 @@ def _loop(part: np.ndarray, space: float) -> float:
     return float((outside == 1).sum()) / max(1, part.shape[0] * part.shape[1])
 
 
+F_SIGN = (0.15, 2.7, 0.3, 1.5)   # the letter f of the dynamics (f, ff, mf) or of words in italics is no stem with a head: its
+#   stroke leans (its top stands this many staff spaces or more to the right of its foot), is at most the second number
+#   of staff spaces high, and has a crossbar (ink that reaches the third number of staff spaces to both sides, in a row
+#   of its middle three fifths). The hook at its end was read as a thin head beside the staff, where it stands close
+#   to the outer line. A note there with no ledger line has nothing across its stem. (A census of every head read from
+#   a stroke on LitChoir's pages, 3,448: the 12 strokes of this shape beside the staff are all such letters, 11 of the
+#   dynamics on two clean scores and one of the words; they lean from 0.21 and the other short strokes with ink across
+#   them up to 0.11, and the stems that lean with ink across them are 3.8 staff spaces high or more.) Two such letters
+#   side by side, at most the last number of staff spaces apart and with one crossbar, close paper in between them
+#   (without_f_marks). One stroke of this shape at a head on a ledger line is the short stem of a note by hand: it
+#   leans, and the ledger line lies across it. None: off
+
+
+def _f_cross(stroke: dict, space: float) -> list[int]:
+    """The rows of the crossbar of an upright stroke of the layers that has the shape of the letter f (F_SIGN); none
+    where it has not."""
+    if not F_SIGN:
+        return []
+    xs = stroke['xs']
+    high = len(xs)
+    if high > F_SIGN[1] * space or high < 5:
+        return []
+    fifth = max(1, high // 5)
+    if float(np.mean(xs[:fifth]) - np.mean(xs[-fifth:])) < F_SIGN[0] * space:
+        return []
+    rows = np.nonzero((stroke['left'] >= F_SIGN[2] * space) & (stroke['right'] >= F_SIGN[2] * space))[0]
+    return [int(stroke['y0'] + row) for row in rows if 0.2 * high <= row <= 0.8 * high]
+
+
+def _f_stroke(stroke: dict, space: float) -> bool:
+    """Whether an upright stroke of the layers has the shape of the letter f (F_SIGN)."""
+    return bool(_f_cross(stroke, space))
+
+
 def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float]) -> list[dict]:
     """The heads that the thick marks do not show: a quick hand draws a head as one thin slanted stroke, and a weak
     copy loses the place where the stem meets it. Such a head is found from its stem. Every upright stroke that is
@@ -3653,7 +3687,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                   if abs(x - stem['x']) <= 0.35 * space and min(head['cy'], stem['end']) - 0.5 * space <= bottom
                   and top <= max(head['cy'], stem['end']) + 0.5 * space]
         matched |= {id(stem) for _, stem in owners}
-        asks.append((x, top, bottom, staff, owners, False, (float(stroke['xs'][0]), float(stroke['xs'][-1]))))
+        asks.append((x, top, bottom, staff, owners, False, (float(stroke['xs'][0]), float(stroke['xs'][-1])), stroke))
     if TWO_ALONG:
         # The stems of a head with two stems that are no stroke of their own: the stem up, the head and the stem
         # down were one long stroke, or the ink that leaves the head is the thin head itself.
@@ -3661,7 +3695,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             for stem in head['stems']:
                 if id(stem) not in matched:
                     asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
-                                 [(head, stem)], True, None))
+                                 [(head, stem)], True, None, None))
         if ONE_ALONG:
             # A head with one stem: the thin head of the other voice can hang on that same stem, farther along. The
             # ink that leaves the thick head is then the other voice's stem, and the two heads share it as a chord.
@@ -3669,7 +3703,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 if len(head['stems']) == 1 and not any(head is other for other in two):
                     stem = head['stems'][0]
                     asks.append((stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), head['staff'],
-                                 [(head, stem)], True, None))
+                                 [(head, stem)], True, None, None))
     found = []
     flags = {}
 
@@ -3723,7 +3757,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         return best[1] if best else None
 
     asked = {}       # the stroke of each thin head that was found from a stroke of its own: (x, top, bottom, direction)
-    for x, top, bottom, staff, owners, whole, leans in asks:
+    for x, top, bottom, staff, owners, whole, leans, stroke in asks:
         best = None
         for piece in pieces:
             if piece.get('open') and not owners:
@@ -3832,6 +3866,9 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                             and piece['y0'] - 0.3 * space <= stem['end'] <= piece['y1'] + 0.3 * space:
                         owner['stems'].remove(stem)
         head = make_head(piece, direction, x, end, staff)
+        if head is not None and stroke is not None and not owners and abs(head['place']) > 4.6 and not head.get('ledgers') \
+                and _f_stroke(stroke, space):
+            continue        # the hook of the letter f
         if head is not None:
             found.append(head)
             if not owners:
@@ -5289,6 +5326,173 @@ def without_stem_spans(layers: dict, heads: list[dict]) -> list[dict]:
         if all(sides):
             gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
+
+
+LINE_MARK = (10.0, 0.9, 0.85, 0.4)   # a mark whose stems are all this many staff spaces long or more hangs on a line of
+#   the system (a bar line through its staves, the line that opens or ends them): no stem goes on through the next
+#   staff. Such a mark is a head only by its own shape. A hollow one whose closed paper is level at the line's side in
+#   the second number of its rows (within a pixel of its first or last column there) and smaller than the last number
+#   (staff spaces squared) is a cell that the line closes with a staff line and a slur or a stroke; the inside of a head
+#   is round, with the head's rim between it and the stem. A filled one is a slur that crosses the line or ends at it,
+#   the tail of a hairpin, a letter of the dynamics between the staves or a number of the time signature on a bar line.
+#   Both only where the widest disc in the mark's ink is under the third number times the usual one of the page's
+#   filled heads: a hand draws a head against a bar line, and that head is as fat as its neighbours. (A census of
+#   every such stem of LitChoir's pages, 104 marks, each looked at. The cells are 0.25 staff spaces squared at most;
+#   a hand's half note whose rim is the last bar line of its staff has 0.55, and so have a natural that is printed
+#   against a bar line and a loop of a clef at the opening line, which stay as they were read. Two hollow heads by hand
+#   with an open rim, read as filled quarter notes with the bar line as their stem, go with the filled marks.) None: off
+
+
+def without_line_marks(layers: dict, heads: list[dict], bars: dict[int, list[float]] | None = None) -> list[dict]:
+    """The heads without the marks that hang on a line of the system and have no shape of a head (LINE_MARK). The
+    line of a mark that goes is a bar line of its staff, where no head hangs on it (`bars` is filled in)."""
+    if not LINE_MARK or not layers.get('head'):
+        return heads
+    space = layers['space']
+    long, level, fat, large = LINE_MARK
+    fats = [head['alt']['fat'] for head in heads if not head['hollow'] and head.get('alt')]
+    usual = float(np.median(fats)) * space if fats else 0.0
+    if not usual:
+        return heads
+    ink, holes = layers['ink'], layers['holes']
+    out, lines = [], []
+    for head in heads:
+        stems = head['stems']
+        if not stems or any(stem['length'] < long * space for stem in stems):
+            out.append(head)
+            continue
+        y0, x0 = max(0, int(head['y0']) - 1), max(0, int(head['x0']) - 1)
+        box = (slice(y0, int(head['y1']) + 2), slice(x0, int(head['x1']) + 2))
+        own = np.ascontiguousarray(ink[box])
+        if 2 * cv2.distanceTransform(np.pad(own.astype(np.uint8), 1), cv2.DIST_L2, 3).max() >= fat * usual:
+            out.append(head)
+            continue
+        # The line leans on a scan: its column in the rows of the mark, from the stem's far end through its middle.
+        stem = stems[0]
+        start = stem['end'] - stem['length'] if stem['direction'] == 'down' else stem['end'] + stem['length']
+        half = (start - stem['end']) / 2
+        at = stem['x'] + ((stem.get('mid', stem['x']) - stem['x']) / half * (head['cy'] - stem['end']) if abs(half) > 1 else 0.0)
+        if head['hollow']:
+            count, labels, stats, _ = cv2.connectedComponentsWithStats(holes[box].astype(np.uint8), connectivity=4)
+            if count < 2:
+                out.append(head)
+                continue
+            index = 1 + int(np.argmax(stats[1:, 4]))
+            x, y, wide, high, _ = stats[index]
+            part = labels[y:y + high, x:x + wide] == index
+            if at < head['cx']:
+                share = float((part.argmax(axis=1) <= 1).mean())
+            else:
+                share = float((wide - 1 - part[:, ::-1].argmax(axis=1) >= wide - 2).mean())
+            if share < level or stats[index, 4] >= large * space * space:
+                out.append(head)
+                continue
+        lines.append((head['staff'], float(at)))
+    if bars is not None:
+        for staff, at in lines:
+            if all(abs(at - x) > 0.4 * space for x in bars.get(staff, [])) and not any(
+                    head['staff'] == staff and head['x0'] - 0.2 * space <= at <= head['x1'] + 0.2 * space for head in out):
+                bars[staff] = sorted(bars.get(staff, []) + [at])
+    return out
+
+
+def without_f_marks(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the paper that the two letters of an ff close in between them (F_SIGN): it was read as a
+    hollow head beside the staff with the stroke of one letter as its stem and their crossbar as its ledger line. The
+    mark lies between two strokes of the shape of the letter that share a crossbar; a mark with a ledger line that is
+    no crossbar of its stroke stays. (With one such stroke alone the step took 38 marks on 30 pages of LitChoir, most
+    of them true notes on a ledger line whose short stem a hand drew leaning.)"""
+    if not F_SIGN:
+        return heads
+    space = layers['space']
+    strokes = [(stroke, rows) for stroke in layers['strokes'] if stroke['slim']
+               for rows in [_f_cross(stroke, space)] if rows]
+    if len(strokes) < 2:
+        return heads
+    out = []
+    for head in heads:
+        if head['hollow'] and len(head['stems']) == 1 and abs(head['place']) > 4.6:
+            stem = head['stems'][0]
+            top, bottom = min(head['cy'], stem['end']), max(head['cy'], stem['end'])
+            own = [(stroke, rows) for stroke, rows in strokes if abs(stroke['x'] - stem['x']) <= 0.2 * space
+                   and min(bottom, stroke['y1']) - max(top, stroke['y0']) >= 0.5 * (stroke['y1'] - stroke['y0'])
+                   and all(any(abs(line - row) <= 2 for row in rows) for line in head.get('ledgers') or [])]
+            if any(other is not stroke and (other['x'] - head['cx']) * (stroke['x'] - head['cx']) < 0
+                   and abs(other['x'] - stroke['x']) <= F_SIGN[3] * space
+                   and any(abs(row - line) <= 2 for row in rows for line in others)
+                   for stroke, rows in own for other, others in strokes):
+                continue        # the letter at the mark's other side, on the same crossbar
+        out.append(head)
+    return out
+
+
+P_BOWL = (0.3, 0.3, 0.9, 1.5, 0.7, 0.15)   # the bowl of the letter p of the dynamics (p, pp, mp) is no whole note: a hollow
+#   mark without a stem beside the staff, with no ledger line, whose ink goes on under it in the stroke of the letter.
+#   In the first number of staff spaces under the mark (after the last rows of the bowl itself, the last number at
+#   most) the ink of its piece stands under its left half and at its left, with paper under the rest of it (but for
+#   its last three tenths, where the next letter of a pp begins), in the third number of the rows; the stroke is bold, the
+#   fourth number times the page's slim strokes wide or more, and at most the fifth number of the mark's width; and
+#   the bowl is the top of the letter: no ink of the piece in the second number of staff spaces over the mark. A half
+#   note has a slim stem, and a line by hand through a head goes on over it. The rim of a whole note under a whole
+#   note stands as the stroke does, with the inside of that note as the paper: a mark with a head under it stays. (The
+#   rule's measures on every page of LitChoir: 9 marks, each looked at, eight letters p and the g of a heading.)
+#   None: off
+
+
+def _p_under(layers: dict, head: dict) -> tuple[int, float, float]:
+    """The ink of a mark's own piece (without the staff lines) around it, for P_BOWL: the px over the mark, the share
+    of the rows under it that hold a stroke at its left and paper under its right, and the stroke's median width
+    (px)."""
+    bare, space = layers['bare'], layers['space']
+    height, width = bare.shape
+    x0, x1, y0, y1 = int(head['x0']), int(head['x1']), int(head['y0']), int(head['y1'])
+    wide = x1 - x0 + 1
+    reach = int(space)
+    bx0, bx1, by0, by1 = max(0, x0 - wide), min(width, x1 + reach + 1), max(0, y0 - reach), min(height, y1 + reach + 1)
+    region = np.ascontiguousarray(bare[by0:by1, bx0:bx1]).astype(np.uint8)
+    _, labels = cv2.connectedComponents(region, connectivity=8)
+    inside = labels[y0 - by0:y1 - by0 + 1, x0 - bx0:x1 - bx0 + 1]
+    ids = [index for index in np.unique(inside) if index]
+    if not ids:
+        return 0, 0.0, 0.0
+    piece = labels == max(ids, key=lambda index: int((inside == index).sum()))
+    left, middle = max(0, x0 - int(0.6 * wide)) - bx0, x0 + wide // 2 - bx0
+    last = x1 - int(0.3 * wide) - bx0
+    over = piece[max(0, y0 - int(P_BOWL[1] * space) - by0):max(0, y0 - 1 - by0),
+                 max(0, x0 - int(0.3 * wide) - bx0):x1 + int(0.3 * wide) + 1 - bx0]
+    under = piece[y1 + 1 - by0:]
+    skip = 0
+    while skip < min(under.shape[0], int(P_BOWL[5] * space)) and under[skip, middle:last + 1].any():
+        skip += 1
+    under = under[skip:skip + max(2, int(P_BOWL[0] * space))]
+    if not under.shape[0]:
+        return int(over.sum()), 0.0, 0.0
+    stroke = under[:, left:middle].sum(axis=1)
+    rows = (stroke > 0) & ~under[:, middle:last + 1].any(axis=1)
+    return int(over.sum()), float(rows.mean()), float(np.median(stroke[rows])) if rows.any() else 0.0
+
+
+def without_p_bowls(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the bowls of the letter p of the dynamics (P_BOWL)."""
+    if not P_BOWL:
+        return heads
+    space = layers['space']
+    widths = [stroke['width'] for stroke in layers['strokes']
+              if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 >= 2.5 * space]
+    usual = float(np.median(widths)) if widths else 0.0
+    if not usual:
+        return heads
+    out = []
+    for head in heads:
+        if head['hollow'] and not head['stems'] and abs(head['place']) > 4.6 and not head.get('ledgers') and not any(
+                other is not head and other['staff'] == head['staff'] and head['cy'] < other['y0'] <= head['y1'] + space
+                and min(other['x1'], head['x1']) - max(other['x0'], head['x0']) >= 0.5 * (head['x1'] - head['x0'])
+                for other in heads):
+            over, share, width = _p_under(layers, head)
+            if not over and share >= P_BOWL[2] and P_BOWL[3] * usual <= width <= P_BOWL[4] * (head['x1'] - head['x0'] + 1):
+                continue
+        out.append(head)
+    return out
 
 
 STEM_MEET = (0.5, 0.5, 2.0, 2.5)   # two stems that meet end to end in one column (at most the first number of staff spaces

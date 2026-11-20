@@ -24,14 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.4 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.0 % on
-scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,005 of 22,595, counted by the page;
-21,921 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
-syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 588 printed notes and 193 syllables
-are lacking and 574 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
+Not reached yet: 87.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.1 % on
+scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,011 of 22,595, counted by the page;
+21,924 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
+syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 582 printed notes and 193 syllables
+are lacking and 535 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
 files and a list of words (6,051 of 6,244, counted by the page; 5,997 of 6,259 as typed; 94.8 % of the whole words; 37 scores at 99 % of the syllables);
 89.0 % of all syllables with Tesseract (88.0 % on scans), and 90.3 % on the kit (6229 of 6901).
-On the fresh test set, which no rule was set on: 95.6 % of the notes (39,924 of 41,761; 98 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -938,6 +938,43 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   goes on the list of what is left; the rule is not bent for it.
 - A chain of scoring that a restart cuts leaves its earlier files whole and its log without the last line. Look
   for the last line of a script's log before its figures are used, and run the steps after the cut again.
+- A stem that is as long as its system is high is a line of the system: a bar line through the staves, or the line
+  that opens or ends them. A mark that hangs on it is a head only by its own shape (`symbols.LINE_MARK`): a slur
+  across the line, the tail of a hairpin, a letter of the dynamics and a number of the time signature were read
+  as notes there, and the cell that the line closes with a staff line and a stroke as a half note. A hand draws
+  a true half note whose rim is the bar line itself. The direction of its inside did not part it from the cells;
+  its size did. The line of a mark that goes is a bar line again, and the lengths of its bar change with it: look
+  at those too.
+- The letters of the dynamics are told by the shape of the letter (`symbols.F_SIGN`, `P_BOWL`): the stroke of an
+  f is short, leans and has a crossbar; the bowl of a p is the top of its letter, with the letter's bold stroke
+  under its left half. A step for the paper between the two letters of an ff asked, in its first form, for one
+  stroke of the shape of an f at the mark, and took 38 marks on 30 pages, nearly all of them true notes of copies
+  by hand: a short stem by hand leans, and the ledger line lies across it. The step had been added after the
+  rule's census and tried on a few pages only. A step that is added to a rule gets a census of its own on every
+  page before the full reading, and it asks for the whole shape of its one thing (two letters on one crossbar).
+- A change that lets more pieces into an older finder changes what the finder does with the pieces that it had.
+  The sign of cut time is higher than the C of common time; with the higher limit a flat of the key came in, was
+  grouped with the C beside it, and the C was no longer tested alone (a new note that is not there, on a page
+  that the rule was not written for). The new pieces stand alone, and the old ones are grouped as before.
+- A note that is not there and goes can show the weakness of another step. On the fresh set eighth notes at the
+  end of a bar became quarter notes where the letters under the staff went: `music.BAR_FULL` fills a bar whose
+  eighth rest it does not count. On a copy by hand a dotted half note lost its dot in the vote of its column,
+  where the other staff's dot by hand is not read. Say such a note in the worklog, find the step that loses it,
+  and leave the rule as it is where every mark that it took was no note.
+- A gain by parts on a copy by hand is set beside the sheet staff by staff too: a score gained 8 notes by parts
+  where its sheet shows 1 lost, by the line-up of the count; and where the recited notes set apart grow with a
+  gain, the gain is the count's.
+- A hand's change of a clean copy is listed by what the print shows. Where a hand crossed out the printed rest
+  after a printed dotted half note, the page prints the dotted half note, and the list of the notes by the page
+  holds its length. Where a hand crossed out the printed dots themselves, the notes go on the list of the notes
+  that a hand changed.
+- A census at the reader's own step costs one line (a list of the module that the step fills where it is set)
+  and gives the measures as the rule will see them. Of 246 hollow marks that lie on a sharp of two strokes
+  nearly all are hollow heads whose own two sides pass for the strokes; the one whose closed paper goes on to
+  the mark's edge is the paper between a heavy sharp and its note (`signs.SHARP_ROOM`, a rule for one case).
+- The fresh set's reading with the words is a chain of readings of the pages that each round changed, and the
+  reading of its notes reads every page. Set the two beside each other piece by piece at the end of a round:
+  five pieces held pages that were older than main (round 74), and they were read again.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
