@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,071 of 22,649, counted by the page;
-21,939 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
-syllable, 25 both, 35 have no note that is not there, 24 are whole in all three; 574 printed notes and 187 syllables
-are lacking and 237 notes are read that are not there, each printed head counted once since round 78: 432 by the
+scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,074 of 22,649, counted by the page;
+21,942 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
+syllable, 25 both, 35 have no note that is not there, 24 are whole in all three; 571 printed notes and 187 syllables
+are lacking and 228 notes are read that are not there, each printed head counted once since round 78: 423 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
 files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
 89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6230 of 6901).
@@ -1105,6 +1105,23 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the reader's own step: from the stored notes the stems pair wrongly, because the upper head of a chord stores
   its stem with an early end. A thick piece of a slur that went had held the line-up of the bass on a copy by
   hand (4 notes lost by parts, 1 gained on the sheet staff by staff): the rule stays, and the worklog says so.
+- A heavy sharp whose bars are as thick as a head is one mark with the head that it touches, the whole sharp, and
+  the note was lost (`symbols.SIGN_WHOLE`: the mark is cut at the head's stem). The paper that the sharp closes in
+  with the stem and the head lies in the box of the head: with it the head was a half note, and its middle lay a
+  step low. Such paper reaches the cut and is no part of the head. The sharps of a key signature that touch each
+  other have the same strokes and the same share of ink in their box: a head holds a circle of ink, and they do
+  not. A cut that knows its sign hands it on (`signs.WHOLE_SIGN`): the bars of such a sharp hide the top of a
+  stroke, and the step that reads the signs then finds no pair of strokes. Read a new head on every page of its
+  census with its sign and its pitch beside it, not only with the count of its cuts.
+- The quarter rest of one older print is an X on the middle line with a short upright through its crossing
+  (`rests.CROSS`), and the staff lines close the paper between its arms: its cells were read as whole notes. A
+  census of every piece of ink with a waist gave what parts it from two whole notes one over the other and from
+  the C of common time: where the ink stands in the rows around the middle, not the closed paper (the pieces of
+  the staff lines between the arms close three cells). A rule for one print: say so.
+- A rest that is read stops the note before it from being made longer. A half note whose hole a heavy copy
+  nearly closed had been read as a quarter note and made a half note by the way to the false note in the rest: it
+  is a quarter note again where the rest is read (1 note lost on a clean scan). The rule stays, the worklog says
+  so, and the head goes on the list of what is left.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
