@@ -14,6 +14,7 @@ from fractions import Fraction
 import numpy as np
 
 from .drone import letter_marks, without_breves
+from .fermatas import fermatas, on_fermata
 from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, musicxml, staff_columns
@@ -181,7 +182,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
               clefs_before: list[str] | None = None, key_hymn: int | None = None, ties_before: list | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
-    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests') for pictures and checks.
+    ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests', 'fermatas') for pictures and
+    checks.
     `key_before` is the key of the page before in the same hymn: a page that shows no key signature has that key.
     `clefs_before` are the clefs of the staves of a system on that page, and `key_hymn` is the key that the staves
     of all pages of the hymn voted for together (see scorereader.starts). `ties_before` is the 'ties_out' of the page
@@ -203,7 +205,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         # A page of words only, or of another notation (Byzantine neumes): it holds no staff, so no notes.
         return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'part_notes': [], 'title': title, 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
-                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'triplets': [], 'rests': [], 'times': []}
+                'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'triplets': [], 'rests': [], 'fermatas': [], 'times': []}
     layers = read_layers(grey, places)
     # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
     words = layers['words'] = word_bands(layers)
@@ -311,6 +313,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = without_f_marks(layers, heads)
     heads = without_p_bowls(layers, heads)
     heads = without_stem_meets(layers, heads)
+    # A fermata is no note: the thick middle of its arc was read as a flat head, with an arm of the arc as its stem.
+    holds = fermatas(layers)
+    heads = [head for head in heads if not on_fermata(head, holds, space)]
     # A whole note that touches the half note of another voice keeps no stem of that note.
     chord_wholes(layers, heads)
     dots(layers, heads)
@@ -438,5 +443,5 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             'ties_out': [[staves[head['staff']]['number'], int(round(head['place']))] for head in heads if head.get('tie_out')],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words, 'triplets': triplets,
-            'rests': rests, 'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
+            'rests': rests, 'fermatas': holds, 'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
                       for index, start in enumerate(begin['starts'])]}

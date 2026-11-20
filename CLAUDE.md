@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,074 of 22,649, counted by the page;
-21,942 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
-syllable, 25 both, 35 have no note that is not there, 24 are whole in all three; 571 printed notes and 187 syllables
-are lacking and 228 notes are read that are not there, each printed head counted once since round 78: 423 by the
+scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,080 of 22,649, counted by the page;
+21,946 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 34 scores read every printed note, 38 every
+syllable, 27 both, 35 have no note that is not there, 26 are whole in all three; 565 printed notes and 187 syllables
+are lacking and 225 notes are read that are not there, each printed head counted once since round 78: 420 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
 files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
-89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6230 of 6901).
+89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6232 of 6901).
 On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -69,7 +69,7 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   next steps and the history. The README's status is one paragraph of rounded figures (about 96 %): change it
   only when a rounded figure changes.
 - `scorereader/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
-  `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `music.py`). `letters.py` and `lyrics.py` read the
+  `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `fermatas.py`, `music.py`). `letters.py` and `lyrics.py` read the
   words of a scan, and `ocr.py` reads them with Tesseract when asked, with rules of its own around it; the list of
   words (`--words`) serves both.
   `scorereader/vector.py` reads a software-made PDF from its drawing.
@@ -1122,6 +1122,35 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   nearly closed had been read as a quarter note and made a half note by the way to the false note in the rest: it
   is a quarter note again where the rest is read (1 note lost on a clean scan). The rule stays, the worklog says
   so, and the head goes on the list of what is left.
+- A fermata is an arc with a dot in its hollow, and the thick middle of the arc was read as a flat head with an arm
+  of the arc as its stem (`fermatas.py`). It is told by its whole shape: one stroke from end to end, an outer edge
+  that has dropped little a quarter of the way in and much at both ends alike, its top near its middle, both arms
+  down to its open side, and the dot under its top. A census of every arc with a dot on LitChoir's scan pages (452
+  of 9,990 arcs) gave the limits, and each of the 214 that pass was looked at. A bracket by hand drops at once at
+  its ends, a word by hand is no single stroke, a slur with a dot under it is longer and flatter. The module's own
+  arithmetic takes one arc fewer than the census counted with rounded measures: count a rule with its own code.
+- A piece of closed paper is no speck by its size alone: half of the inside of a hollow head on a line is as
+  small on a small print (a speck in a filled head beside the room of its flag: 12 notes gained and 30 lost in
+  the first form, on 60 pages). The census of every mark where the first form acted gave the shape of the one
+  true case (`symbols.SOLID_SPECK`: two pieces, the speck inside the head and far from the room). A rule for one
+  case: say so.
+- A rule of the music step that mends misreads takes true readings too (`music.CHORD_ONE` took the printed dot
+  of a dotted half note at the stem of another voice's half note). Read every scan page with such a rule off:
+  the count says what the rule is worth (6 notes gained and 13 lost without it), and the pages name every head
+  where it acts. What the rule distrusts is then measured at those heads, each looked at, and a guard keeps the
+  sure ones (`symbols.DOT_SURE`, `music.CHORD_DOT`).
+- The scans of one hymn measure a limit: the first limit for a sure dot (a side of 0.28 staff spaces) kept the
+  dot in one scan, and the same printed dot has a side of 0.27 in the other. Where the true and the false cases
+  stand a hair apart by one measure (0.23 and 0.27), look for the measure that parts them widely (the ink of the
+  dot, among the marks that are round: 0.043 and 0.067 staff spaces squared).
+- A new head changes what an older rule does beside it: a half note that is read anew between two heads of one
+  stem (`symbols.SLIT_BETWEEN`) made the chord rule take the dot of the head under it, and the rule alone gained
+  nothing. A rule whose gain needs another rule of the round is counted alone and with that rule, and the
+  worklog says so. A new head can also read what stands beside it wrongly (the dark edge of a smear as its
+  dot): look at the length of every new head, not only at its place.
+- A score counts for the milestone only when it is whole. The scores that lack one to three notes are looked at
+  place by place, each with its other scans: four notes on three such scores made two of them whole and gave a
+  third every note (round 80).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
