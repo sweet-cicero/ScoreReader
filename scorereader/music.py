@@ -105,6 +105,8 @@ CHORD_ONE = 2        # the heads of a chord on one stem are as long as each othe
 #                      and the shortest of them is as long as the steps, a head of its kind (hollow or filled) that
 #                      was read up to this many times as long (a dot that is none, a missed flag) is as long too
 #                      (0: off)
+CHORD_DOT = True     # ... but a head with a dot that is sure (symbols.DOT_SURE) keeps its dot: one print sets a dotted half
+#                      note of a third voice on the stem of the other voice's half note, with its one dot (False: off)
 SLIT_SPAN = 2        # a quarter note (with a dot or without) whose head on a line holds a speck of paper where the slit
 #                      of a half note lies (symbols.SLIT_ONE), and whose voice goes on only after several steps: where
 #                      every one of these steps has a voice that says its length, and the lengths that most voices say
@@ -343,6 +345,7 @@ def agree_lengths(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                     # that was missed. A hollow head beside a filled one is left: by hand the hollow one is right
                     # as often.
                     if total < event['length'] <= CHORD_ONE * total and event['stem_x'] is not None \
+                            and not (CHORD_DOT and event['head'].get('dot_sure') and event['length'] == total * Fraction(3, 2)) \
                             and any(abs(event['stem_x'] - x) <= 0.35 * space and hollow == bool(event['head'].get('hollow'))
                                     for x, hollow in short):
                         event['length'] = total

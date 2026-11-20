@@ -1064,7 +1064,7 @@ def thick_marks(layers: dict) -> list[dict]:
             # A filled head with paper closed in beside it: the flag of a printed eighth note comes back to its head,
             # and the head, the stem, the flag and a staff line close in a small room. The ink over that room (or
             # under it) is as high as a whole head, and no rim of a hollow head is: the mark is that filled head.
-            inside = np.nonzero((mask & holes).any(axis=1))[0]
+            inside = np.nonzero(_room_alone(mask & holes, wide, high).any(axis=1))[0]
             over, under = int(inside[0]), own_high - 1 - int(inside[-1])
             named = False
             span = None
@@ -2065,6 +2065,34 @@ def _fat(layers: dict, mark: dict) -> dict:
             'long': float(np.hypot(mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1) / space)}
 
 
+SOLID_SPECK = (0.03, 0.12, 0.15, 1.2, 0.33)
+#                      a print that pressed the ink out of a filled head leaves a speck of closed paper in it, and the
+#                      rows of the speck were taken for rows of the room of the flag's loop beside the head
+#                      (SOLID_LOOP): the solid ink was then no head high. The closed paper of such a mark is two
+#                      pieces, a speck under the first number of the box of a head of the page and at most the second
+#                      number of the room, and a room of at least the third number of that box; the mark is at most
+#                      the fourth number of a head wide, and the speck lies the fifth number of a head's height or
+#                      more from the rows of the room, inside the head (a speck between a head, its stem and a staff
+#                      line lies at the room: 0.21 at most). A rule for one case, one head of a clean score. None: off
+
+
+def _room_alone(paper: np.ndarray, wide: float, high: float) -> np.ndarray:
+    """The closed paper of a mark without the speck of a filled head beside the room of its flag (SOLID_SPECK)."""
+    if not SOLID_SPECK or paper.shape[1] > SOLID_SPECK[3] * wide:
+        return paper
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(paper.astype(np.uint8), connectivity=4)
+    if count != 3:
+        return paper
+    speck, room = sorted((1, 2), key=lambda number: stats[number][4])
+    if stats[speck][4] >= SOLID_SPECK[0] * wide * high or stats[speck][4] > SOLID_SPECK[1] * stats[room][4] \
+            or stats[room][4] < SOLID_SPECK[2] * wide * high:
+        return paper
+    apart = max(stats[room][1] - (stats[speck][1] + stats[speck][3]), stats[speck][1] - (stats[room][1] + stats[room][3]))
+    if apart < SOLID_SPECK[4] * high:
+        return paper
+    return paper & (labels == room)
+
+
 def _flag_loop(layers: dict, marks: list[dict], mark: dict) -> bool:
     """True when a hollow mark is the loop of a printed flag, not a head. The flag of a printed eighth note comes back
     toward its head, and the flag, the stem and the staff lines close in small rooms at the right side of the stem.
@@ -2966,6 +2994,14 @@ RAGGED_SLIT = (1.5, -10.0, 40.0, 0.35)   # closed paper that is not quite round 
 #                      axis, which rises to the right by this to this many degrees, and at most this large (staff
 #                      spaces squared). The inside of a printed half note lies so. The bowl of a flat, a natural and
 #                      the paper between a sign and a head stand upright (None: off).
+SLIT_BETWEEN = (0.3, 0.6, 0.6, 1.4)   # such a slit between two hollow heads that were read, one over it and one under it in
+#                      its column (their middles at most [1] head widths beside its middle, and from [2] to [3] staff
+#                      spaces from it), is the inside of the head between them from [0] of the usual hole of the page
+#                      on: the middle head of three at one stem, whose inside a grey smear of the scan or a thick rim
+#                      half filled. No ink but a head closes paper in between two heads of one stem. The slit may lie
+#                      in the boxes of the two heads, which were cut out of one mark. Three such slits on LitChoir's
+#                      scan pages, each a head (0.37, 0.48 and 0.88 of the usual hole); the other closed paper between
+#                      two such heads is no slit: the insides of the whole notes of a thick copy, and a clef (None: off)
 SLIT_BESIDE = (1.5, 0.6, 2)   # such a slit in the box of a hollow head that was read is the inside of a second head, a
 #                      second away at the other side of the stem, where that box is at least the first number of head
 #                      widths wide and the middle of the slit lies at least the second number of head widths beside
@@ -3162,7 +3198,16 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 # A head whose rim broke is often one that a hand drew large: its hole may be larger than the usual
                 # hole of the page.
                 most = OPEN_HEADS * space * space
-            if not HOLE_HEADS[0] * usual <= area <= most:
+            between = ()
+            if paper is ragged and SLIT_BETWEEN and layers.get('head'):
+                # A slit between two read hollow heads of one column: the head between them (SLIT_BETWEEN).
+                beside = [other for other in heads if other['hollow'] and not other.get('thin')
+                          and abs(other['cx'] - cx) <= SLIT_BETWEEN[1] * layers['head'][0]]
+                over = [other for other in beside if SLIT_BETWEEN[2] * space <= cy - other['cy'] <= SLIT_BETWEEN[3] * space]
+                under = [other for other in beside if SLIT_BETWEEN[2] * space <= other['cy'] - cy <= SLIT_BETWEEN[3] * space]
+                if over and under and not any(abs(other['cy'] - cy) < SLIT_BETWEEN[2] * space for other in beside):
+                    between = (over[0], under[0])
+            if not (SLIT_BETWEEN[0] if between else HOLE_HEADS[0]) * usual <= area <= most:
                 continue
             if paper is ragged:
                 # Paper that is not quite round: the inside of a head by its own shape only (RAGGED_SLIT).
@@ -3193,7 +3238,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                         if len(own) and abs(cx - other['x0'] - own.mean()) >= SLIT_BESIDE[1] * layers['head'][0] \
                                 and cv2.connectedComponents(filled, connectivity=8)[0] - 1 <= SLIT_BESIDE[2]:
                             second, toward = other, (1 if other['x0'] + own.mean() > cx else -1)
-            if inside if not is_open else any(head['hollow'] and head is not second for head in inside):
+            if inside if not is_open else any(head['hollow'] and head is not second and not any(head is other for other in between)
+                                              for head in inside):
                 continue
             staff = _staff_of(layers, cx, cy)
             if staff is None or cx < ends[staff] + 0.3 * space:
@@ -4267,6 +4313,14 @@ DOT_BESIDE = (0.5, 12.0, 0.4, 0.3)   # a dot that a print drew as a short dash o
 #                    [1] (on one staff or on two staves next to each other), the dash and that dot at most [2] apart
 #                    sideways, the dash at most [3] over or under the middle of its head, and the two notes of one
 #                    kind (hollow or filled, as many flags or beams). Notes that sound together agree (None: off)
+DOT_SURE = (0.055, 0.7, 1.5, 0.25)   # a dot that is sure (head['dot_sure']): its ink is at least [0] staff spaces squared, it is
+#                      from [1] to [2] times as wide as high, and its middle lies [3] staff spaces or more from every line
+#                      of the staff: a round dot of full size in a space. Of the dots at the heads that the chord rule
+#                      of the music step made shorter (music.CHORD_ONE) on LitChoir's scan pages, each looked at, the
+#                      printed dots hold 0.067 or more and are 0.74 to 1.2 times as wide as high; the specks of a worn
+#                      copy hold 0.043 at most or are slim (0.59 at most); a piece of a thick staff line is as large
+#                      as a dot and lies in the rows of the line. A dot that a blurred copy ran into a taller blot is
+#                      left out (None: off)
 DOT_SPECK = (0.14, 0.15)   # a dot that the print wore smaller than a dot (DOT_SMALL) but each of its sides at least [0] staff
 #                    spaces, and otherwise of a dot's shape, beside a head without a dot, is its dot where another head
 #                    of the column has a dot (as DOT_BESIDE asks) at most [1] staff spaces from it sideways: a column of
@@ -6122,12 +6176,17 @@ def dots(layers: dict, heads: list[dict]) -> None:
     takers, took = {}, {}
     for head in heads:
         head['dot'] = False
+        head['dot_sure'] = False
         head['dot_near'] = any(DOT_NEAR * space <= x - head['x1'] <= DOT_REACH * space
                                and -DOT_ASK[2] * space <= y - head['cy'] <= DOT_UNDER * space for x, y in nearly)
         for number, (x, y) in enumerate(found):
             if DOT_NEAR * space <= x - edge(head, x, y) <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
                     and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
                 head['dot'] = True
+                if DOT_SURE and sizes[number][3] >= DOT_SURE[0] * space * space \
+                        and DOT_SURE[1] <= sizes[number][1] / sizes[number][2] <= DOT_SURE[2] \
+                        and min(abs(y - row) for row in layers['staves'][head['staff']]['rows']) >= DOT_SURE[3] * space:
+                    head['dot_sure'] = True
                 taken.add(number)
                 takers.setdefault(number, []).append(head)
                 took.setdefault(id(head), []).append(number)
@@ -6142,7 +6201,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
             below = [other for other in group if other is not head and other['cy'] - y >= DOT_UPPER * space]
             kind = (bool(head.get('hollow')), max(head['tails'].values(), default=0))
             if below and not any((bool(other.get('hollow')), max(other['tails'].values(), default=0)) == kind for other in below):
-                head['dot'] = False
+                head['dot'] = head['dot_sure'] = False
                 first.pop(id(head), None)
     if DOT_BESIDE:
         # One head of a column has its dot, and a dash stands beside another head of the column (see DOT_BESIDE).

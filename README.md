@@ -121,6 +121,7 @@ Reading a scanned page, in the order the steps run:
 | `ties.py` | Reads ties. |
 | `triplets.py` | Finds the brackets of triplets. |
 | `rests.py` | Finds printed quarter rests. |
+| `fermatas.py` | Finds fermatas, so that none is read as a note. |
 | `drone.py` | On a chant page, reads the letters over the staff that name the ison, the held note. |
 | `music.py` | Turns the symbols into pitches, voices and rhythm, and writes MusicXML. |
 | `reader.py` | Runs these steps for one page. |
