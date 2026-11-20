@@ -58,6 +58,12 @@ SHARP_HEAD = (1.7, 0.3, 1.4, 0.95)   # a heavy sharp whose middle closed is no h
 #                          share of the page's heads (None: off)
 SHARP_OWN = True         # such a mark is no head either, whatever its size, when its middle lies between the two strokes and
 #                          each of its stems is one of them: a head stands beside its sign (False: off)
+SHARP_ROOM = True        # the paper between a heavy sharp and the head after it is no hollow head: a staff line and the ledger
+#                          line that joins the two close it in. A hollow mark that lies on the sharp and whose closed paper
+#                          begins at the sharp's strokes and goes on to the mark's right edge: the inside of a head ends
+#                          at its rim. (A census of every hollow mark that lies on a sharp of two strokes on LitChoir's
+#                          pages, 246 marks: the paper of every other one ends 3 pixels or more before the mark's edge.
+#                          A rule for one case.) False: off
 NATURAL_STEM = 1.8       # the right stroke of a natural stands beside the stem of its note, or was taken for a second stem
 #                          of its head that ends at most this many staff spaces from the head's middle (None: off)
 SHARP_STEM = True                # the right stroke of a sharp can stand right beside the stem of its note (False: off)
@@ -345,6 +351,9 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             if len(parts) < 2 or min(stroke['high'] for stroke in parts) < SHARP_HEAD[0]:
                 continue
             for head in lying(sign, full):
+                if SHARP_ROOM and head.get('hollow') and _room(layers, head, sign):
+                    ghosts.append(head)
+                    continue
                 if head.get('thin') or not head['stems'] or head['x1'] - sign['x1'] >= SHARP_HEAD[1] * wide:
                     continue
                 if head['y1'] - head['y0'] + 1 >= SHARP_HEAD[2] * space or head['x1'] - head['x0'] + 1 < SHARP_HEAD[3] * wide:
@@ -505,6 +514,18 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                                                                              if not any(part is other for other in lying(sign, small))]))
                     taken.append((sign['x0'], sign['x1'], sign['top'], sign['bottom']))
     return out
+
+
+def _room(layers: dict, head: dict, sign: dict) -> bool:
+    """Whether the largest piece of closed paper of a mark begins at the strokes of the sign that the mark lies on and
+    goes on to the mark's right edge (SHARP_ROOM)."""
+    y0, x0 = max(0, int(head['y0']) - 1), max(0, int(head['x0']) - 1)
+    holes = np.ascontiguousarray(layers['holes'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2]).astype(np.uint8)
+    count, _, stats, _ = cv2.connectedComponentsWithStats(holes, connectivity=4)
+    if count < 2:
+        return False
+    x, _, width, _, _ = stats[1 + int(np.argmax(stats[1:, 4]))]
+    return x0 + int(x) <= sign['x1'] + 1 and int(x) + int(width) >= holes.shape[1]
 
 
 def _inside(head: dict, x: int, y: int, wide: int, high: int) -> float:

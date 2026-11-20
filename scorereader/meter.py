@@ -220,6 +220,14 @@ COMMON_ARM = 0.6         # and its two ends turn to the right: in the upper and 
 # staff spaces): a held note that is printed under the staff in the sign's columns is a note.
 COMMON_ENDS = (0.5, 0.25)
 COMMON_ROWS = 2.25
+COMMON_CUT = (3.2, 0.9, 0.3, 0.75, 0.15)   # the sign of cut time is such a C with an upright stroke through it, and the
+#   stroke closes the C in two or three pieces of paper, which were read as whole notes one over the other. The sign is
+#   at most the first number of staff spaces high, one column from the third to the fourth share of its width has ink
+#   in the second share of its rows (the stroke), and the stroke stands out of the C at both ends: the first and the
+#   last row of the sign hold ink only within the last number of staff spaces of the stroke. A sharp and a natural
+#   have two strokes, and one stands out at the top and the other at the bottom; the stem of a head stands out at one
+#   end. (A census of every piece of the size and the place of a C that closes in more than one piece of paper, 416
+#   on LitChoir's pages: two printed signs of cut time, each looked at; a third on a thick copy is one blot.) None: off
 COMMON_AT = (4.5, 1.6)   # and it stands where a time signature stands: it begins at most this far after the clef and
 #   the key signature, or at most this far after a bar line, in staff spaces (the signs of the census: up to 4.0 and
 #   1.3; the two other pieces with a bow, a rest and a flag, stand in the middle of a bar)
@@ -234,6 +242,23 @@ def _waist(box: np.ndarray) -> float:
     quarter = max(1, tall // 4)
     middle = left[int(0.4 * tall):int(0.6 * tall) + 1]
     return float(np.median(middle) - max(left[:quarter].min(), left[tall - quarter:].min()))
+
+
+def _cut_stroke(box: np.ndarray, space: float) -> bool:
+    """Whether a piece of ink with the size of a C has the upright stroke of the sign of cut time through it, which
+    stands out of the C at its top and at its bottom (COMMON_CUT)."""
+    tall, wide = box.shape
+    full = box.mean(axis=0)
+    first, last = int(COMMON_CUT[2] * wide), int(COMMON_CUT[3] * wide) + 1
+    columns = [column for column in range(first, min(last, wide)) if full[column] >= COMMON_CUT[1]]
+    if not columns:
+        return False
+    slack = COMMON_CUT[4] * space
+    for row in (box[0], box[-1]):
+        inked = np.nonzero(row)[0]
+        if not len(inked) or inked[0] < columns[0] - slack or inked[-1] > columns[-1] + slack:
+            return False
+    return True
 
 
 def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bool = False) -> list[dict]:
@@ -254,14 +279,16 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
     region = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
                               np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
     count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
+    tall = max(high, COMMON_CUT[0]) if COMMON_CUT else high
     pieces = sorted((int(x), int(y), int(bw), int(bh), label) for label, (x, y, bw, bh, _) in enumerate(stats) if label
-                    and low * space <= bh <= high * space and abs(y0 + y + bh / 2 - rows[2]) <= off * space)
+                    and low * space <= bh <= tall * space and abs(y0 + y + bh / 2 - rows[2]) <= off * space)
     found, used = [], set()
     for index, (x, y, bw, bh, label) in enumerate(pieces):
         if index in used:
             continue
         group = [(x, y, bw, bh, label)]
-        if index + 1 < len(pieces) and pieces[index + 1][0] - (x + bw) <= apart * space:
+        if index + 1 < len(pieces) and pieces[index + 1][0] - (x + bw) <= apart * space \
+                and max(bh, pieces[index + 1][3]) <= high * space:      # (a piece as high as the sign of cut time stands alone)
             group.append(pieces[index + 1])
             used.add(index + 1)
         elif COMMON_ENDS and bw < narrow * space:
@@ -278,7 +305,13 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
         box = own[top:bottom]
         if not thin <= box.mean() <= full:
             continue
+        cut = False
         if cv2.connectedComponents(layers['holes'][y0 + top:y0 + bottom, x0 + left:x0 + right].astype(np.uint8))[0] > 2:
+            # More than one piece of closed paper: the sign of cut time, by its stroke and the open side of its C.
+            cut = bool(COMMON_CUT) and len(group) == 1 and _cut_stroke(box, space)
+            if not cut:
+                continue
+        elif bottom - top > high * space:
             continue
         # Nothing else stands in its columns just over or under it (a stem, a head a third away).
         others = (labels[:, left:right] > 0) & ~own
@@ -291,7 +324,7 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
                 for rows_ in (box[:fifth], box[-fifth:])]
         if (waist > bow or min(arms) < COMMON_ARM) and not every:
             continue
-        found.append({'x0': float(x0 + left), 'x1': float(x0 + right - 1), 'common': True, 'bold': True,
+        found.append({'x0': float(x0 + left), 'x1': float(x0 + right - 1), 'common': True, 'bold': True, 'cut': cut,
                       'high': (bottom - top) / space, 'wide': (right - left) / space, 'ink': float(box.mean()), 'waist': waist,
                       'arms': arms})
     return found
