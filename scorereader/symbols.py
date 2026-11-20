@@ -157,9 +157,26 @@ LEDGER_SIT = (0.2, 0.9)  # a filled head whose middle lies this many staff space
 LEDGER_SIT_FOOT = None   # (0.7, 0.1): when that line lies in the lowest part of the mark (from this share of its height on,
 #                          counted from the far edge), the head sits on it from this many staff spaces on. Off: 3
 #                          notes gained and 2 lost on the clean pages, and the measures do not tell them apart.
-LEDGER_FOOT = (0.7, 0.4, 1.2, 0.3, 0.45)   # a head beside the staff with no ledger line found, but with thin level ink at one
+LEDGER_FOOT = (0.7, 0.3, 1.2, 0.3, 0.45)   # a head beside the staff with no ledger line found, but with thin level ink at one
 #                          side of its foot (from this share of its height on), this many to this many staff spaces from
-#                          the staff, at least this long and at most this thick: it sits on its ledger line (None: off)
+#                          the staff, at least this long and at most this thick: it sits on its ledger line (None: off).
+#                          The second number was 0.4 until round 73. A census of every head beside the staff with no
+#                          ledger line, on all 657 pages (11,616, of them 460 with a wing at their foot), gave 0.3: the
+#                          true heads of the first space have their wing at most 0.28 staff spaces from the staff and
+#                          the four true heads on a dash of their own stand at 0.33 to 0.36, where a hand or a worn
+#                          print sets the dash close to the staff.
+LEDGER_OWN = True   # no ledger line of a head lies past the head: where a level row of ink stands in the head's box,
+#                     the rows further from the staff than the last such row are not counted. They are the ledger line
+#                     of the next head of a chord on two ledger lines (the head nearer the staff was read a step off,
+#                     between the two lines), the rim of a hollow head that one print draws as level and as long as
+#                     its ledger line (joined with the line it moved the line off the head's middle, and the head was
+#                     read as sitting between the staff and the line), a slur over the head or a row of words. Each
+#                     of the 35 heads of LitChoir's pages whose rows it cuts was looked at, and 4 of the 41 of the
+#                     fresh set. Alone: no note of the clean copies, 11 gained and 3 lost on all scores, 39 gained on
+#                     the fresh set (two pieces of one engraving whose tenor and bass stand a third apart on two
+#                     ledger lines). The 3 lost are two heads by hand that have no line of their own to count, a half
+#                     note that sits on its dash and a head that hangs under the staff: their reading before stood on
+#                     the rim of the head, counted as a line. False: off
 LEDGER_CLOSE = (0.85, 6, 0.15, 1.0, 1.7, 0.35)   # a print (a music typewriter) sets its ledger lines closer to each other
 #                      than its staff lines, so a head on its third line measures a third too low and the count of its lines
 #                      was not trusted. The page shows its own gap: the median gap from the staff to the first ledger line
@@ -1687,6 +1704,13 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
             return 5.0 if place > 0 else -5.0     # a head beside the staff with no ledger line stands in the first space
         return place
     up = place > 0
+    if LEDGER_OWN:
+        # No ledger line lies past its head: a row further from the staff than the last row in the head's box is
+        # the next head's line, the head's own rim, a slur or a word.
+        inside = [row for row in rows if head['y0'] <= row <= head['y1']]
+        if inside:
+            own = min(inside) if up else max(inside)
+            rows = [row for row in rows if (row >= own - 0.5 if up else row <= own + 0.5)]
     merged = []
     for row in rows:
         if merged and row - merged[-1] < 0.5 * space:
@@ -5221,6 +5245,49 @@ def without_stem_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
                    for stem in other['stems']):
                 gone.add(id(head))
                 break
+    return [head for head in heads if id(head) not in gone]
+
+
+STEM_END_SPAN = (1.3, 0.9, 1.2)   # a filled mark that stands between the ends of two stems is the beam or the slur
+#   between them and no head: at least the first number times the page's head wide and at most the second times its
+#   head high (a bow or a beam by its shape), with another head's stem at each of its two sides, standing within the
+#   third number of staff spaces of that side and ending within the same of the mark's middle row. The two stems end
+#   at the mark's sides and not inside its box, where STEM_END_MARK reads them: the bow's own ends curve down to the
+#   stems, and the beam under it takes them. A census of every long flat mark of all 657 pages of LitChoir (581, each
+#   with the scorer's verdict) gave the limit: the 8 marks whose two stems stand within 1.2 staff spaces are slurs
+#   over two beamed notes and beams, each looked at (the 7 that the scorer judges are notes that are not there), and
+#   the nearest true note stands at 1.43. Alone: 1 note gained on the clean copies, on all scores and on the fresh
+#   set, none lost; 10 notes that are not there fewer on LitChoir by the count (a mark that both voices of a staff
+#   were given counts twice) and 5 on the fresh set, whose 4 marks are slurs at two beamed notes too. None: off
+
+
+def without_stem_spans(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the long flat marks that stand between the ends of two stems (STEM_END_SPAN): the bow of a
+    slur over two beamed notes, or a beam that no stem of its own shows."""
+    if not STEM_END_SPAN or not layers.get('head'):
+        return heads
+    space = layers['space']
+    wide, high = layers['head'][0], layers['head'][1]
+    reach = STEM_END_SPAN[2] * space
+    gone = set()
+    for head in heads:
+        if head['hollow'] or head['x1'] - head['x0'] + 1 < STEM_END_SPAN[0] * wide \
+                or head['y1'] - head['y0'] + 1 > STEM_END_SPAN[1] * high:
+            continue
+        sides = [False, False]
+        for other in heads:
+            if other is head or other['staff'] != head['staff'] \
+                    or (abs(other['cx'] - head['cx']) < 2 and abs(other['cy'] - head['cy']) < 2):
+                continue
+            for stem in other['stems']:
+                if abs(stem['end'] - head['cy']) > reach:
+                    continue
+                if stem['x'] <= head['cx'] and abs(head['x0'] - stem['x']) <= reach:
+                    sides[0] = True
+                if stem['x'] >= head['cx'] and abs(stem['x'] - head['x1']) <= reach:
+                    sides[1] = True
+        if all(sides):
+            gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
 
 

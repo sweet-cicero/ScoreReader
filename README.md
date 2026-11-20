@@ -157,7 +157,7 @@ were typed in by hand, it reads about 99% of the notes in PDFs from notation sof
 on clean printed scans, with about as many of their syllables when Tesseract and a word list help. Heavy
 photocopies and hand-copied scores are harder, at roughly three notes in four, and they come next. Those figures
 are from the pages the rules were worked out on. On a separate set of engraved choir pieces that no rule was
-tuned on, it reads about 95% of the notes.
+tuned on, it reads about 96% of the notes.
 
 The goal is to read clean printed copies without a mistake, notes and words, and to get 99% of the notes and
 the words on the hand-copied scores. The clean copies come first.
