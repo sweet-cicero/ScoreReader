@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.1 % on
-scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,060 of 22,649, counted by the page;
-21,928 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 38 every
-syllable, 24 both, 27 have no note that is not there, 21 are whole in all three; 585 printed notes and 187 syllables
-are lacking and 446 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
+scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,067 of 22,649, counted by the page;
+21,935 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
+syllable, 25 both, 30 have no note that is not there, 23 are whole in all three; 578 printed notes and 187 syllables
+are lacking and 437 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
 files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
 89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6229 of 6901).
 On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
@@ -1047,6 +1047,37 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   bar line or a sign (whether it goes on past both lines, the share of the staff's rows that it fills, how
   straight the cell's edge is); how far the stroke goes on upright does (`symbols.CELL_BETWEEN`): measure each
   kind of stroke on LitChoir's own pages before a limit is set.
+- A stem is straight. The arc of a pencil ring, of a bracket by hand or of an arrow goes on upright for a few
+  staff spaces and was read as a stem with a small head at its end (`symbols.STEM_ARC`). The stem as the reader
+  has it, from its end to the head, is too short to tell: an arc and the stem of a hand differ there by less than
+  the trace wanders. The stroke is followed past the stem's end as far as slim ink goes, without the rows at the
+  head (a way that is followed into the head reads the rim of the head, a rest or a number beside it), and it is
+  an arc where the way is one bow: a parabola fits it, and each half bends to the same side as the whole. Of
+  3,217 heads read from a stem on LitChoir's scan pages 22 ways bend so, each looked at; one is a true note whose
+  stem a hand bent.
+- Two filled heads a third apart at one stem close a speck of paper between them and the stem. The piece is cut
+  evenly into its heads, the speck falls to one of them, and that head was read as a half note a step off
+  (`symbols.HEADS_MEET`). The speck lies at the cut of the piece and beside the stem; the inside of a half note
+  lies in the middle of its head. It is a rule for prints: on the copies by hand no part passes all of it.
+- A limit in staff spaces for a mark is measured with the space of the mark's own staff. A page holds staves of
+  two sizes, and by the page's staff space two half notes by hand passed a limit of 0.85 by a hair (0.853 by the
+  page, 0.82 by their staff). A limit that a mark passes by a hair is the wrong measure: look for what the
+  looked-at marks share.
+- A census from the stored notes shows a mark as the later steps left it. At a rule's own step a stem that a
+  later step finds is not there yet, and the parts of a sharp, of a flat and of the numbers of a time signature
+  are marks of the kind of a head: 17 insides near a cut by the stored notes, 55 at the step. A spy on a step of
+  the reader measures inside the step: the list of a mark's stems is shared, and read after the page it holds
+  the stems of the later steps too. A rule that asks for a stem leaves the one true pair whose stem comes later;
+  without the stem it took three numbers of time signatures, a clip, a blot and a stack of whole notes by hand.
+- A hollow part between two filled parts of its piece is the cell of a sharp or of a flat's bowl far more often
+  than a speck between two heads (12 of 13 on LitChoir's pages). The one speck hangs on a stem with both
+  neighbours, whose middles are a third apart.
+- A false mark that goes can free typed notes of a recitation on a copy by hand too: the brackets around a "3",
+  read as notes, had been lined up with three typed notes of a recitation, and the count of the drawn notes fell
+  by 3 with them. Compare `apart` of every score that a rule changes, not only of the clean ones.
+- The notes that are not there on the sheets of the clean copies were sorted by kind once more (238 marks, round
+  77): no kind is one cause. The kinds by the kind of note (hollow with a stem, filled, whole, read from a stem)
+  say nothing of the cause; the page does.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

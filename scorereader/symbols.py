@@ -2319,6 +2319,65 @@ def _stem_ink(layers: dict, stem: dict, ovals: list[dict]) -> int:
     return count
 
 
+HEADS_MEET = (0.2, 0.15, 0.85, 1.25)   # two filled heads a third apart at one stem close a speck of paper where they
+#                    meet, between the heads and the stem, and the speck was read as the inside of a half note. The piece
+#                    of ink is cut evenly into its heads, so the speck lies at the cut and beside the stem: a part whose
+#                    inside has its middle at most [0] staff spaces from the edge where the next part of its piece begins,
+#                    a filled one, and [1] of the part's width or more beside the part's middle, at the side of a stem of
+#                    the part, is filled too. The inside of a half note lies in the middle of its head. (A census of every
+#                    hollow part with a filled part of its piece that begins where it ends, at this step, on LitChoir's
+#                    scan pages, 1,103: the insides of 55 lie that near the cut, and 14 of them that far beside the
+#                    middle. Seven of the 14 have a stem at that side, all on clean copies and each the speck of such a
+#                    pair; the others are three numbers of time signatures, a clip, a blot and a stack of whole notes
+#                    by hand, and one such pair whose stem the reader finds only later. The insides in the middle are
+#                    half notes by hand and on a thick copy whose piece was cut at a wrong row, and signs.) And where the
+#                    speck was made a part of its own: a hollow part between two filled parts of its piece, in its
+#                    column and at its stem, whose middles are [2] to [3] staff spaces apart with the inside midway, is
+#                    no head. Three heads a second apart do not stand in one column (one place on LitChoir's pages; the
+#                    cell of a sharp and the bowl of a flat have such neighbours and no stem). None: off
+
+
+def _heads_meet(layers: dict, marks: list[dict], limit: float) -> dict[int, bool]:
+    """The hollow parts whose inside is the paper where two filled heads of their piece meet (HEADS_MEET), by id():
+    True where the part is a filled head itself, False where it is no head."""
+    pieces: dict[int, list[dict]] = {}
+    for mark in marks:
+        if mark['kind'] == 'head':
+            pieces.setdefault(mark['blob'], []).append(mark)
+    found = {}
+    for parts in pieces.values():
+        if len(parts) < 2:
+            continue
+        for mark in parts:
+            if mark['hole'] < limit or mark['hole_cy'] is None or not mark['stems']:
+                continue
+            staff = _staff_of(layers, mark['cx'], mark['cy'])
+            space = layers['staves'][staff]['space'] if staff is not None else layers['space']
+            row, wide = mark['hole_cy'], mark['x1'] - mark['x0'] + 1
+            filled = [other for other in parts if other is not mark and other['hole'] < limit
+                      and min(other['x1'], mark['x1']) - max(other['x0'], mark['x0']) + 1
+                      >= 0.5 * min(other['x1'] - other['x0'] + 1, wide)]
+            shared = [other for other in filled if any(own['direction'] == stem['direction'] and abs(own['x'] - stem['x']) <= 2
+                                                       for own in mark['stems'] for stem in other['stems'])]
+            if any(HEADS_MEET[2] * space <= under['cy'] - over['cy'] <= HEADS_MEET[3] * space
+                   and abs(row - (over['cy'] + under['cy']) / 2) <= (under['cy'] - over['cy']) / 4
+                   for over in shared for under in shared):
+                found[id(mark)] = False
+                continue
+            if not any((abs(other['y1'] + 1 - mark['y0']) <= 1 and row - mark['y0'] <= HEADS_MEET[0] * space)
+                       or (abs(mark['y1'] + 1 - other['y0']) <= 1 and mark['y1'] - row <= HEADS_MEET[0] * space)
+                       for other in filled):
+                continue
+            columns = np.nonzero(layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1])[1]
+            if len(columns) == 0:
+                continue
+            aside = (float(columns.mean()) - (wide - 1) / 2) / wide
+            if abs(aside) >= HEADS_MEET[1] and any((stem['x'] - (mark['x0'] + mark['x1']) / 2) * aside > 0
+                                                   for stem in mark['stems']):
+                found[id(mark)] = True
+    return found
+
+
 def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
     """A stem carries heads of one kind: all filled or all hollow. A print sets a whole note of one voice in the
     column of a stemmed note of the other voice, with their left edges in line; the two heads touch, and followed
@@ -2633,6 +2692,7 @@ def read_symbols(layers: dict) -> dict:
     layers['hollow'] = limit
     if WHOLE_BESIDE:
         _whole_beside(layers, marks, limit)
+    meet = _heads_meet(layers, marks, limit) if HEADS_MEET else {}
     heads, signs, orphans = [], [], []
     for number, mark in enumerate(marks):
         if mark['kind'] is None or mark['kind'] == 'beam':
@@ -2640,7 +2700,9 @@ def read_symbols(layers: dict) -> dict:
         staff = _staff_of(layers, mark['cx'], mark['cy'])
         if staff is None:
             continue
-        hollow = mark['hole'] >= limit
+        if meet.get(id(mark)) is False:
+            continue        # the paper where two filled heads meet: see HEADS_MEET
+        hollow = mark['hole'] >= limit and id(mark) not in meet
         cy = mark['hole_cy'] if HOLE_PLACE and hollow and mark['hole_cy'] is not None else mark['cy']
         or_hollow = None
         orphan = False
@@ -3539,6 +3601,108 @@ def _f_stroke(stroke: dict, space: float) -> bool:
     return bool(_f_cross(stroke, space))
 
 
+STEM_ARC = (0.35, 0.5)      # a stem is straight. The stroke of a head that is read from its stem (thin_heads) is followed
+#   row by row from its middle, as far as slim ink goes, past its end too, and without the rows at its head. Where that
+#   way bends off a straight line by the first number of staff spaces or more as one bow (a parabola fits it within the
+#   second number, as a share of the bend, and each half of the way bends as the whole does), the stroke is the arc of
+#   a ring, of a bracket or of a slur, and no stem: a pencil ring around a note or a number, a bracket by hand before a
+#   remark, an arrow. (A census of every head read from its stem on LitChoir's scan pages, 3,217, with the count's
+#   verdict for each: 22 ways bend so, 7 on the clean copies and 15 on copies by hand, each looked at. One is a
+#   true note, whose stem a hand bent; the true notes whose way is a bow at all bend by 0.31 staff spaces at most, and
+#   on the clean copies by 0.17.) The stem as the reader has it, from its end to the head, is too short to tell: an arc
+#   and the stem of a hand differ by less than the trace wanders there. None: off
+
+
+def _slim_way(ink: np.ndarray, row: int, middle: float, step: int, space: float, gap: int, far: int) -> list[tuple[int, float]]:
+    """The rows of a slim stroke from a row on, up (step -1) or down (1): in each row the run of ink nearest to the
+    middle of the row before, with its middle. A gap of paper of a few rows is passed (a staff line that was taken
+    out); wide ink (a head, a beam) is passed for less than a staff space."""
+    way = []
+    missed = wide = 0
+    reach = max(2, int(round(0.12 * space)))
+    for _ in range(far):
+        row += step
+        if not 0 <= row < ink.shape[0]:
+            break
+        x0, x1 = max(0, int(round(middle)) - reach - 1), min(ink.shape[1], int(round(middle)) + reach + 2)
+        at = np.flatnonzero(ink[row, x0:x1])
+        if len(at) == 0:
+            missed += 1
+            if missed > gap:
+                break
+            continue
+        first = last = int(at[np.argmin(np.abs(at + x0 - middle))]) + x0
+        while first - 1 >= 0 and ink[row, first - 1]:
+            first -= 1
+        while last + 1 < ink.shape[1] and ink[row, last + 1]:
+            last += 1
+        if last - first + 1 > 0.45 * space:
+            wide += 1
+            missed += 1
+            if wide > 0.9 * space or missed > max(gap, 0.9 * space):
+                break
+            continue
+        missed = 0
+        middle = (first + last) / 2
+        way.append((row, middle))
+    return way
+
+
+def _way_bow(way: list[tuple[int, float]], space: float) -> tuple[float, float]:
+    """How far a way of rows and middles bends off a straight line, in staff spaces (with its side as the sign), by
+    the parabola that fits it best, and how far the way leaves that parabola at most."""
+    if len(way) < 5:
+        return 0.0, 0.0
+    rows = np.array([row for row, _ in way], float)
+    middles = np.array([middle for _, middle in way], float)
+    span = rows.max() - rows.min()
+    fit = np.polyfit(rows - rows.mean(), middles, 2)
+    return float(fit[0] * (span / 2) ** 2 / space), float(np.abs(middles - np.polyval(fit, rows - rows.mean())).max() / space)
+
+
+def _stem_arc(layers: dict, x: float, end: float, head: float) -> bool:
+    """Whether the stroke of a stem at column x, from its end to the row of its head, is an arc (STEM_ARC)."""
+    if not STEM_ARC:
+        return False
+    space = layers['space']
+    ink = layers['bare'] > 0
+    gap = int(round(max(staff['thick'] for staff in layers['staves']) + 3))
+    start = None
+    middle = int(round((end + head) / 2))
+    aside = int(0.3 * space)
+    for off in range(int(space)):
+        for row in (middle + off, middle - off):
+            if not 0 <= row < ink.shape[0]:
+                continue
+            x0, x1 = max(0, int(x) - aside), min(ink.shape[1], int(x) + aside + 1)
+            at = np.flatnonzero(ink[row, x0:x1])
+            if len(at):
+                first = last = int(at[np.argmin(np.abs(at + x0 - x))]) + x0
+                while first - 1 >= 0 and ink[row, first - 1]:
+                    first -= 1
+                while last + 1 < ink.shape[1] and ink[row, last + 1]:
+                    last += 1
+                if last - first + 1 <= 0.45 * space:
+                    start = (row, (first + last) / 2)
+                    break
+        if start:
+            break
+    if start is None:
+        return False
+    far = int(6 * space)
+    way = (_slim_way(ink, start[0], start[1], -1, space, gap, far)[::-1] + [start]
+           + _slim_way(ink, start[0], start[1], 1, space, gap, far))
+    side = 1 if end > head else -1
+    way = [(row, at) for row, at in way if (row - head) * side >= 0.5 * space]
+    if len(way) < space:
+        return False
+    bend, off = _way_bow(way, space)
+    if abs(bend) < STEM_ARC[0] or off > STEM_ARC[1] * abs(bend):
+        return False
+    half = (way[0][0] + way[-1][0]) / 2
+    return all(_way_bow(part, space)[0] / bend >= 0 for part in ([p for p in way if p[0] <= half], [p for p in way if p[0] > half]))
+
+
 def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float]) -> list[dict]:
     """The heads that the thick marks do not show: a quick hand draws a head as one thin slanted stroke, and a weak
     copy loses the place where the stem meets it. Such a head is found from its stem. Every upright stroke that is
@@ -3754,6 +3918,8 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                 'stems': [{'direction': direction, 'x': int(round(x)), 'end': int(end), 'length': abs(piece['cy'] - end)}]}
         if abs(place) > 4 + 2 * REACH:
             return None
+        if _stem_arc(layers, int(round(x)), int(end), piece['cy']):
+            return None         # the arc of a ring or of a bracket
         if abs(place) > 4.6:
             head['ledgers'] = ledger_lines(layers, staves[staff], head)
             place = ledger_place(layers, staves[staff], head)
