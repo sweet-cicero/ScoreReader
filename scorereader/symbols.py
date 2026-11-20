@@ -4209,6 +4209,23 @@ THIN_PRINT = 0.45               # a page whose usual beam is this many staff spa
 #                                 leaves each of the two ends is a bow that bends away from the heads (BEAM_STRAIGHT), and
 #                                 none of its stems shows a beam of its own. (A thick beam that no stem shows as its own
 #                                 is found as such a line too, and it is straight.) (None: off)
+THIN_BEAM_HALF = (0.4, 0.1, 0.16, 0.08, 0.65)   # a slanted beam that runs into a staff line before the next stem: the line
+#                                 from the end of one stem to the end of the next is ink from one stem on this share of the
+#                                 way or more (less than THIN_BEAM asks) and hidden in a staff line from there to the other
+#                                 stem, it rises or falls by this share of its length or more, the middle of its ink stays
+#                                 within this many staff spaces of the line, at most this share of the way is hidden
+#                                 elsewhere, and it rises or falls by at most this last share of its length. (A census of
+#                                 every pair of stems of LitChoir's scan pages whose line is ink or hidden nearly all the way,
+#                                 3,449, each with the typed lengths of its notes: 34 are hidden at one stem only on more than
+#                                 THIN_BEAM allows. The eleven that pass are beams, and they rise by 0.11 to 0.21. A level
+#                                 line says nothing: two stems that end at one staff line have that line between their ends,
+#                                 and a tie or a ledger line at one of them is its ink (five such pairs, straight too, none a
+#                                 beam). Ink that only touches the edge of the way is a slur or the next staff line. A steep
+#                                 line is the stem of the next note itself: beside a note by hand a blot was read as a head
+#                                 with a short stem, and the line from that stem's end to the end of the note's own stem rose
+#                                 by 2.5. No beam of the clean copies rises by more than 0.65. That pair holds a note that is
+#                                 not there, so the typed lengths gave it no label, and the reading of every page showed it.)
+#                                 (None: off)
 THIN_BEAM_ENDS = 0.3            # and it has its ink in the first and the last part of the way, this long (0: off)
 THIN_BEAM_UNDER = True          # at one of its ends the line may be hidden in a staff line
 THIN_BEAM_FAT = 0.5             # a staff line that hides the beam is thicker there, by this share of its thickness (0: off)
@@ -5108,8 +5125,9 @@ def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end
     count = x2 - x1 + 1
     # The line hangs on both stems: a short slur between two stems does not reach them.
     near = max(2, int(round(THIN_BEAM_ENDS * space)))
+    ends = (2 * sum(shown[:near]) >= near, 2 * sum(shown[-near:]) >= near)
     if THIN_BEAM_ENDS:
-        first, last = 2 * sum(shown[:near]) >= near, 2 * sum(shown[-near:]) >= near
+        first, last = ends
         if THIN_BEAM_UNDER:
             # A beam that runs into a staff line at one stem is hidden there: it is seen at the other stem.
             first, last = first or (last and 2 * sum(under[:near]) >= near), last or (first and 2 * sum(under[-near:]) >= near)
@@ -5128,7 +5146,26 @@ def _beam_line(layers: dict, one_x: float, one_end: float, two_x: float, two_end
                                    'bend': _bend(ink, one_x, one_end, two_x, two_end, x1 + lead, x2 - tail, reach) / space})
         if not (first and last):
             return False
-    return seen + hidden >= THIN_BEAM[1] * count and seen >= THIN_BEAM[2] * count
+    if seen + hidden < THIN_BEAM[1] * count:
+        return False
+    if seen >= THIN_BEAM[2] * count:
+        return True
+    if not THIN_BEAM_HALF or seen < THIN_BEAM_HALF[0] * count or ends[0] == ends[1] \
+            or not THIN_BEAM_HALF[1] * (two_x - one_x) <= abs(two_end - one_end) <= THIN_BEAM_HALF[4] * (two_x - one_x):
+        return False
+    # Hidden at one stem only, on more of the way (see THIN_BEAM_HALF): from the stem where the line is seen.
+    order, low = (shown, under) if ends[0] else (shown[::-1], under[::-1])
+    border = len(order) - next(index for index, value in enumerate(reversed(order)) if value)
+    if sum(low[:border]) > THIN_BEAM_HALF[3] * count:
+        return False
+    away = []
+    for x in range(max(0, x1), min(width, x2 + 1)):
+        at = one_end + (two_end - one_end) * (x - one_x) / (two_x - one_x)
+        top = max(0, int(round(at)) - reach)
+        rows = np.nonzero(ink[top:min(height, int(round(at)) + reach + 1), x])[0]
+        if len(rows):
+            away.append(abs(top + rows.mean() - at))
+    return bool(away) and max(away) <= THIN_BEAM_HALF[2] * space
 
 
 HOLE_UPRIGHT = (1.6, -15.0, 60.0, 0.05, 0.5)   # the inside of a printed half note lies on its side and rises to the right. A
@@ -5523,6 +5560,60 @@ def without_stem_spans(layers: dict, heads: list[dict]) -> list[dict]:
                     sides[1] = True
         if all(sides):
             gone.add(id(head))
+    return [head for head in heads if id(head) not in gone]
+
+
+BEAM_PIECE = (0.7, 0.75, 0.3)   # a flat mark on the line between the ends of two stems that both carry a flag or a beam is
+#   a piece of that beam, of a flag or of a slur over the two stem ends, and no head: at most the first number times as
+#   high as the page's heads, with its middle within the second number of staff spaces of the straight line between the
+#   ends of two neighbouring stems of one direction (0.8 staff spaces to BEAM_NEXT apart), no further than the third
+#   number past either of them, the head of neither, and with no stem of its own that goes their way. A staff line cuts
+#   such a piece out of a thick beam, and the piece was read as a small filled head with the stem under the beam as its
+#   own, seen from the beam, or the cell between a slanted beam and a staff line as a hollow one. STEM_END_MARK and
+#   STEM_END_SPAN take the pieces that are wider than a head. (A census at this step on every scan page of LitChoir: 94
+#   marks lie so, and the 44 that are flat were each looked at. 42 have no stem that goes the pair's way: 31 pieces of
+#   beams and of flags and cells under them, 7 slurs across two stems, 3 pieces of a sign of common time by hand beside
+#   the clef and a letter of a heading; none is a note, and the count had called 2 of them right by chance. Of the two
+#   with such a stem one is a small head by hand between two short stems, which stays. The true heads on such a line
+#   are 0.74 times as high as the page's heads (one, by hand) and 0.79 or more, and half of them have a stem of their
+#   own that goes the pair's way: a hand sets a note of the other voice there. Between 0.7 and 0.9 true and false stand
+#   mixed, and the rule leaves them.) None: off
+
+
+def without_beam_pieces(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the flat marks that lie on the beam between two stems (BEAM_PIECE). Runs after count_tails(),
+    which counts the flags and the beams of a stem."""
+    if not BEAM_PIECE or not layers.get('head'):
+        return heads
+    by = {}
+    for head in heads:
+        for stem in head['stems']:
+            by.setdefault((head['staff'], stem['direction']), []).append((head, stem))
+    gone = set()
+    for (staff, way), pairs in by.items():
+        space = layers['staves'][staff]['space'] if staff < len(layers.get('staves', [])) else layers['space']
+        flat = BEAM_PIECE[0] * layers['head'][1] * space / layers['space']
+        # The stems of the staff that go this way, each once (the heads of a chord share theirs).
+        stems = []
+        for head, stem in sorted(pairs, key=lambda pair: pair[1]['x']):
+            if not stems or abs(stem['x'] - stems[-1]['x']) > 3:
+                stems.append({'x': stem['x'], 'end': stem['end'], 'tails': 0, 'heads': []})
+            one = stems[-1]
+            one['end'] = min(one['end'], stem['end']) if way == 'up' else max(one['end'], stem['end'])
+            one['tails'] = max(one['tails'], head.get('tails', {}).get(way, 0))
+            one['heads'].append(id(head))
+        for one, two in zip(stems, stems[1:]):
+            if not 0.8 * space <= two['x'] - one['x'] <= BEAM_NEXT * space or one['tails'] < 1 or two['tails'] < 1:
+                continue
+            for head in heads:
+                if head['staff'] != staff or id(head) in one['heads'] or id(head) in two['heads'] \
+                        or head['y1'] - head['y0'] + 1 > flat or any(stem['direction'] == way for stem in head['stems']) \
+                        or not one['x'] - BEAM_PIECE[2] * space <= head['cx'] <= two['x'] + BEAM_PIECE[2] * space:
+                    continue
+                x = min(max(head['cx'], one['x']), two['x'])
+                row = one['end'] + (two['end'] - one['end']) * (x - one['x']) / (two['x'] - one['x'])
+                if abs(head['cy'] - row) <= BEAM_PIECE[1] * space:
+                    gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
 
 

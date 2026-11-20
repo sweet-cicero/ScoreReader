@@ -24,13 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.1 % on
-scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,067 of 22,649, counted by the page;
-21,935 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
-syllable, 25 both, 30 have no note that is not there, 23 are whole in all three; 578 printed notes and 187 syllables
-are lacking and 437 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
+Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
+scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,071 of 22,649, counted by the page;
+21,939 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 31 scores read every printed note, 38 every
+syllable, 25 both, 35 have no note that is not there, 24 are whole in all three; 574 printed notes and 187 syllables
+are lacking and 237 notes are read that are not there, each printed head counted once since round 78: 432 by the
+count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
 files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
-89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6229 of 6901).
+89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6230 of 6901).
 On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -534,8 +535,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   `apart` of each clean score in two results beside the notes gained and lost.
 - The count of the notes that are not there, by parts, holds more than marks that are no notes: the notes of a
   page that prints more than its hymn types (one clean score that is typed as a unison: 57), the breves of an
-  ison that is counted by its letters, and a note that is given to both voices of a staff. The sheets staff by
-  staff show the marks (470 of 839 after round 47). Look at the page before a figure of false notes is taken
+  ison that is counted by its letters, and a note that is given to both voices of a staff (since round 78 such a
+  head counts once, see below). The sheets staff by staff show the marks (470 of 839 after round 47). Look at the page before a figure of false notes is taken
   for the reader's, and sort them by sight before a rule: of 80 looked at, no kind held more than a tenth.
 - The thick stroke of a final bar line or of a repeat sign is wider than a stem, so it is no slim ink: the staff
   lines cut it into pieces as high as a staff space, which were read as filled heads, with the thin line beside
@@ -1078,6 +1079,32 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The notes that are not there on the sheets of the clean copies were sorted by kind once more (238 marks, round
   77): no kind is one cause. The kinds by the kind of note (hollow with a stem, filled, whole, read from a stem)
   say nothing of the cause; the page does.
+- One printed head counts once among the notes that are not there (the wide scorer since round 78; `LENT=0`
+  counts as before). The count splits a staff of two parts by the top and the bottom note of each chord and gives
+  a lone note to both parts. A head that is lined up with a typed note in one part and stands loose in the other
+  (the top note of the bass's octave under a note that the tenor holds; a note that one voice sings alone while
+  the other rests or holds) had counted as a note that is not there, and a mark that lines up in neither part had
+  counted twice: nearly half of the figure (4,699 to 2,577 on all scores; 3,918 to 807 on the fresh set, whose
+  answers are exact). The count takes such heads off after the line-ups are made and chooses the way to set a
+  score on its staves as before: with them off in that choice, one copy by hand changed its way and lost 2 notes
+  and 2 syllables. A change of the count leaves every right note, syllable, layout and window of the reading
+  before as it was, on LitChoir and on the fresh set, or it is no change of the count alone.
+- A thin beam that slants runs into a staff line before the next stem and is hidden there on more of its way
+  than a beam may be (`symbols.THIN_BEAM_HALF`). The slant is the sign: two stems that end at one staff line
+  have that line between their ends, and a tie or a ledger line at one of them is the ink of a level line. A
+  thin line that goes on past the last stem of its run is a slur over three notes as often as a beam (counted
+  as beams, 17 notes gained and 56 lost by a census: no rule).
+- A census that is labelled by the typed lengths gives no label to a pair with a note that is not there, and the
+  first form of a rule acts there unseen: beside a note by hand a blot was read as a head with a short stem,
+  and the line from that stem's end to the end of the note's own stem runs along the stem (1 note lost). A limit
+  at both sides of what the true cases measure leaves such a pair out (the true beams rise by 0.11 to 0.21 of
+  their length; no beam of the clean copies by more than 0.65). The reading of every page showed it.
+- A flat mark on the line between the ends of two stems that both carry a flag or a beam is a piece of that
+  beam, of a flag or of a slur over the two stem ends, and no head (`symbols.BEAM_PIECE`), unless it has a stem
+  of its own that goes the pair's way: a hand sets a small head of the other voice there. Its census was made at
+  the reader's own step: from the stored notes the stems pair wrongly, because the upper head of a chord stores
+  its stem with an early end. A thick piece of a slur that went had held the line-up of the bass on a copy by
+  hand (4 notes lost by parts, 1 gained on the sheet staff by staff): the rule stays, and the worklog says so.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
