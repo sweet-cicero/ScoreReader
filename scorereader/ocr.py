@@ -114,6 +114,22 @@ MEND_BEFORE = 2          # the first word of a row is the rest of the word that 
 #                          its place ('Moth-' and 'were', another reading begins 'er'). A piece of one letter is a
 #                          stray stroke as often as a letter: 'has-' and 'v' is no 'hast'. The row before is the
 #                          first row under the staff of the same part in the system before. 0: off
+MEND_REST = True         # the first word of a row goes on from the word that the row before leaves open also
+#                          where its first syllables make a word of the list with the open piece ('car-', and the
+#                          next row begins 'ry-ing': 'carry'): it is not mended alone ('crying'). The open piece
+#                          has MEND_BEFORE letters or more, and so have the syllables. False: off
+MEND_REST_FIT = 2        # and the letters of such a first word count in the fit of its reading as letters of a word
+#                          of the list do: a reading at another size that begins with a word of the list ('Ty-ing')
+#                          was as good a fit and won by how sure Tesseract was. The reading is not whole by it.
+#                          2: also a first word that is a word of the list with the open piece (MEND_BEFORE). 0: off
+MEND_REST_STRAY = (2, 80)   # a word of this many letters or fewer before the word that goes on from the open piece,
+#                          of which Tesseract is less sure than this, is stray ink at the start of the row (the
+#                          brace, a bar line, the clef): 'pas-', and the next row begins 'he cha'. None: off
+SMALL_I = True           # a small i that stands alone as a word is no word, on a page whose words fit the list (see
+#                          MEND): the word I is a capital, and the brace, the clef and a bar line beside a row are
+#                          read as a small i (61 on LitChoir's scan pages, none of them a typed word). It goes after
+#                          the reading of the row is chosen: taken out of each reading, a reading without it was
+#                          whole, the other sizes were not read, and 8 syllables were lost for 1. False: off
 MEND_S = True            # an s at the end of a word is never taken away and never added by the mending: the list
 #                          holds 'sake' and lacks 'sakes', and the page prints 'sakes'
 LONE_I = (0.1, 0.6, 0.2, 0.7, 1.5)   # a stroke that stands alone between two words ('|') is the word I where its
@@ -599,6 +615,18 @@ def _parted(syllables: list[dict], ways: dict[str, tuple[str, ...]]) -> list[dic
                 found.append(dict(group[0][0], text=''.join(part['text'][at] for part, at in group),
                                   x0=edge(group[0], 0), x1=edge(group[-1], 1),
                                   join=True if index + 1 < len(groups) else word[-1]['join']))
+                # 'cut': this syllable and the one before it are one piece of the page, as it was read, that the list
+                # of words parted in two (scorereader.lyrics.ONE_NOTE asks the notes about it). A piece that the
+                # mending changed is none ('ter-nal' at the start of a row, mended to 'e-ter-nal': the e has no
+                # ink), and a piece that gives letters to a third syllable is none either.
+                found[-1].pop('cut', None)
+                if index and group and groups[index - 1]:
+                    piece = group[0][0]
+                    if (all(part is piece for part, _ in group) and all(part is piece for part, _ in groups[index - 1])
+                            and not (index >= 2 and groups[index - 2] and groups[index - 2][-1][0] is piece)
+                            and not (index + 1 < len(groups) and groups[index + 1] and groups[index + 1][0][0] is piece)
+                            and piece['text'] == piece.get('read')):
+                        found[-1]['cut'] = True
         else:
             found.extend(word)
         word = []
@@ -692,9 +720,11 @@ def _odd(word: str, known: dict[str, int]) -> int:
     return sum(text[at:at + 3] not in _RUNS[1] for at in range(len(text) - 2))
 
 
-def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None = None) -> list[dict]:
+def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None = None, carried: str = '') -> list[dict]:
     """Joins two words side by side that the list does not hold into the one word of the list that they are with
-    one letter read otherwise (see MEND_PAIR). `mended` takes each such pair, as it was read."""
+    one letter read otherwise (see MEND_PAIR). `mended` takes each such pair, as it was read. The second word of
+    a row that goes on from the word that the row before leaves open (`carried`) is no piece of such a pair: a
+    mark before it is stray ink (see MEND_REST_STRAY)."""
     words: list[list[dict]] = [[]]
     for number, syllable in enumerate(syllables):
         words[-1].append(dict(syllable))
@@ -710,6 +740,8 @@ def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None
         one, other = (''.join(part['text'][at] for part, at in letters(parts)).lower() for parts in (first, second))
         if not one or not other or len(read) < MEND_PAIR or first[-1]['join'] or second[-1]['join'] \
                 or read in known or (not MEND_PAIR_RARE and (one in known or other in known)):
+            continue
+        if MEND_REST_STRAY and carried and first is words[0] and len(other) >= MEND_BEFORE and carried + other in known:
             continue
         meant = {read[:at] + sign + read[at + 1:]: at for at in range(len(read)) for sign in ABC if sign != read[at]}
         meant = {new: at for new, at in meant.items() if known.get(new, 0) >= MEND[1]}
@@ -727,6 +759,49 @@ def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None
         if mended is not None:
             mended.append(read)
     return [part for parts in words for part in parts]
+
+
+def _leads(carried: str, pieces: list[str], known: dict[str, int]) -> bool:
+    """Whether the first syllables of a word (`pieces`: its syllables as they were read) make a word of the list
+    with the letters of the word that the row before leaves open (`carried`; see MEND_REST)."""
+    if len(carried) < MEND_BEFORE:
+        return False
+    lead = ''
+    for piece in pieces[:-1]:
+        lead += ''.join(sign for sign in piece.lower() if sign.isalpha())
+        if len(lead) >= MEND_BEFORE and carried + lead in known:
+            return True
+    return False
+
+
+def _carried_on(row: list[dict], known: dict[str, int], carried: str) -> int:
+    """The letters of the first word of a row where that word is no word of the list and goes on from the word
+    that the row before leaves open (`carried`), as MEND_REST_FIT counts them; 0 otherwise."""
+    if not (MEND_REST_FIT and MEND_BEFORE and carried and row):
+        return 0
+    first = _read_words(row)[0]
+    read = ''.join(sign for part in first for sign in part['text'].lower() if sign.isalpha())
+    if not read or read in known:
+        return 0
+    if (MEND_REST and _leads(carried, [part['text'] for part in first], known)) or (MEND_REST_FIT > 1 and carried + read in known):
+        return len(read)
+    return 0
+
+
+def _stray_before(row: list[dict], known: dict[str, int], carried: str) -> list[dict]:
+    """A row without its first word, where that word is short, Tesseract is not sure of it, and the word after it
+    goes on from the word that the row before leaves open (`carried`; see MEND_REST_STRAY)."""
+    words = _read_words(row)
+    if len(words) < 2 or len(words[0]) != 1 or words[0][0]['join']:
+        return row
+    first = ''.join(sign for sign in words[0][0]['text'].lower() if sign.isalpha())
+    after = ''.join(sign for part in words[1] for sign in part['text'].lower() if sign.isalpha())
+    if (len(first) > MEND_REST_STRAY[0] or words[0][0].get('sure', 0.0) >= MEND_REST_STRAY[1] or carried + first in known
+            or len(after) < MEND_BEFORE):
+        return row
+    if carried + after in known or (MEND_REST and _leads(carried, [part['text'] for part in words[1]], known)):
+        return row[1:]
+    return row
 
 
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
@@ -767,6 +842,8 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
                 if mended is not None:
                     mended.append(read)
                 continue
+            if MEND_REST and _leads(carried, [part['text'] for part in parts], known):
+                continue          # 'car-' and 'ry-ing': 'carry'
         if len(read) < MEND[0] or read in known or read in agreed:
             continue
         odd = _odd(read, known) if MEND_ODD or MEND_OFTEN else 0
@@ -1018,14 +1095,18 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     if CUT:
         words = _cut_wide(words, grey, band)
     row = _syllables(words, known, band['bottom'] - band['top'])
+    for syllable in row:
+        syllable['read'] = syllable['text']         # the piece as it was read (see 'cut' in _parted)
     if not known:
         return row, sure, False
     if ENDS:
         row = _ends(row, known, mend)
+    if MEND_REST_STRAY and MEND_BEFORE and mend and band.get('carried'):
+        row = _stray_before(row, known, band['carried'])
     mended: list[str] = []
     if MEND and mend and mending:
         if MEND_PAIR:
-            row = _mend_pair(row, known, mended)
+            row = _mend_pair(row, known, mended, band.get('carried', '') if MEND_BEFORE else '')
         row = _mend(row, known, mended, agreed, alike, band.get('carried', ''))
     held, total = _held(row, known)
     if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
@@ -1034,7 +1115,8 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     if band.get('few') and (mended or not 0 < total == held or (len(lettered) == 1 and lettered[0].endswith(':'))):
         return [], -1.0, False        # a row of few words (words.SPARSE): only words of the list, and no label
         #                               (one word with a colon: 'Refrain:', 'Women:')
-    return row, held + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE) and not stray
+    going = _carried_on(row, known, band.get('carried', ''))
+    return row, held + going + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE) and not stray
 
 
 def _sure(words: list[tuple[str, float, float, float]]) -> float:
@@ -1255,6 +1337,10 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         row = _other_pair(row, [other for other in rows if other is not row], known)
     if PAIR and known and mend and getattr(known, 'pairs', None):
         row = _between(row, known)
+    if SMALL_I and known and mend:
+        # After the reading is chosen: a stray word that goes must not change which reading is kept (see CLEF).
+        row = [syllable for number, syllable in enumerate(row)
+               if syllable['join'] or (number and row[number - 1]['join']) or syllable['text'].strip(STOPS + '\'"‘’“”') != 'i']
     if ONE and ways and mend:
         row = _whole(row, known, ways)
     return _parted(row, ways) if ways else row

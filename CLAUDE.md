@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.5 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.1 % on
-scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,057 of 22,649, counted by the page;
-21,925 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 36 every
-syllable, 23 both, 27 have no note that is not there, 20 are whole in all three; 588 printed notes and 192 syllables
-are lacking and 448 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 96.9 % with Tesseract, its larger
-files and a list of words (6,062 of 6,254, counted by the page; 5,998 of 6,259 as typed; 94.9 % of the whole words; 37 scores at 99 % of the syllables);
-89.0 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6229 of 6901).
+scans; 94 scores at 99 % or more), 97.4 % of the notes on the clean copies (22,060 of 22,649, counted by the page;
+21,928 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 30 scores read every printed note, 38 every
+syllable, 24 both, 27 have no note that is not there, 21 are whole in all three; 585 printed notes and 187 syllables
+are lacking and 446 notes are read that are not there), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
+files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
+89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6229 of 6901).
 On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
@@ -1023,6 +1023,30 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   by page with main's reading of them (139 pages, a few minutes). The stored reading of the PDFs that the notes
   runs are joined with is older than the count's lists; the figures of the PDFs are those of the reading with
   the words.
+- What Tesseract reads of a line is kept by the picture of the line (a cache outside git, with the wide test).
+  One pass of every scan page with main's code fills it and must score exactly as the reading before; after it a
+  full reading of the words costs only the reader's time, half an hour for LitChoir's scan pages and eight minutes
+  for the fresh set. A rule of the words that asks the notes (`lyrics.set_under`), which the replay from stored
+  rows cannot count, is counted on every page so, and such a rule off alone is one more pass. Read the fresh set's
+  words with every round of words rules: the replay had called two rules level there, and the third was not in it.
+- A stray word that a rule takes out of a row goes after the reading of the row is chosen (`ocr.SMALL_I`, as
+  `ocr.CLEF`): taken out of each reading, a reading without it was whole, the other sizes were not read, and 8
+  syllables were lost for 1. A stray word that goes can lose a whole word in the count where it had stood for a
+  true one (a small i for the word I); the syllables do not move.
+- A rule that joins or parts syllables by their notes meets the notes that the reader lacks. Two syllables that
+  the list made of one read piece, with one note for the two, are a piece that the page sets under one note
+  ("glo-rious"), or a word that the page prints whole under two notes, one of which was not read. LitChoir's
+  count showed the rule 8 syllables gained and none lost; the fresh set, whose engravings leave the hyphen out
+  where two syllables stand close, 2 gained and 7 lost. The measure came from LitChoir's own places: a syllable
+  stands with its middle under its note, and the note of one syllable of a longer word stands beside the middle
+  of the piece (`lyrics.ONE_NOTE`). A piece is one piece only as it was read: a letter that the mending added has
+  no ink.
+- A cell between two staff lines is closed by a bar line or a sign close before a head, and by a flag: the flag
+  of the head's own note stands at the cell's right, and the flag of the note before at its left. LitChoir's
+  pages showed the first and the fresh set the second. Three measures of the stroke did not part a flag from a
+  bar line or a sign (whether it goes on past both lines, the share of the staff's rows that it fills, how
+  straight the cell's edge is); how far the stroke goes on upright does (`symbols.CELL_BETWEEN`): measure each
+  kind of stroke on LitChoir's own pages before a limit is set.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
