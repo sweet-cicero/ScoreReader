@@ -165,6 +165,123 @@ def stray_lines(ink: np.ndarray, places: list[dict]) -> np.ndarray:
     return out
 
 
+SCAN_LINE = (0.9, 0.012, 20, 0.5, 1.0, 1.8)   # the line that a speck on a scanner's glass draws down a page is faint and
+#   leans, so it is no unbroken column of ink (STRAY). It is looked for in the grey picture, through a system of two
+#   staves or more: an upright stroke that is ink, or darker than the paper beside it (by the third number of grey
+#   levels, against the paper within the fourth number of staff spaces), in the first number's share of the rows from
+#   STRAY's place over the system to its place under it, and in that share of the rows of each end past the staves; along
+#   a line that leans by at most the second number of columns in a row; at most as wide as STRAY allows; and the fifth
+#   number of staff spaces or more from both ends of the staves (the line that opens a system and its last bar line
+#   stand there, and the shadow of the page's edge goes on past them). It is taken out of the ink as a line of STRAY
+#   is, where it stands alone in its row, but not where the row's piece is heavier than the line: a stem can stand on
+#   the line, and it is black and wider (the darkness of the row's piece, summed, is more than the last number times
+#   the median of the line's pieces). The stroke of a clef passes a system of one staff at both ends, so such a
+#   system keeps to STRAY. (A census of every scan page of LitChoir: in a system of two staves or more, 9 thin lines
+#   pass both ends and are not STRAY's: 5 are one scanner's line on two pages of one clean score, where it ran along a
+#   half note as a second stem; 2 are the line that opens a system in the shadow of the page's edge, and 2 stand in a
+#   photograph. A rule for one scan.) None: off
+
+
+def scan_lines(grey: np.ndarray, ink: np.ndarray, places: list[dict]) -> np.ndarray:
+    """A mask of the faint upright lines that run past a system of two staves or more at both ends (SCAN_LINE), where
+    they stand alone in their row."""
+    out = np.zeros_like(ink)
+    if not SCAN_LINE or not STRAY:
+        return out
+    share, lean, darker, beside_paper, from_ends, heavy = SCAN_LINE
+    height, width = ink.shape
+    for place in places:
+        lines = place['lines']
+        if len(lines) < 2:
+            continue
+        space = (lines[0][4] - lines[0][0]) / 4
+        top, bottom = int(lines[0][0] - STRAY[0] * space), int(lines[-1][4] + STRAY[0] * space)
+        if top < 0 or bottom >= height:
+            continue
+        hat = cv2.morphologyEx(grey, cv2.MORPH_BLACKHAT, np.ones((1, int(round(beside_paper * space)) | 1), np.uint8))
+        seen = ((hat >= darker) | (ink > 0)).astype(np.uint8)
+        near = seen.copy()
+        near[:, 1:] |= seen[:, :-1]
+        near[:, :-1] |= seen[:, 1:]
+        # The rows of the stretch, summed from its first row on: the sum of any run of rows is one difference.
+        sums = np.vstack([np.zeros((1, width), np.int32), np.cumsum(near[top:bottom + 1], axis=0, dtype=np.int32)])
+        rows = bottom - top + 1
+        middle = (top + bottom) / 2
+        first_x, last_x = min(x0 for x0, _ in place['x']), max(x1 for _, x1 in place['x'])
+        found = []
+        for slope in np.linspace(-lean, lean, 13):
+            # (The line is at column x in the middle row, and `shift` columns from it in each other row.)
+            shifts = np.round(slope * (np.arange(top, bottom + 1) - middle)).astype(int)
+            count = np.zeros(width, np.int32)
+            start = 0
+            for index in range(1, rows + 1):
+                if index == rows or shifts[index] != shifts[start]:
+                    count += np.roll(sums[index] - sums[start], -int(shifts[start]))
+                    start = index
+            columns = np.nonzero(count >= share * rows)[0]
+            begin = None
+            for index, column in enumerate(columns):
+                begin = column if begin is None else begin
+                if index + 1 < len(columns) and columns[index + 1] == column + 1:
+                    continue
+                x0, x1, begin = int(begin), int(column), None
+                if x1 - x0 + 1 > STRAY[1] * space:
+                    continue
+                x = x0 + int(np.argmax(count[x0:x1 + 1]))
+                if not (first_x + from_ends * space <= x <= last_x - from_ends * space):
+                    continue
+                found.append((int(count[x]), x, float(slope)))
+        taken = []
+        for _, x, slope in sorted(found, reverse=True):
+            if any(abs(x - other) <= STRAY[1] * space for other in taken):
+                continue      # the same line at another lean
+
+            def at(row: int, x: int = x, slope: float = slope, middle: float = middle) -> int:
+                return x + int(round(slope * (row - middle)))
+
+            def is_seen(row: int, seen: np.ndarray = seen) -> bool:
+                column = at(row)
+                return 1 <= column < width - 1 and bool(seen[row, column - 1:column + 2].any())
+
+            # Both ends past the staves (without the rows at the staff lines, where a bar line ends).
+            over = [is_seen(row) for row in range(top, int(lines[0][0] - 0.4 * space) + 1)]
+            under = [is_seen(row) for row in range(int(lines[-1][4] + 0.4 * space), bottom + 1)]
+            if not over or not under or np.mean(over) < share or np.mean(under) < share:
+                continue
+            taken.append(x)
+            beside = int(STRAY[2] * space)
+            # The line goes on past the stretch as far as it is seen, over breaks of half a staff space.
+            first, last, gap = top, bottom, int(0.5 * space)
+            while first > 0 and any(is_seen(row) for row in range(max(0, first - gap), first)):
+                first -= 1
+            while last + 1 < height and any(is_seen(row) for row in range(last + 1, min(height, last + 1 + gap))):
+                last += 1
+            pieces = []
+            for row in range(first, last + 1):
+                column = at(row)
+                if not (1 <= column < width - 1) or not ink[row, column - 1:column + 2].any():
+                    continue
+                left, right = column - 1, column + 1
+                while not ink[row, left] and left < right:
+                    left += 1
+                while not ink[row, right] and right > left:
+                    right -= 1
+                x0, x1 = left, right
+                while left > 0 and ink[row, left - 1] and x0 - left <= beside:
+                    left -= 1
+                while right + 1 < width and ink[row, right + 1] and right - x1 <= beside:
+                    right += 1
+                if (x0 - left) + (right - x1) <= beside:
+                    dark = int((255 - grey[row, max(0, left - 1):right + 2].astype(int)).sum())
+                    pieces.append((row, left, right, dark))
+            if pieces:
+                limit = heavy * float(np.median([dark for _, _, _, dark in pieces]))
+                for row, left, right, dark in pieces:
+                    if dark <= limit:
+                        out[row, left:right + 1] = 1
+    return out
+
+
 def blots(ink: np.ndarray, space: float) -> np.ndarray:
     """1 on the blots of the page: solid ink that a disc of BLOT staff spaces fits in, with the ink at its rim. A
     punch hole, the shadow of a binding or a torn corner is a blot; no mark of music is that solid."""
@@ -452,6 +569,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
         staff['end_bar'] = staff['end_ink'] >= END_BAR[2]
     ink = ink & (1 - blots(ink, space))
     ink = ink & (1 - stray_lines(ink, places))
+    ink = ink & (1 - scan_lines(grey, ink, places))
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
              for staff in staves] if HOLE_SIDE else None
     ledgers = [staff['rows'][end] + side * step * staff['space'] for staff in staves for end, side in ((0, -1), (4, 1))
