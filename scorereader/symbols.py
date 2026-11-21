@@ -5693,6 +5693,15 @@ def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
 
 FLAT_CELL = (0.6, 0.95, 2.0, 0.85)   # a hollow mark is no head where its closed paper is this many staff spaces
 #   high or more and has a top or a bottom that is level in this share of its columns (within a pixel of its first or
+#   last row) at a staff line (the line's middle within the third number of px, or half its thickness): a cell between
+#   the line and a slanted stroke (a pencil ring, a slur that crosses the staff, the loop of a flag, a rest, a piece
+#   of a clef). The inside of a printed head is round and stands clear of the lines: of the 95 such marks that were
+#   read as notes on LitChoir's scan pages, each looked at, none is a printed hollow head. Not where the mark holds
+#   ink as fat as a head (the widest disc in its ink, against the last number times the usual one of the page's
+#   filled heads): a filled head with a sharp or a natural close before it closes such a cell too, and so does the
+#   stroke that a hand draws for a head; that mark stays as it was read. (None: off)
+
+
 CLIP_CELL = 0.3          # a hollow mark is no head where the wire of a paperclip (layers.CLIP) closes its inside: of the
 #   ink around its closed paper, this share or more is the wire. The bow of a clip that hangs into a staff closes a
 #   cell with a staff line, and the cell was read as a half note; the inside of a head is closed by the head's own
@@ -5720,13 +5729,48 @@ def without_clip_cells(layers: dict, heads: list[dict]) -> list[dict]:
     return out
 
 
-#   last row) at a staff line (the line's middle within the third number of px, or half its thickness): a cell between
-#   the line and a slanted stroke (a pencil ring, a slur that crosses the staff, the loop of a flag, a rest, a piece
-#   of a clef). The inside of a printed head is round and stands clear of the lines: of the 95 such marks that were
-#   read as notes on LitChoir's scan pages, each looked at, none is a printed hollow head. Not where the mark holds
-#   ink as fat as a head (the widest disc in its ink, against the last number times the usual one of the page's
-#   filled heads): a filled head with a sharp or a natural close before it closes such a cell too, and so does the
-#   stroke that a hand draws for a head; that mark stays as it was read. (None: off)
+GREY_MARK = (0.1, 3.0, 30, 0.5, 0.2, 0.5)   # a mark that holds no black ink where the print around it is black is no
+#   head: a word or a ring in pencil, a marker, the shadow of a slip, a smear (layers.BLACK says what black is). Of the
+#   ink in the mark's box under the first share is black. The print around it is the ink within the second number of
+#   staff spaces of the box (the third number of px or more): the fourth share of it or more is black. A stretch that
+#   the print left pale holds pale heads on pale lines, and a note in pencil on a grey copy stands among grey lines:
+#   the print around tells. And the mark does not lie in black ink: of the ink within the fifth number of staff spaces
+#   of its box under the last share is black (the pale middle of a worn head is a small mark of its own inside the
+#   head's black ink). (At the reader's own step on every scan page of LitChoir: of 267 heads whose ink is under 0.3
+#   black, 14 pass, each looked at: words and a ring in pencil, a grey streak, a marker, shadows and smears, no note.
+#   A rule for the pages whose print is black: on a copy by hand the notes in pencil stand among grey lines.) None: off
+
+
+def _black_around(layers: dict, head: dict) -> tuple[float, float, int, float]:
+    """How black the ink of a mark is, and the ink around it (GREY_MARK): the share of the ink in the head's box that
+    is black, the share of the print around the box that is, the px of that print, and the share of the ink close
+    around the box that is black."""
+    ink, black = layers['ink'], layers['black']
+    y0, x0 = max(0, int(head['y0'])), max(0, int(head['x0']))
+    y1, x1 = int(head['y1']) + 1, int(head['x1']) + 1
+    count, mine = int(ink[y0:y1, x0:x1].sum()), int(black[y0:y1, x0:x1].sum())
+    if not count:
+        return 1.0, 0.0, 0, 1.0
+    space = layers['staves'][head['staff']]['space']
+    shares = []
+    for far in (int(round(GREY_MARK[1] * space)), max(1, int(round(GREY_MARK[4] * space)))):
+        top, left = max(0, y0 - far), max(0, x0 - far)
+        stand = int(ink[top:y1 + far, left:x1 + far].sum()) - count
+        shares.append((float(int(black[top:y1 + far, left:x1 + far].sum()) - mine) / stand if stand > 0 else 0.0, max(0, stand)))
+    return mine / count, shares[0][0], shares[0][1], shares[1][0]
+
+
+def without_grey_marks(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the marks that hold no black ink where the print around them is black (GREY_MARK)."""
+    if not GREY_MARK or not heads or not layers['black'].any():
+        return heads
+    out = []
+    for head in heads:
+        own, around, stand, close = _black_around(layers, head)
+        if own < GREY_MARK[0] and stand >= GREY_MARK[2] and around >= GREY_MARK[3] and close < GREY_MARK[5]:
+            continue
+        out.append(head)
+    return out
 
 
 FLAT_WEDGE = (0.85, 0.35, 0.1, 0.7)   # a lower cell along a staff line (under FLAT_CELL's height, level at the line as

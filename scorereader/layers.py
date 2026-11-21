@@ -299,14 +299,19 @@ CLIP = (0.12, 0.7, 2, 1.0, 4.0, 0.45, 1.0, 0.6, 0.6, 8.0, 3.5, 0.15)   # the wir
 #   grey.) None: off
 
 
+def ink_and_paper(grey: np.ndarray, ink: np.ndarray) -> tuple[float, float]:
+    """How dark the ink of a page is (the grey of its darkest quarter) and how light its paper. The grey of a mark is
+    measured on the way from the one to the other: a pale print is black by its own measure."""
+    return float(np.percentile(grey[ink > 0][::7], 25)), float(np.median(grey[::9, ::9]))
+
+
 def clips(grey: np.ndarray, ink: np.ndarray, space: float) -> np.ndarray:
     """A mask of the wires of paperclips (CLIP)."""
     out = np.zeros_like(ink)
     if not CLIP or not ink.any():
         return out
     low, high, inside, least, side, slim, fat, brush, even, length, bend, rim = CLIP
-    dark = float(np.percentile(grey[ink > 0][::7], 25))
-    paper = float(np.median(grey[::9, ::9]))
+    dark, paper = ink_and_paper(grey, ink)
     level = (grey.astype(np.float32) - dark) / max(1.0, paper - dark)
     seed = (cv2.erode(ink, np.ones((2 * inside + 1, 2 * inside + 1), np.uint8)) > 0) & (level >= low) & (level <= high)
     seed = cv2.morphologyEx(seed.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
@@ -335,6 +340,20 @@ def clips(grey: np.ndarray, ink: np.ndarray, space: float) -> np.ndarray:
         whole = cv2.dilate(piece, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * wider + 1, 2 * wider + 1)))
         out[y0:y1, x0:x1] |= whole & ink[y0:y1, x0:x1]
     return out
+
+
+BLACK = 0.12   # black ink is ink within this share of the way from the page's ink to its paper (ink_and_paper): the
+#   print of the page. A line in pencil, a marker, the shadow of a slip and a smear are ink by the page's limit and
+#   hold no black; the grey edge of a printed stroke stands beside its black. The mask changes no other layer; later
+#   steps ask it (symbols.GREY_MARK, ties.TIE_SOFT).
+
+
+def black_ink(grey: np.ndarray, ink: np.ndarray) -> np.ndarray:
+    """The ink that is as black as the print of its page (BLACK)."""
+    if not ink.any():
+        return np.zeros_like(ink)
+    dark, paper = ink_and_paper(grey, ink)
+    return ink & (grey < dark + BLACK * max(1.0, paper - dark)).astype(np.uint8)
 
 
 def blots(ink: np.ndarray, space: float) -> np.ndarray:
@@ -626,6 +645,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     ink = ink & (1 - stray_lines(ink, places))
     ink = ink & (1 - scan_lines(grey, ink, places))
     clip = clips(grey, ink, space)
+    black = black_ink(grey, ink)
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
              for staff in staves] if HOLE_SIDE else None
     ledgers = [staff['rows'][end] + side * step * staff['space'] for staff in staves for end, side in ((0, -1), (4, 1))
@@ -704,7 +724,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     return {'grey': grey, 'ink': ink, 'holes': holes, 'open_holes': open_holes, 'ragged': ragged, 'solid': solid,
             'lines': lines, 'free': free, 'joined': joined, 'up': up,
             'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
-            'bare': bare, 'weak': weak, 'bridge': bridge, 'clip': clip}
+            'bare': bare, 'weak': weak, 'bridge': bridge, 'clip': clip, 'black': black}
 
 
 def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float) -> tuple[list[dict], np.ndarray]:

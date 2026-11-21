@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 95 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,090 of 22,649, counted by the page;
-21,958 of 22,605 as typed; 41 of the 78 counted scores at 99 %; 38 scores read every printed note, 44 every
-syllable, 33 both, 40 have no note that is not there, 33 are whole in all three; 554 printed notes and 171 syllables
-are lacking and 216 notes are read that are not there, each printed head counted once since round 78: 407 by the
+scans; 95 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,092 of 22,649, counted by the page;
+21,960 of 22,605 as typed; 41 of the 78 counted scores at 99 %; 39 scores read every printed note, 44 every
+syllable, 33 both, 41 have no note that is not there, 33 are whole in all three; 552 printed notes and 170 syllables
+are lacking and 213 notes are read that are not there, each printed head counted once since round 78: 402 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.3 % with Tesseract, its larger
-files and a list of words (6,084 of 6,255, counted by the page; 6,020 of 6,260 as typed; 95.3 % of the whole words; 45 scores at 99 % of the syllables);
-89.2 % of all syllables with Tesseract (88.3 % on scans), and 90.3 % on the kit (6232 of 6901).
+files and a list of words (6,085 of 6,255, counted by the page; 6,021 of 6,260 as typed; 95.3 % of the whole words; 45 scores at 99 % of the syllables);
+89.2 % of all syllables with Tesseract (88.3 % on scans), and 90.3 % on the kit (6234 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1286,6 +1286,31 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The stored measure of how pale the core of a head is (`mark.core.pale`) counts the paper in the box of a note
   with a flag: of the clean notes from 0.2 on, 129 are right and 6 are not there. It is no measure of grey ink; a
   rule for a grey streak across a staff needs the grey of the mark's own ink, measured at the reader's step.
+- Ink by the page's limit is not all print: a word or a ring in pencil, a marker, the shadow of a pasted slip and a
+  grey streak are ink too, and they hold no black. Black is measured by the page's own ink (`layers.BLACK`, the layer
+  `black`), so a pale print is black by its own measure. A mark with no black ink is no head only where the print
+  around it is black (`symbols.GREY_MARK`): a stretch that the print left pale holds pale heads on pale lines, and
+  on a grey copy the notes in pencil stand among grey lines. The first census, from the stored notes, showed 13 such
+  marks and no note; the census at the reader's own step showed one more kind, the pale middle of a worn head that
+  is read as a small mark of its own inside the head's black ink. The ink close around the mark tells it.
+- A census script that leaves scores out says which. The census of round 84 for the grey of a note's core, and the
+  first one of round 85, asked for the scores of the kind 'scan' and left out the kit's 28 scan scores, the score
+  that the census was made for among them. Look for the census's own case in its result before the result is read.
+- A bow in pencil between two printed heads is no tie (`ties.TIE_SOFT`): the ink along the bow holds no black, and
+  the lines of the staff beside it do. On a grey copy the true ties hold no black either, and neither do the staff
+  lines: a measure of grey is always set beside the print next to it. A rule for one case.
+- The second half of a tie is no note of its own, so a false tie hides what is read at its end. The head at the end
+  of the pencil bow was read for both voices, with the stem of the head under it as a second stem, and counted as a
+  note that is not there once the tie was gone (2 to 3 on that score, beside 2 notes gained). Look at the second
+  note of a tie that a rule takes away in every voice that it is read for, and say what the tie hid.
+- A cell that a line in pencil closes with a bar line or a printed head is not told from a head that a hand drew in
+  pencil on printed staves by the grey at its rim: both mix pencil and print. Counted at the reader's own step, a
+  rule by the share of soft ink at the rim took 12 true notes of copies by hand and 11 that are not there: no rule.
+- A block of code that is set before a function by a search for its name can land inside the comment of the constant
+  over that function: the constant of round 84's clip rule stood in the middle of an older rule's comment in main.
+  Read the place of an insertion once it is made.
+- A background job is done when its own last line stands in its log. A date that the look at the log prints itself
+  is not the job's: a second census was started over the first one, which was still running.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
