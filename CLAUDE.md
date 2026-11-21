@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 95 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,092 of 22,649, counted by the page;
-21,960 of 22,605 as typed; 41 of the 78 counted scores at 99 %; 39 scores read every printed note, 46 every
-syllable, 35 both, 41 have no note that is not there, 34 are whole in all three; 552 printed notes and 168 syllables
+scans; 96 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,096 of 22,649, counted by the page;
+21,964 of 22,605 as typed; 42 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
+syllable, 36 both, 41 have no note that is not there, 35 are whole in all three; 548 printed notes and 165 syllables
 are lacking and 212 notes are read that are not there, each printed head counted once since round 78: 401 by the
-count before), and of their syllables 49.9 % with the own letter reader and 97.3 % with Tesseract, its larger
-files and a list of words (6,087 of 6,255, counted by the page; 6,023 of 6,260 as typed; 95.3 % of the whole words; 47 scores at 99 % of the syllables);
+count before), and of their syllables 49.9 % with the own letter reader and 97.4 % with Tesseract, its larger
+files and a list of words (6,090 of 6,255, counted by the page; 6,025 of 6,260 as typed; 95.4 % of the whole words; 48 scores at 99 % of the syllables);
 89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.3 % on the kit (6234 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
@@ -1346,6 +1346,45 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - `thin_heads` asks 4,395 strokes of LitChoir's scan pages that stand at the middle column of a stem that a head
   has, and 416 of them have a head that was read from a stem beside them. The wider form of the stem rule (such a
   stroke is that stem for every finder) needs a census of its own with the scorer's verdicts before it is tried.
+- One print draws the rim of a whole note bold at its two sides and as a hairline over and under them, and a scan
+  loses the hairline: a whole note that hangs under the staff is two bold arcs there, with no closed paper and no
+  stem, and no finder of heads has a way to it (`symbols.arc_wholes`, a rule for one print). Two arcs side by side
+  under a staff are letters far more often (37 of the first 40, and 139 of 142 by the wider census): the whole
+  note's near side is closed by the line of the staff over every column between the arcs, its outline grows narrow
+  to the far end, where the two arcs end at one height, and it stands alone in paper. The first census missed one
+  of its three cases by a limit of its own (an arc 0.82 staff spaces wide): a census is widened until it holds
+  every case that it was made for, and the rule's limits are then set on the second census.
+- A false note that stands at the end of a score is lined up with whatever typed note is free: a ring that a hand
+  drew in pen under the last printed note was read as a note, and the count set it beside the unread whole note at
+  the start of the next page. Read as "the last note is typed otherwise", the place looked like a hand's change of
+  the print. Find the typed note on its own page before a place is called the hand's or the typed hymn's. Ink by a
+  pen is as black as the print (`layers.black`), so `symbols.GREY_MARK` does not see it: such a ring goes on the
+  list of the notes by hand, after it was looked at in the scan itself.
+- A limit that a true case misses by a hundredth of a staff space is not moved. The limit of 0.45 staff spaces for
+  the strokes of a flat is for the two sides of a large hollow head's rim, which are as heavy as each other; a flat
+  whose long stroke the print left faint has a hairline and a bold wall (`signs.FLAT_BOLD`: the long stroke at most
+  half as wide as the wall). The census of every pair that the limit refuses (139 on LitChoir's scan pages, at the
+  reader's own step) named what the limit is right for: 137 with a heavy long stroke, and the wire of a paperclip
+  across a stem.
+- A rule of the words that is tied to the mending (`mend`: the page's words fit the list) does not act on a page
+  in another language or on a page of the names of the notes, and the first forms of the rule for a short word
+  that every reading holds (`ocr.SURE_ALIKE`) never acted on the row that they were written for. Look for the
+  rule's own row in the replay's changed rows before its count is read.
+- A word that a rule lets stay changes which reading of its row wins: its letters count in the fit of a reading,
+  it can make a word of the list with the piece beside it, and a reading with it can be whole. A short word that
+  every reading holds speaks for no reading. Its letters taken off the fit were not enough (a spared "Ma-" made a
+  word of the list with the next piece, and a reading with a stray word won by it): how well a reading fits,
+  whether it is whole and whether it is a row at all is asked without the word, and the reading that is kept has
+  it. Then the rule can act in the readings of the further files too, where its first form lost 2 syllables (12
+  syllables gained and none lost on all scan pages, against 7 in the readings of the first file alone).
+- Two readings of a row by two language files are set beside each other by their letters (`ocr.SECOND_FIRM`), and
+  a word that the first file drops as unsure and the further files keep decides there: the reading with a misread
+  label won because the standing one lacked a name of a note that both had read. Before a lost word is blamed on
+  the choice among the files, look at what each reading had dropped.
+- A hand's change of printed words can undo itself: on one clean score the printed words are struck through, a
+  replacement is written under them and scribbled out again, and the printed words are written back over the
+  staff. A pencil loop that runs through a word crosses nothing out: such a word is print, as a note under a pencil
+  ring is. Look at what the hand wrote beside a crossed-out word before the place is counted.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

@@ -48,6 +48,14 @@ SIGN_START = 0.3     # a stroke in the first columns of the notes (this many sta
 PAIR_WIDE = 0.6          # each of the two strokes of a sharp is at most this wide, in staff spaces (0.45: as it was, and
 #                          as it is for a flat and a natural; a heavy print draws the strokes of a sharp half a staff
 #                          space wide)
+FLAT_BOLD = 0.5          # the wall of a flat's bowl may be as heavy as a stroke of a sharp (PAIR_WIDE) where the flat's
+#                          long stroke is a hairline against it, at most this share of the wall's width: an engraved
+#                          flat swells in its bowl, and the two sides of a hollow head's rim, which the limit of 0.45
+#                          is for, are as heavy as each other. A rule for one case: of the 139 pairs of strokes on
+#                          LitChoir's scan pages that stand as a flat does and are refused for a heavy stroke, 137
+#                          have a heavy long stroke (a stem with ink beside it, the flat of a heavy copy), one is the
+#                          wire of a paperclip across a stem (0.83 of the other stroke's width) and one is a flat
+#                          whose long stroke the print left faint (0.4 of the wall's width). None: off
 PAIR_TOUCH = True        # two strokes with no column between them are joined: the heavy bars of a sharp fill the room
 #                          between its strokes, and the room has no ink of its own to count (False: as it was)
 PAIR_FREE = True         # a sharp with a stroke wider than 0.45 staff spaces stands free: two heavy strokes that lie on a
@@ -245,7 +253,8 @@ def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
                 kind, middle = 'natural', (top + bottom) / 2
         else:
             return None
-        if kind != 'sharp' and max(left['wide'], right['wide']) > (NATURAL_WIDE if kind == 'natural' else 0.45):
+        if kind != 'sharp' and max(left['wide'], right['wide']) > (NATURAL_WIDE if kind == 'natural' else 0.45) \
+                and not (FLAT_BOLD and kind == 'flat' and left['wide'] <= min(0.45, FLAT_BOLD * right['wide'])):
             return None      # only a sharp has two heavy strokes: the rim of a large hollow head is no flat
         return {'kind': kind, 'x0': float(left['x0']), 'x1': float(right['x1']), 'pair': True,
                 'touch': bool(PAIR_TOUCH) and right['x0'] - left['x1'] <= 1,

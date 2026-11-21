@@ -48,6 +48,17 @@ SURE = (20, True)        # a word that Tesseract is less sure of than this (of 1
 SURE_JOIN = True         # and it stays where the list holds the word that it makes with the pieces beside its hyphens: the
 #                          hyphen was read, so a syllable stands there ('Bless-' and an unsure 'ed', an unsure 'el-'
 #                          before 'der') (False: off)
+SURE_ALIKE = 2           # and it stays where every reading of the row as the picture is holds it with the same letters
+#                          in its columns, at each size and by each language file (one further file at least): readers
+#                          that agree have read the page. A hymn's own syllables are in no list ('ke' of the names of
+#                          the notes, the syllables of a hymn in another language than the list's, the first piece of
+#                          a word whose letters were misread). Such a word speaks for no reading, since every reading
+#                          holds it: how well a reading fits, whether it is whole and whether it is a row at all is
+#                          asked without the word, and the reading that is kept has it. 1: only in the readings of
+#                          the first file, whose limit SURE is; 2: in those of the further files too, so that a
+#                          reading of a further file is set beside a standing one that has the word as well.
+#                          (On all scan pages 11 syllables gained and none lost in the full reading, 12 by the
+#                          replay and 7 there by the first file alone; the fresh set does not change.) None: off
 SOLID = (0.3, 0.9, 0.5)  # a word of two letters or more is no word where this share of the columns of its box is ink from
 #                          over the row to under it (a column: this share of it; over and under: this many heights
 #                          of the row): the black edge of a scan, a punch hole, a bar line that crosses the row. A
@@ -406,11 +417,12 @@ def _at_stops(piece: str) -> list[str]:
 
 
 def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None,
-               high: float | None = None, carried: str = '') -> list[dict]:
+               high: float | None = None, carried: str = '', short=None) -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows), 'sure'} each. A hyphen
     stands alone between two syllables, or inside a word that the reader took for one; the line after a held
     syllable is no letter, and a dash after a comma or a full stop is such a line too. `carried`: the letters of the
-    word that the row before leaves open (see DIGIT_LIST)."""
+    word that the row before leaves open (see DIGIT_LIST). `short(text, left, right)`: whether every reading of the
+    row holds this short word (see SURE_ALIKE)."""
     found: list[dict] = []
     for number, (text, left, right, sure) in enumerate(words):
         text = text.replace('|', '').strip(LINES)
@@ -452,10 +464,15 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
                 found[-1]['join'] = True
             continue
         letters = sum(sign.isalpha() for sign in text)
-        if letters == 0 or (sure < SURE[0] and letters < 3 and not (
-                SURE[1] and known and ''.join(sign for sign in text.lower() if sign.isalpha()) in known)
-                and not (SURE_JOIN and known and _in_word(found, words, number, text, known))):
+        if letters == 0:
             continue
+        spared = False
+        if sure < SURE[0] and letters < 3 and not (
+                SURE[1] and known and ''.join(sign for sign in text.lower() if sign.isalpha()) in known) \
+                and not (SURE_JOIN and known and _in_word(found, words, number, text, known)):
+            spared = short is not None and short(text, left, right)
+            if not spared:
+                continue
         # The pieces between hyphens, each with its share of the word's width.
         wide = (right - left) / max(1, len(text))
         at = 0
@@ -468,6 +485,8 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
                 for part in _at_stops(piece) if STOP_INSIDE else [piece]:
                     found.append({'text': part, 'x0': left + wide * start, 'x1': left + wide * (start + len(part)),
                                   'join': False, 'sure': sure})
+                    if spared:
+                        found[-1]['spared'] = True
                     start += len(part)
             at += len(piece)
     return found
@@ -1412,7 +1431,7 @@ def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
 
 def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
               known: dict[str, int], mend: bool = True, alone: bool = False, mending: bool = True,
-              agreed: frozenset[str] | set[str] = frozenset(), alike=None) -> tuple[list[dict], float, bool]:
+              agreed: frozenset[str] | set[str] = frozenset(), alike=None, short=None) -> tuple[list[dict], float, bool]:
     """What one reading of a row gives: its syllables, how well the reading fits, and whether the list of words
     holds each of its words. The fit is the number of letters in words that the list holds, and among readings
     that are level there, or with no list, how sure Tesseract is of the letters. `alone`: the reading is a second
@@ -1442,31 +1461,43 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
         words = _no_bow(words, grey, band, known)
     if CUT:
         words = _cut_wide(words, grey, band, bool(known) and mend)
-    row = _syllables(words, known, band['bottom'] - band['top'], band.get('carried', '') if MEND_BEFORE else '')
-    for syllable in row:
-        syllable['read'] = syllable['text']         # the piece as it was read (see 'cut' in _parted)
-    if not known:
-        return row, sure, False
-    if ENDS:
-        row = _ends(row, known, mend, band.get('carried', '') if MEND_BEFORE else '')
-    if MEND_REST_STRAY and MEND_BEFORE and mend and band.get('carried'):
-        row = _stray_before(row, known, band['carried'])
-    mended: list[str] = []
-    if MEND and mend and mending:
-        if MEND_TWIN:
-            row = _mend_twin(row, known, mended)
-        if MEND_PAIR:
-            row = _mend_pair(row, known, mended, band.get('carried', '') if MEND_BEFORE else '')
-        row = _mend(row, known, mended, agreed, alike, band.get('carried', ''))
-    held, total = _held(row, known)
-    if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
-        return [], -1.0, False
-    lettered = [text for (text, _, _, _), (number, _) in zip(words, letters) if number]
-    if band.get('few') and (mended or not 0 < total == held or (len(lettered) == 1 and lettered[0].endswith(':'))):
-        return [], -1.0, False        # a row of few words (words.SPARSE): only words of the list, and no label
-        #                               (one word with a colon: 'Refrain:', 'Women:')
-    going = _carried_on(row, known, band.get('carried', ''))
-    return row, held + going + total * sure / 5000.0, 0 < total == held and not (mended and MEND_WHOLE) and not stray
+    def reading(short) -> tuple[list[dict], float, bool, bool]:
+        row = _syllables(words, known, band['bottom'] - band['top'], band.get('carried', '') if MEND_BEFORE else '', short)
+        spared = any(syllable.get('spared') for syllable in row)
+        for syllable in row:
+            syllable['read'] = syllable['text']         # the piece as it was read (see 'cut' in _parted)
+        if not known:
+            return row, sure, False, spared
+        if ENDS:
+            row = _ends(row, known, mend, band.get('carried', '') if MEND_BEFORE else '')
+        if MEND_REST_STRAY and MEND_BEFORE and mend and band.get('carried'):
+            row = _stray_before(row, known, band['carried'])
+        mended: list[str] = []
+        if MEND and mend and mending:
+            if MEND_TWIN:
+                row = _mend_twin(row, known, mended)
+            if MEND_PAIR:
+                row = _mend_pair(row, known, mended, band.get('carried', '') if MEND_BEFORE else '')
+            row = _mend(row, known, mended, agreed, alike, band.get('carried', ''))
+        held, total = _held(row, known)
+        if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
+            return [], -1.0, False, spared
+        lettered = [text for (text, _, _, _), (number, _) in zip(words, letters) if number]
+        if band.get('few') and (mended or not 0 < total == held or (len(lettered) == 1 and lettered[0].endswith(':'))):
+            return [], -1.0, False, spared        # a row of few words (words.SPARSE): only words of the list, and no
+            #                                       label (one word with a colon: 'Refrain:', 'Women:')
+        going = _carried_on(row, known, band.get('carried', ''))
+        return row, held + going + total * sure / 5000.0, \
+            0 < total == held and not (mended and MEND_WHOLE) and not stray, spared
+
+    row, fit, whole, spared = reading(short)
+    if spared:
+        # A short word that stays because every reading of the row holds it (SURE_ALIKE) speaks for no reading: how
+        # well this reading fits, whether it is whole and whether it is a row at all is asked without that word.
+        plain, fit, whole, _ = reading(None)
+        if not plain or not row:
+            row = plain
+    return row, fit, whole
 
 
 def _sure(words: list[tuple[str, float, float, float]]) -> float:
@@ -1656,12 +1687,23 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
                  for word in _read_words(_syllables(bare(read(size)), known, band['bottom'] - band['top']))} for size in sizes)))
         return same[0]
 
+    def short(text: str, left: float, right: float) -> bool:
+        # A short word that every reading of the row holds with the same letters in its columns (see SURE_ALIKE).
+        sizes = (HIGH,) + tuple(AGAIN or ()) + tuple(size for size in more if size > 0)
+        if not (SECOND and any(size >= SECOND for size in sizes)):
+            return False
+        letters = ''.join(sign for sign in text.lower() if sign.isalpha())
+        return all(any(''.join(sign for sign in other.lower() if sign.isalpha()) == letters
+                       and min(right, last) - max(left, first) > 0.5 * min(right - left, last - first)
+                       for other, first, last, _ in read(size)) for size in sizes)
+
     for size in (HIGH,) + tuple(AGAIN or ()) + tuple(more):
         again = size < 0 or bool(SECOND and size >= SECOND)      # a second look: another picture or another file
         second = again and size > 0
         row, fit, whole = _text_row(read(size), grey, band, known, mend, again and (best is None or best[1] < 0),
                                     mending=bool(SECOND_MEND) or not second, agreed=firsts if second else frozenset(),
-                                    alike=alike if MEND_ALIKE and known else None)
+                                    alike=alike if MEND_ALIKE and known else None,
+                                    short=short if SURE_ALIKE and known and (SURE_ALIKE > 1 or not second) else None)
         lacking = _lacking(row, known)
         if not again:
             firsts |= lacking
