@@ -282,6 +282,61 @@ def scan_lines(grey: np.ndarray, ink: np.ndarray, places: list[dict]) -> np.ndar
     return out
 
 
+CLIP = (0.12, 0.7, 2, 1.0, 4.0, 0.45, 1.0, 0.6, 0.6, 8.0, 3.5, 0.15)   # the wire of a paperclip lies on the page as a band
+#   of grey where the print is black: 2 px inside the ink its grey stands between the first and the second number of
+#   the way from the page's ink to its paper (the third number: how far inside). A piece of such grey of the fourth
+#   number of staff spaces squared or more, the fifth number of staff spaces long or more, is a wire where the ink at
+#   it that is not black is a band of one width that turns back: between the sixth and the seventh number of staff
+#   spaces thick, whole in the ninth share when it is opened with a disc of the eighth number of that thickness, the
+#   tenth number of staff spaces long or more (its ink by its thickness), and the eleventh number of thicknesses or
+#   more across its narrow side (the two arms of a clip; the shadow at a page's edge and a pale staff line are
+#   straight). Its rim is as black as the print: the mask is the piece grown by the last number of staff spaces.
+#   The mask tells a later step what the wire closes (symbols.CLIP_CELL). The wire stays in
+#   the ink: taken out, the pieces of the print that it cut stood free (a sharp of a key signature under a clip was
+#   read as two notes). (A census of every scan page of LitChoir: 151 thick grey pieces on 40 pages; 7 wires on 7
+#   pages pass, each looked at; a slur of a pale print is 0.31 staff spaces thick, the rings of a binder are whole in
+#   0.44, four more clips are too dark, too pale or two wires side by side and stay. The fresh set holds no such
+#   grey.) None: off
+
+
+def clips(grey: np.ndarray, ink: np.ndarray, space: float) -> np.ndarray:
+    """A mask of the wires of paperclips (CLIP)."""
+    out = np.zeros_like(ink)
+    if not CLIP or not ink.any():
+        return out
+    low, high, inside, least, side, slim, fat, brush, even, length, bend, rim = CLIP
+    dark = float(np.percentile(grey[ink > 0][::7], 25))
+    paper = float(np.median(grey[::9, ::9]))
+    level = (grey.astype(np.float32) - dark) / max(1.0, paper - dark)
+    seed = (cv2.erode(ink, np.ones((2 * inside + 1, 2 * inside + 1), np.uint8)) > 0) & (level >= low) & (level <= high)
+    seed = cv2.morphologyEx(seed.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(seed, connectivity=8)
+    reach = inside + 2
+    wider = reach + int(round(rim * space))
+    for index in range(1, count):
+        x, y, wide, tall, area = (int(value) for value in stats[index])
+        if area < least * space * space or max(wide, tall) < side * space:
+            continue
+        x0, y0 = max(0, x - wider), max(0, y - wider)
+        x1, y1 = min(ink.shape[1], x + wide + wider), min(ink.shape[0], y + tall + wider)
+        piece = (labels[y0:y1, x0:x1] == index).astype(np.uint8)
+        # The wire: the ink at the piece that is not as black as the print.
+        wire = cv2.dilate(piece, np.ones((2 * reach + 1, 2 * reach + 1), np.uint8)) & ink[y0:y1, x0:x1] \
+            & (level[y0:y1, x0:x1] >= low).astype(np.uint8)
+        padded = np.pad(wire, 1)
+        thick = 2 * float(cv2.distanceTransform(padded, cv2.DIST_L2, 5).max())
+        if not slim * space <= thick <= fat * space or float(wire.sum()) / thick < length * space:
+            continue
+        disc = int(max(3, round(brush * thick))) | 1
+        opened = cv2.morphologyEx(padded, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (disc, disc)))
+        (_, _), across, _ = cv2.minAreaRect(np.column_stack(np.nonzero(wire)[::-1]).astype(np.float32))
+        if float(opened.sum()) < even * float(wire.sum()) or min(across) < bend * thick:
+            continue
+        whole = cv2.dilate(piece, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * wider + 1, 2 * wider + 1)))
+        out[y0:y1, x0:x1] |= whole & ink[y0:y1, x0:x1]
+    return out
+
+
 def blots(ink: np.ndarray, space: float) -> np.ndarray:
     """1 on the blots of the page: solid ink that a disc of BLOT staff spaces fits in, with the ink at its rim. A
     punch hole, the shadow of a binding or a torn corner is a blot; no mark of music is that solid."""
@@ -570,6 +625,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     ink = ink & (1 - blots(ink, space))
     ink = ink & (1 - stray_lines(ink, places))
     ink = ink & (1 - scan_lines(grey, ink, places))
+    clip = clips(grey, ink, space)
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
              for staff in staves] if HOLE_SIDE else None
     ledgers = [staff['rows'][end] + side * step * staff['space'] for staff in staves for end, side in ((0, -1), (4, 1))
@@ -648,7 +704,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     return {'grey': grey, 'ink': ink, 'holes': holes, 'open_holes': open_holes, 'ragged': ragged, 'solid': solid,
             'lines': lines, 'free': free, 'joined': joined, 'up': up,
             'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
-            'bare': bare, 'weak': weak, 'bridge': bridge}
+            'bare': bare, 'weak': weak, 'bridge': bridge, 'clip': clip}
 
 
 def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float) -> tuple[list[dict], np.ndarray]:

@@ -25,12 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,088 of 22,649, counted by the page;
-21,956 of 22,605 as typed; 40 of the 78 counted scores at 99 %; 37 scores read every printed note, 43 every
-syllable, 31 both, 39 have no note that is not there, 31 are whole in all three; 556 printed notes and 174 syllables
-are lacking and 217 notes are read that are not there, each printed head counted once since round 78: 409 by the
-count before), and of their syllables 49.9 % with the own letter reader and 97.2 % with Tesseract, its larger
-files and a list of words (6,080 of 6,254, counted by the page; 6,016 of 6,259 as typed; 95.2 % of the whole words; 44 scores at 99 % of the syllables);
+scans; 95 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,090 of 22,649, counted by the page;
+21,958 of 22,605 as typed; 41 of the 78 counted scores at 99 %; 38 scores read every printed note, 44 every
+syllable, 33 both, 40 have no note that is not there, 33 are whole in all three; 554 printed notes and 171 syllables
+are lacking and 216 notes are read that are not there, each printed head counted once since round 78: 407 by the
+count before), and of their syllables 49.9 % with the own letter reader and 97.3 % with Tesseract, its larger
+files and a list of words (6,084 of 6,255, counted by the page; 6,020 of 6,260 as typed; 95.3 % of the whole words; 45 scores at 99 % of the syllables);
 89.2 % of all syllables with Tesseract (88.3 % on scans), and 90.3 % on the kit (6232 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
@@ -1253,6 +1253,39 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   a hyphen stood for the true hyphens beside it, which Tesseract read with a stray sign ("=———=—+"), and an
   "Al-le-lu-ia" over the end of a system was no whole word any more. The rule that took the piece stays, the
   worklog says so, and the step that loses the true hyphen is on the list of what is left.
+- A piece of ink that is higher than a head is cut at the valley of its rows, and a thick ledger dash is the
+  heaviest row of its piece: a half note on such a dash, glued to a half note on the first line of the staff, was
+  cut through the inside of the lower head, and neither note was read. Never cutting through closed paper is no
+  rule: 909 cuts of the scan pages run through closed paper, and for most pieces it is the only cut. The rule asks
+  for the whole shape of the one thing (`symbols.DASH_HOLLOW`: one thick level bar beside the staff, a head's height
+  to each side of the middle between the dash and the staff's line, closed paper in both halves, and a cut of today
+  through that paper). A census whose bar was 1.6 heads wide missed the piece that it was made for: a row with the
+  stem in it is 1.71 heads wide. Try a census on its own case first. A rule for one case: say so.
+- The wire of a paperclip is grey where the print is black, and it lies on the print: nothing shows under it. A
+  census of every thick grey piece of the scan pages (2 px inside the ink, between the page's ink and its paper)
+  named the clips, the rings of a binder, the shadows at a page's edge, pale staff lines and a slur of a pale
+  print. The slur is a long band of one width that bends, as a wire is: the wire is thicker (`layers.CLIP`).
+- Ink that is foreign to the page is not simply taken out of the picture. With the wire of a clip taken out, the
+  false note that it had made was gone, the count showed no note gained and none lost, and on another page a sharp
+  of the key signature, which the wire had cut from its neighbour, stood free and was read as two notes: the staff's
+  key signature is not found under a clip, and the count lined the two up with notes that the clip hides. The
+  pages were set beside each other note by note, not only score by score. The wire stays in the ink, its mask is a
+  layer, and a later step asks it one thing (`symbols.CLIP_CELL`: a cell whose rim is mostly wire is no head).
+- A reading of a row that holds only words of the list ends the row, and the other sizes are not read. A lone
+  capital O between two words stood in no word of such a reading, and the syllable was lost. The ink tells: a
+  piece between two words that is as wide and as high as a letter, apart from both, with the row's strokes
+  (`ocr.UNREAD`); the reading is then not whole. Reading every size although one is whole gained 22 syllables and
+  lost 8 on all scan pages and brought about 45 stray words of one or two letters: no rule. A bar line that was
+  read as a stroke has a box that begins in the letter beside it: such a token covers no letter.
+- A digit behind the letters of a word is a stroke beside the word on a print (a bar line through the last
+  letter, a full stop, the end of a slur: a 4 or a 7) and a letter on a copy by hand (a 5 is an s, a 2 an a or
+  an e). Taking every digit off turned "a5" into "a" in four rows of copies by hand: level in the count, and
+  wrong on the page. The census by the digit, with a tile of each kind, gave the two halves (`ocr.DIGIT_END`).
+- A hyphen that Tesseract reads with a stray sign beside it is a true hyphen at 34 of 390 such places and wrong at
+  26; the others change nothing. The token alone does not tell: no rule.
+- The stored measure of how pale the core of a head is (`mark.core.pale`) counts the paper in the box of a note
+  with a flag: of the clean notes from 0.2 on, 129 are right and 6 are not there. It is no measure of grey ink; a
+  rule for a grey streak across a staff needs the grey of the mark's own ink, measured at the reader's step.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
