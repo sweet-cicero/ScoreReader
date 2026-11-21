@@ -31,6 +31,14 @@ AGAIN = (32, 50)         # a second look: the row is read again at these sizes, 
 ROOM = (0.6, 2.0)        # the room kept over and under the band, and at its sides, in staff spaces
 DIGITS = True            # a 0 or a 1 that Tesseract read in the place of a letter is read as that letter (O, I, l)
 DIGIT_JOIN = True        # a 0 with a hyphen beside it is the syllable o too ('The-0-to-kos')
+DIGIT_LIST = True        # with a list of words, a 1 among small letters is an i where the list holds the word with an i
+#                          and not with an l ('1s' is 'is'): the word is the piece with the pieces that its hyphens
+#                          join it to, with the word that the row before leaves open where the piece stands in the first
+#                          word of its row ('Al-le-' and then 'lu-1a' is 'alleluia', see MEND_BEFORE), or the piece alone
+#                          where no hyphen stands beside it. False: an l. (The piece stays as sure as Tesseract was of
+#                          the digit: counted as a piece that it is not sure of, so that the mending may choose the
+#                          letter, short pieces went that had been read right, 2 syllables gained and 4 lost on all
+#                          scan pages.)
 ROUND = (('Q', 'QO', 'OQ', 'Qo', 'Oo'), '©', 0.7)   # with a list of words that holds the word O: a word that is read
 #                          as one of these and stands alone is the word O. And the sign after them is, where it is this
 #                          share of the row's height wide or more (a narrow one is a dot or a piece of a note) and no
@@ -114,6 +122,9 @@ MEND_BEFORE = 2          # the first word of a row is the rest of the word that 
 #                          its place ('Moth-' and 'were', another reading begins 'er'). A piece of one letter is a
 #                          stray stroke as often as a letter: 'has-' and 'v' is no 'hast'. The row before is the
 #                          first row under the staff of the same part in the system before. 0: off
+MEND_PAGE = True         # the row before the first row of a page is the last row of the page before it in the hymn:
+#                          a word that the end of a page leaves open goes on over the page ('Al-le-', and the next page
+#                          begins 'lu-ia'), as it does from system to system (MEND_BEFORE). False: a page begins anew
 MEND_REST = True         # the first word of a row goes on from the word that the row before leaves open also
 #                          where its first syllables make a word of the list with the open piece ('car-', and the
 #                          next row begins 'ry-ing': 'carry'): it is not mended alone ('crying'). The open piece
@@ -285,13 +296,16 @@ def _no_digits(text: str, first: bool = False) -> str:
     return text.replace('0', 'O' if capitals else 'o').replace('1', 'I' if capitals else 'l')
 
 
-def _in_word(found: list[dict], words: list[tuple[str, float, float, float]], number: int, text: str,
-             known: dict[str, int]) -> bool:
-    """Whether a piece of a line stands in a word of the list with the pieces that hyphens join it to (see
-    SURE_JOIN): the syllables found so far, and the words of the line after the piece."""
+def _joined(found: list[dict], words: list[tuple[str, float, float, float]], number: int, text: str,
+            carried: str = '') -> str:
+    """The letters of a piece of a line with the pieces that hyphens join it to: the syllables found so far, and the
+    words of the line after the piece. '' where no hyphen joins it to another piece. `carried`: the letters of the
+    word that the row before leaves open; they stand before the first word of the line."""
     before, at = '', len(found) - 1
     while at >= 0 and found[at]['join']:
         before, at = found[at]['text'] + before, at - 1
+    if at < 0:
+        before = carried + before
     after, goes = '', text[-1] in JOINS
     for other, _, _, _ in words[number + 1:]:
         other = other.replace('|', '').strip(LINES)
@@ -305,21 +319,40 @@ def _in_word(found: list[dict], words: list[tuple[str, float, float, float]], nu
         after, goes = after + other, other[-1] in JOINS
         if not goes:
             break
-    return bool(before or after) and ''.join(sign for sign in (before + text + after).lower() if sign.isalpha()) in known
+    return ''.join(sign for sign in (before + text + after).lower() if sign.isalpha()) if before or after else ''
+
+
+def _in_word(found: list[dict], words: list[tuple[str, float, float, float]], number: int, text: str,
+             known: dict[str, int]) -> bool:
+    """Whether a piece of a line stands in a word of the list with the pieces that hyphens join it to (see
+    SURE_JOIN)."""
+    word = _joined(found, words, number, text)
+    return bool(word) and word in known
 
 
 def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None,
-               high: float | None = None) -> list[dict]:
+               high: float | None = None, carried: str = '') -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows), 'sure'} each. A hyphen
     stands alone between two syllables, or inside a word that the reader took for one; the line after a held
-    syllable is no letter, and a dash after a comma or a full stop is such a line too."""
+    syllable is no letter, and a dash after a comma or a full stop is such a line too. `carried`: the letters of the
+    word that the row before leaves open (see DIGIT_LIST)."""
     found: list[dict] = []
     for number, (text, left, right, sure) in enumerate(words):
         text = text.replace('|', '').strip(LINES)
         if not text:
             continue
         if DIGITS:
-            text = _no_digits(text, first=number == 0)
+            digit, text = text, _no_digits(text, first=number == 0)
+            other = ''.join('i' if was == '1' and now == 'l' else now for was, now in zip(digit, text)) \
+                if len(digit) == len(text) else text
+            if DIGIT_LIST and known and other != text:
+                # A 1 that was read as an l can be an i: the list of words tells.
+                alone = tuple(''.join(sign for sign in word.lower() if sign.isalpha()) for word in (text, other))
+                ways = [tuple(_joined(found, words, number, word, lead) for word in (text, other)) for lead in (carried, '')]
+                for with_l, with_i in [way for way in ways if way[0]] + [alone]:
+                    if with_l in known or with_i in known:
+                        text = text if with_l in known else other
+                        break
         if ROUND and known and known.get('o', 0) >= 2:
             core = text.strip(STOPS + '\'"‘’“”')
             if core in ROUND[0] or (core == ROUND[1] and high and right - left >= ROUND[2] * high and not (
@@ -1094,7 +1127,7 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
         words = _lone_i(words, grey, band)
     if CUT:
         words = _cut_wide(words, grey, band)
-    row = _syllables(words, known, band['bottom'] - band['top'])
+    row = _syllables(words, known, band['bottom'] - band['top'], band.get('carried', '') if MEND_BEFORE else '')
     for syllable in row:
         syllable['read'] = syllable['text']         # the piece as it was read (see 'cut' in _parted)
     if not known:
@@ -1346,12 +1379,15 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     return _parted(row, ways) if ways else row
 
 
-def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
+def read_rows(layers: dict, page: int = 0, lex=None, before: dict | None = None) -> list[dict]:
     """The syllables of the rows of words of a page, read with Tesseract: {'band': (page, the number of the row),
     'text', 'x0', 'x1', 'join'} each, as scorereader.lyrics.read_words() gives them. With a list of words (`lex`:
     {word: how often}) the words that the list does not hold are mended with it, the list sets where a word ends,
     it chooses between the readings of a row at several sizes, and a list that shows how its words are parted
-    (`lex.parts`) parts the words into syllables where the scan shows no hyphen."""
+    (`lex.parts`) parts the words into syllables where the scan shows no hyphen.
+
+    `before` holds the words that the page before left open, for each part (MEND_PAGE): the caller hands the same
+    dict to each page of a hymn in turn, and the page leaves its own open words in it for the next one."""
     bands = layers.get('words') or []
     if not bands or not available():
         return []
@@ -1408,7 +1444,8 @@ def read_rows(layers: dict, page: int = 0, lex=None) -> list[dict]:
             bands = marked
         mend = bool(known) and _fits([(read(HIGH), band) for (read, _), band in zip(readers, bands)], grey, known)
         under: dict[int, list[tuple[list[dict], float]]] = {}
-        opened: dict = {}         # the first row under a staff of each part: the word that its last hyphen leaves open
+        # The first row under a staff of each part: the word that its last hyphen leaves open.
+        opened: dict = before if MEND_PAGE and before is not None else {}
         for number, ((read, more), band) in enumerate(zip(readers, bands)):
             # The rows under one staff, from the top (as scorereader.lyrics.set_under() gives a row to the staff over it).
             over = [index for index, staff in enumerate(layers.get('staves') or []) if staff['rows'][4] < band['top']]

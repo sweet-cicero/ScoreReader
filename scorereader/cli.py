@@ -141,8 +141,9 @@ def set_words(read: list[dict], lex, shapes: str | None = None, name: str = '', 
         # one it mends the words that the list does not hold.
         from .ocr import read_rows  # noqa: PLC0415
         count = 0
+        opened: dict = {}      # what a page leaves open at its end goes on in the first rows of the next page
         for number, result in images:
-            count += set_under(result, read_rows(result['layers'], number, lex), number)
+            count += set_under(result, read_rows(result['layers'], number, lex, opened), number)
             result['musicxml'] = musicxml(result['parts'], result.get('title', ''), result.get('names'))
         return count
     glyphs = [glyph for number, result in images for glyph in page_glyphs(result['layers'], number)]

@@ -25,14 +25,14 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,085 of 22,649, counted by the page;
-21,950 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 36 scores read every printed note, 38 every
-syllable, 28 both, 37 have no note that is not there, 28 are whole in all three; 559 printed notes and 187 syllables
-are lacking and 222 notes are read that are not there, each printed head counted once since round 78: 416 by the
+scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,088 of 22,649, counted by the page;
+21,956 of 22,605 as typed; 40 of the 78 counted scores at 99 %; 37 scores read every printed note, 39 every
+syllable, 29 both, 39 have no note that is not there, 29 are whole in all three; 556 printed notes and 185 syllables
+are lacking and 217 notes are read that are not there, each printed head counted once since round 78: 409 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
-files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
+files and a list of words (6,069 of 6,254, counted by the page; 6,005 of 6,259 as typed; 95.0 % of the whole words; 40 scores at 99 % of the syllables);
 89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6232 of 6901).
-On the fresh test set, which no rule was set on: 95.6 % of the notes (39,939 of 41,761; 99 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
 73.2 % of the syllables and 88.7 % of the whole words.
 
 ## Direction
@@ -1179,6 +1179,38 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A note that is not there can stand unseen in the count, and a rule that changes its length shows it (a letter
   of a heading on the fresh set: 3 to 4 notes that are not there in its piece, and no note lost). Look at the
   note on the page before the rule is blamed: it was read before the round too.
+- A low cell of paper along a staff line is the half of an inside that the line cuts off a head, or a wedge between
+  the line, an upright stroke and a slanted one (a beam, a slur, a pencil ring at a stem or a bar line). What lies
+  across the line tells: the other half of the head, ink or closed paper, or open paper (`symbols.FLAT_WEDGE`; a
+  census at the reader's own step parted the true heads at 0.47 from the others at 0.54, and the rule takes from 0.7
+  on). LitChoir's pages showed 17 such notes that are not there; on the fresh set the same wedge lies under the flag
+  of every note with its stem down, and 138 went.
+- A mark that is no note can make a true note right: an eighth note whose flag is not read was made short by the sum
+  of a bar with half notes that are not there, and is a quarter note where they go (the fresh set, 1 note lost by 138
+  marks that are no notes). And on a copy by hand a mark that goes moved the voice of the note beside it, and the
+  count's split of the staff into melody and ison with it (4 notes lost). Look at every mark that the rule took; where
+  each is no note the rule stays, and the worklog names the note.
+- Ink that is no part of the music can cost a note that is lacking: the faint line that a scanner drew down a page ran
+  along a half note as a second stem, and a mark with a stem at each side is a piece of a beam for the reader. Such a
+  line is told by the system (it passes two staves or more at both ends, leaning, in the grey picture:
+  `layers.SCAN_LINE`), and what stands on it stays: a true stem stood exactly on the line and went with it in the
+  first form. A row's piece goes only where it is no heavier than the line. The census of every such stroke named what
+  else passes a system at both ends: the stroke of a clef on a system of one staff, the line that opens a system, the
+  shadow of a page's edge.
+- A limit that is set between two cases of LitChoir is the wrong measure. The stroke of an engraved flag, kept to two
+  staff spaces or more between LitChoir's 3.1 and 1.1, no longer acted at any place of the fresh set where its first
+  form had acted rightly. The fresh set shows that such a limit is wrong and gives no measure; the page of LitChoir
+  that the first form read wrongly gave the shape (the flag hangs on the stem of a head that is a head by its own ink:
+  `symbols.FLAG_STROKE`).
+- The row before the first row of a page is the last row of the page before it: what the reader carries from system to
+  system (the key, a tie, a word that a hyphen leaves open) the hymn carries over the page (`ocr.MEND_PAGE`). A pass
+  of the words on the pages that a round changed hands the words step only those pages, so a rule that carries
+  something from page to page is counted by the replay and by a full pass of every page.
+- A rule that calls a piece unsure, so that a later step may mend it, changes every step that asks how sure a piece
+  is: a 1 that was read for a letter, counted as unsure, took short pieces that had been read right and the reading of
+  their row with them (2 syllables gained and 4 lost). The rule decides by the list itself, and the piece stays as
+  sure as Tesseract was (`ocr.DIGIT_LIST`: a 1 among small letters is an i where the list holds the word with an i and
+  not with an l).
 - `experiments/` holds the record of the first tests.
 
 ## Rules

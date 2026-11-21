@@ -5604,10 +5604,56 @@ FLAT_CELL = (0.6, 0.95, 2.0, 0.85)   # a hollow mark is no head where its closed
 #   stroke that a hand draws for a head; that mark stays as it was read. (None: off)
 
 
+FLAT_WEDGE = (0.85, 0.35, 0.1, 0.7)   # a lower cell along a staff line (under FLAT_CELL's height, level at the line as
+#   there) is no inside of a head either where it is a wedge: as high as it gets at one end (the mean of the first or
+#   last eighth of its columns, the first number times its highest column or more), a point at the other end (the
+#   second number at most), its highest column within the third number of its width of an end, and the paper that
+#   mirrors it across the line open in the last share or more. Such a cell lies between the line, an upright stroke
+#   and a slanted one: a beam or a slur at a stem or a bar line, the loop of a flag, a pencil ring at a stem. The half
+#   of an inside that a staff line cuts off a head on the line has the other half of the head across the line, ink or
+#   closed paper. (A census at this step on every scan page of LitChoir: of 3,250 low cells that are level at a line,
+#   93 are such wedges in a mark that is no fatter than FLAT_CELL allows; the paper across the line is open in 0.47
+#   at most at the 58 true heads among them, which a hand drew as a loop from the stem on a line, and in 0.54 or more
+#   at the others. The 24 from 0.7 on were each looked at: cells at beams, slurs, flags, a pencil ring, a sharp and
+#   strokes by hand, no head.) None: off
+
+
+def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, height: int, line: float, space: float) -> bool:
+    """Whether the closed paper of a hollow mark that lies in this box, level at the staff line in this row, is a wedge
+    with open paper across the line (FLAT_WEDGE)."""
+    reach = int(round(1.2 * space))
+    y0, x0 = max(0, int(head['y0']) - reach), max(0, int(head['x0']) - reach)
+    window = (slice(y0, int(head['y1']) + reach + 1), slice(x0, int(head['x1']) + reach + 1))
+    holes = layers['holes'][window] > 0
+    _, labels = cv2.connectedComponents(holes.astype(np.uint8), connectivity=4)
+    inside = labels[top - y0:top - y0 + height, left - x0:left - x0 + width]
+    found = [int(number) for number in np.unique(inside) if number]
+    if not found:
+        return False
+    part = labels == max(found, key=lambda number: int((inside == number).sum()))
+    ys, xs = np.nonzero(part)
+    high = part[ys.min():ys.max() + 1, xs.min():xs.max() + 1].sum(axis=0).astype(float)
+    ends = max(1, int(round(0.12 * len(high))))
+    first, last = float(high[:ends].mean()) / high.max(), float(high[-ends:].mean()) / high.max()
+    most = float(np.argmax(high)) / max(1, len(high) - 1)
+    if not (max(first, last) >= FLAT_WEDGE[0] and min(first, last) <= FLAT_WEDGE[1]
+            and (most <= FLAT_WEDGE[2] or most >= 1 - FLAT_WEDGE[2])):
+        return False
+    across = np.zeros(part.shape, bool)
+    for y, x in zip(ys, xs):
+        row = int(round(2 * (line - y0) - y))
+        if 0 <= row < part.shape[0]:
+            across[row, x] = True
+    if not across.any():
+        return False
+    paper = across & ~(layers['ink'][window] > 0) & ~(layers['lines'][window] > 0) & ~holes
+    return float(paper.sum()) / float(across.sum()) >= FLAT_WEDGE[3]
+
+
 def without_flat_cells(layers: dict, heads: list[dict]) -> list[dict]:
-    """The heads without the hollow marks whose inside is a cell along a staff line (FLAT_CELL). It runs after the
-    flags are counted: the loop of a flag is such a cell, and older rules read the flag from it. The layer of the
-    insides stays as it is for the same reason."""
+    """The heads without the hollow marks whose inside is a cell along a staff line (FLAT_CELL, FLAT_WEDGE). It runs
+    after the flags are counted: the loop of a flag is such a cell, and older rules read the flag from it. The layer
+    of the insides stays as it is for the same reason."""
     if not FLAT_CELL:
         return heads
     space = layers['space']
@@ -5625,13 +5671,20 @@ def without_flat_cells(layers: dict, heads: list[dict]) -> list[dict]:
             if count >= 2:
                 index = 1 + int(np.argmax(stats[1:, 4]))
                 x, y, width, height, _ = stats[index]
-                if height >= FLAT_CELL[0] * space:
+                if height >= FLAT_CELL[0] * space or FLAT_WEDGE:
                     part = labels[y:y + height, x:x + width] == index
                     first, last = part.argmax(axis=0), height - 1 - part[::-1].argmax(axis=0)
                     top, bottom = y0 + y, y0 + y + height
-                    if ((first <= 1).mean() >= FLAT_CELL[1] and np.abs(rows - (top - 0.5 - half)).min() <= slack) \
-                            or ((last >= height - 2).mean() >= FLAT_CELL[1]
-                                and np.abs(rows - (bottom - 0.5 + half)).min() <= slack):
+                    above = float((first <= 1).mean()) if np.abs(rows - (top - 0.5 - half)).min() <= slack else 0.0
+                    below = float((last >= height - 2).mean()) if np.abs(rows - (bottom - 0.5 + half)).min() <= slack else 0.0
+                    if max(above, below) >= FLAT_CELL[1]:
+                        if height < FLAT_CELL[0] * space:
+                            # A low cell: only a wedge with open paper across its line (FLAT_WEDGE).
+                            edge = top - 0.5 - half if above >= FLAT_CELL[1] and above >= below else bottom - 0.5 + half
+                            line = float(rows[np.abs(rows - edge).argmin()])
+                            if not _flat_wedge(layers, head, x0 + x, top, width, height, line, space):
+                                out.append(head)
+                                continue
                         own = np.ascontiguousarray(layers['ink'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2])
                         fat = 2 * cv2.distanceTransform(np.pad(own.astype(np.uint8), 1), cv2.DIST_L2, 3).max()
                         if fat < FLAT_CELL[3] * usual:
@@ -5781,6 +5834,44 @@ def without_flag_curls(heads: list[dict], space: float) -> list[dict]:
                     if not mark.get('beam') and abs(head['cy'] - mark['row']) <= FLAG_CURL[1] * space \
                             and (0 <= apart <= FLAG_CURL[2] * space if mark['right'] else -FLAG_CURL[2] * space <= apart <= 0):
                         gone.add(id(head))
+    return [head for head in heads if id(head) not in gone]
+
+
+FLAG_STROKE = (0.5, 0.5)   # one engraving draws the flag of a stem that goes down as a wedge at the stem with a thin stroke
+#   that comes back up to the head, and the stroke was read as a stem with the wedge as its head. A head that was read
+#   from its stem (thin_heads) is that flag where the stem ends in the box of another head that is a head by its own ink
+#   (not one read from a stem), that head's own stem comes the other way and goes on past the mark by the second number
+#   of staff spaces or more, the mark stands between the two strokes, and a flag was counted at that stem on its side,
+#   at most the first number of staff spaces from the mark's row. (From the stored notes of LitChoir's scan pages: of 31
+#   heads read from a stem beside a flagged stem, 11 have their own stem end at the other head; the true notes among
+#   them stand at the end of the other stem, where the rule does not look. Two heads of one scan of one clean score
+#   pass. The first form also took a scribble by hand, two heads read from stems that end in each other: the flag
+#   hangs on the stem of a true head. A rule for one print of LitChoir; the engravings of the fresh set draw their
+#   flags so too.) None: off
+
+
+def without_flag_strokes(heads: list[dict], space: float) -> list[dict]:
+    """The heads without the strokes of flags that come back to their head (see FLAG_STROKE). Runs after count_tails(),
+    which marks the flags of a stem."""
+    if not FLAG_STROKE:
+        return heads
+    gone = set()
+    for head in heads:
+        if not head.get('thin') or len(head['stems']) != 1:
+            continue
+        own = head['stems'][0]
+        for other in heads:
+            if other is head or other['staff'] != head['staff'] or other.get('thin') \
+                    or not (other['x0'] - 2 <= own['x'] <= other['x1'] + 2 and other['y0'] - 3 <= own['end'] <= other['y1'] + 3):
+                continue
+            for stem in other['stems']:
+                past = stem['end'] - head['cy'] if stem['direction'] == 'down' else head['cy'] - stem['end']
+                if stem['direction'] == own['direction'] or past < FLAG_STROKE[1] * space \
+                        or not (min(stem['x'], own['x']) - 2 <= head['cx'] <= max(stem['x'], own['x']) + 2):
+                    continue
+                if any(not mark.get('beam') and bool(mark['right']) == (own['x'] > stem['x'])
+                       and abs(head['cy'] - mark['row']) <= FLAG_STROKE[0] * space for mark in stem.get('marks') or ()):
+                    gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
 
 
