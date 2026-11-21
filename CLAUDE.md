@@ -26,14 +26,14 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
 scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,088 of 22,649, counted by the page;
-21,956 of 22,605 as typed; 40 of the 78 counted scores at 99 %; 37 scores read every printed note, 39 every
-syllable, 29 both, 39 have no note that is not there, 29 are whole in all three; 556 printed notes and 185 syllables
+21,956 of 22,605 as typed; 40 of the 78 counted scores at 99 %; 37 scores read every printed note, 43 every
+syllable, 31 both, 39 have no note that is not there, 31 are whole in all three; 556 printed notes and 174 syllables
 are lacking and 217 notes are read that are not there, each printed head counted once since round 78: 409 by the
-count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
-files and a list of words (6,069 of 6,254, counted by the page; 6,005 of 6,259 as typed; 95.0 % of the whole words; 40 scores at 99 % of the syllables);
-89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6232 of 6901).
+count before), and of their syllables 49.9 % with the own letter reader and 97.2 % with Tesseract, its larger
+files and a list of words (6,080 of 6,254, counted by the page; 6,016 of 6,259 as typed; 95.2 % of the whole words; 44 scores at 99 % of the syllables);
+89.2 % of all syllables with Tesseract (88.3 % on scans), and 90.3 % on the kit (6232 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
-73.2 % of the syllables and 88.7 % of the whole words.
+73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
 
@@ -1211,6 +1211,48 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   their row with them (2 syllables gained and 4 lost). The rule decides by the list itself, and the piece stays as
   sure as Tesseract was (`ocr.DIGIT_LIST`: a 1 among small letters is an i where the list holds the word with an i and
   not with an l).
+- A test for a piece of a word with no vowel judges the letters of the plain alphabet only, on a page whose words fit
+  the list. A letter with a sign of its own and a letter of another alphabet are in no list of vowels: the first form
+  took every such piece for one with no vowel and lost 56 syllables and 90 whole words on the fresh set. And in
+  another language a consonant beside a hyphen is a word ("s-a", "n-am"): there the test says nothing.
+- A guard that sorts out the ways to part a word before the test for one way makes new cuts: of two ways one was left,
+  and a word that had stayed whole was parted ("in-tru"). The guard looks at the one way that was found and only
+  takes its cut away (`ocr.ENDS_VOWEL`).
+- The pieces of ink of a word are counted against the signs that Tesseract read, and stand a sign off where two letters
+  touch: a wide gap inside a word then cuts it a letter early ("An-g" and "els"). A piece with no vowel between the
+  cut and the next hyphen is no syllable, and the cut is not made (`ocr.CUT_VOWEL`).
+- A rule that takes letters off a word by the shape of the stroke behind it meets stray ink that was read as a short
+  word: the hook of a clef by hand, a hyphen over a slur, a slur alone, the tail of a letter by hand. The first form of
+  the rule for a slur that touches a word (`ocr.BOW`) trimmed 30 words on LitChoir's scan pages, 5 of them rightly,
+  and made words of one letter of the list out of the rest. Measured at each place, the ink before the stroke tells:
+  letters fill the rows of their row (0.84 or more of them against 0.61 at most), and as many stand there as were
+  read (within 0.15 of a letter against 0.49 or more). Say where a rule is a rule for one print: three of the five
+  words are one carol's.
+- What a rule takes out of a row is taken out for every test that sets the readings of the row beside each other. The
+  test for a word that every reading holds (`ocr.MEND_ALIKE`) saw the rows with the dash that a slur had been read as,
+  found "praisingthes" at every size, and the mending then left it.
+- Tesseract gives one box to a true hyphen and the piece of a slur that comes close to it. A dash is a piece of a bow
+  only where its box holds no other ink: of the 114 dashes that the first form dropped, 57 hold other ink, and 10 of
+  the 16 of those that were looked at hold a true hyphen. One of them had made a right word by chance ("shep-" at the
+  end of a row was mended to "she-", and without its hyphen it stayed "shep"): look at what a gain stands on, and mend
+  the step that lost the word (`ocr.MEND_HEAD`).
+- A word that a hyphen leaves open at the end of a row is the beginning of a word, and the list is asked how often it
+  parts a word after these letters, not whether it holds them as a word. Both the piece that was read and the word
+  that would take its place are asked the same: holding back every such piece lost "up-" (read "op-", which begins a
+  parted word 3 times, and "up-" 85 times). A credit for such a piece in the choice among the readings of a row gained
+  10 syllables and lost 7 on all scan pages: a border that moves, and it is not in the rule.
+- The stored rows of the replay are a census of the pages as they were built then. 39 scan pages of LitChoir were
+  built anew since, and their rows stand at other rows of the picture now: a rule of the replay that looks at the ink
+  looked at the music over the row there, and dropped a true hyphen. The replay leaves such a rule off on those pages
+  (a list with the wide test, outside git), and the full pass shows them. Compare the columns of each stored row with
+  the page before a rule that looks at the ink is counted by the replay.
+- The quick count of the words does not join a word over the end of a row, and it takes one row for each staff. A
+  hyphen at the end of a row that a rule takes, and a row that the count does not take, show only where the words
+  of the two full passes are set beside each other page by page (a script outside git, with the wide test). Read
+  that list for the clean copies before a round of words rules is closed: a piece of a slur that had been read as
+  a hyphen stood for the true hyphens beside it, which Tesseract read with a stray sign ("=———=—+"), and an
+  "Al-le-lu-ia" over the end of a system was no whole word any more. The rule that took the piece stays, the
+  worklog says so, and the step that loses the true hyphen is on the list of what is left.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

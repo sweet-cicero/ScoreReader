@@ -24,25 +24,25 @@ the page prints it (since 15 November 2026, see below; 129 notes so far, 93 of t
 
 The first milestone was 99 % on clean copies until 17 November 2026; since then it is clean copies that are read
 whole, every note and every syllable of each score, with no note that is not there (the owner: "the clean copies
-should be consistently perfect"). The copies by hand keep 99 %. After round 82, 37 of the 78 counted clean scores
-read every printed note, 39 every syllable, 29 every note and syllable, 39 have no note that is not there, and 29 are whole
-in all three (36, 38, 28, 37 and 28 after round 81; 34, 38, 27, 35 and 26 after round 80; 31, 38, 25, 35 and 24 after rounds 78 and 79). Since round 78 a printed head that the count had given to two parts counts once among the notes that
+should be consistently perfect"). The copies by hand keep 99 %. After round 83, 37 of the 78 counted clean scores
+read every printed note, 43 every syllable, 31 every note and syllable, 39 have no note that is not there, and 31 are whole
+in all three (37, 39, 29, 39 and 29 after round 82; 36, 38, 28, 37 and 28 after round 81; 34, 38, 27, 35 and 26 after round 80; 31, 38, 25, 35 and 24 after rounds 78 and 79). Since round 78 a printed head that the count had given to two parts counts once among the notes that
 are not there: by that count the reading of round 77 has 34 and 24, and by the count of its time 30 and 23
-(31, 38, 25, 30 and 23 after round 77; 30, 38, 24, 27 and 21 after round 76; 30, 36, 23, 27 and 20 after rounds 71 to 75; 29, 36, 23, 27 and 20 after round 70; 27, 35, 21, 23 and 17 after round 69; 26, 35, 20, 23 and 16 after round 68; 26, 36, 20, 22 and 15 after round 67; 26, 35, 19, 22 and 14 after rounds 63 to 66; 26, 35, 19, 21 and 13 after rounds 61 and 62; 25, 35, 18, 21 and 13 after rounds 57 to 60; 24, 35, 18, 21 and 13 after round 56; 24, 35, 18, 19 and 13 after round 55; 24, 35, 18, 18 and 13 after round 54; 23, 35, 17, 18 and 12 after round 53; 22, 35, 16, 18 and 12 after round 52; 21, 35, 15, 16 and 11 after round 51; 20, 32, 12, 16 and 10 after round 50; 19, 31, 10, 15 and 8 after round 49; 17, 31, 9, 13 and 5 after rounds 47 and 48; 15, 30, 9, 10 and 3 after round 46). 556 printed notes and 185 syllables are lacking, and 217 notes are read that are not there, with the places that a hand changed counted apart (559, 187 and 222 after round 81; 565, 187 and 225 after round 80, and 563 lacking with the lists of round 81; 571, 187 and 228 after round 79; 585, 187 and 446 after round 76, when a head that the count gave to two parts still counted twice; 588, 192 and 448 after round 75; 582, 193 and 535 after round 74, before the refrain that one page prints once more came into the count; 588, 193 and 574 after round 73, and 585 lacking with the lists of round 74; 590, 193 and 583 after round 72; 619, 193 and 586 after round 71, and 616 and 588 of them with the lists of round 72; the line said 638 and 588 here before, which were the figures of round 70; 642, 195 and 592 after round 69; 645, 195 and 592 after round 68; 647, 194 and 595 after round 67; 647, 195 and 595 after round 66; 647, 195 and 603 after round 65; 647, 195 and 640 after round 64; 647, 195 and 651 after round 63; 654, 195 and 652 after round 62; 659, 195 and 653 after round 61 by the count of round 62, which counts a stretch of one score that round 37 had left out and sets a page that a hand wrote whole apart; 659, 195 and 672 by the count of round 61; 668, 195 and 682 after round 60, 665 lacking by the list of the notes by the page of round 61; 671, 195 and 686 after round 59; 675, 195 and 689 after round 58; 679, 195 and 690 after round 57; 681, 195 and 692 after round 56, by the list of the notes by the page of its time; 681, 195 and 726 after round 55; 697, 195 and 736 after round 54; 699, 195 and 738 after round 53; 706, 196 and 742 after round 52; 709, 197 and 769 after round 51; 712, 206 and 783 after round 50; 713, 209 and 784 after round 49; 719, 209 and 794 after round 48; 707, 209 and 837 after round 47, by a count that hid 15 lost notes: see round 48). The clean copies are the scan scores with printed notes and words and crisp ink. 81 were
+(31, 38, 25, 30 and 23 after round 77; 30, 38, 24, 27 and 21 after round 76; 30, 36, 23, 27 and 20 after rounds 71 to 75; 29, 36, 23, 27 and 20 after round 70; 27, 35, 21, 23 and 17 after round 69; 26, 35, 20, 23 and 16 after round 68; 26, 36, 20, 22 and 15 after round 67; 26, 35, 19, 22 and 14 after rounds 63 to 66; 26, 35, 19, 21 and 13 after rounds 61 and 62; 25, 35, 18, 21 and 13 after rounds 57 to 60; 24, 35, 18, 21 and 13 after round 56; 24, 35, 18, 19 and 13 after round 55; 24, 35, 18, 18 and 13 after round 54; 23, 35, 17, 18 and 12 after round 53; 22, 35, 16, 18 and 12 after round 52; 21, 35, 15, 16 and 11 after round 51; 20, 32, 12, 16 and 10 after round 50; 19, 31, 10, 15 and 8 after round 49; 17, 31, 9, 13 and 5 after rounds 47 and 48; 15, 30, 9, 10 and 3 after round 46). 556 printed notes and 174 syllables are lacking, and 217 notes are read that are not there, with the places that a hand changed counted apart (556, 185 and 217 after round 82; 559, 187 and 222 after round 81; 565, 187 and 225 after round 80, and 563 lacking with the lists of round 81; 571, 187 and 228 after round 79; 585, 187 and 446 after round 76, when a head that the count gave to two parts still counted twice; 588, 192 and 448 after round 75; 582, 193 and 535 after round 74, before the refrain that one page prints once more came into the count; 588, 193 and 574 after round 73, and 585 lacking with the lists of round 74; 590, 193 and 583 after round 72; 619, 193 and 586 after round 71, and 616 and 588 of them with the lists of round 72; the line said 638 and 588 here before, which were the figures of round 70; 642, 195 and 592 after round 69; 645, 195 and 592 after round 68; 647, 194 and 595 after round 67; 647, 195 and 595 after round 66; 647, 195 and 603 after round 65; 647, 195 and 640 after round 64; 647, 195 and 651 after round 63; 654, 195 and 652 after round 62; 659, 195 and 653 after round 61 by the count of round 62, which counts a stretch of one score that round 37 had left out and sets a page that a hand wrote whole apart; 659, 195 and 672 by the count of round 61; 668, 195 and 682 after round 60, 665 lacking by the list of the notes by the page of round 61; 671, 195 and 686 after round 59; 675, 195 and 689 after round 58; 679, 195 and 690 after round 57; 681, 195 and 692 after round 56, by the list of the notes by the page of its time; 681, 195 and 726 after round 55; 697, 195 and 736 after round 54; 699, 195 and 738 after round 53; 706, 196 and 742 after round 52; 709, 197 and 769 after round 51; 712, 206 and 783 after round 50; 713, 209 and 784 after round 49; 719, 209 and 794 after round 48; 707, 209 and 837 after round 47, by a count that hid 15 lost notes: see round 48). The clean copies are the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
 by hand now, and the page of two holds another version than the typed hymn. The other scans come after the
 milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or words by hand.
 
 | Scans by copy | Scores | Notes right | At 99 % or more | At 90 % or more | Syllables right, own letter reader | Syllables right, with Tesseract and a list of words | Whole words right, with Tesseract and a list of words |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Clean print | 78 | 97.5 % (22,088 of 22,649) | 40 | 74 | 49.9 % (3,286 of 6,584) | 97.0 % (6,069 of 6,254) | 95.0 % (4,301 of 4,527) |
-| Thick or grey print | 26 | 83.2 % (7,101 of 8,532) | 0 | 11 | 32.9 % (658 of 2,000) | 89.0 % (1,763 of 1,980) | 87.6 % (1,201 of 1,371) |
-| By hand | 190 | 76.6 % (29,500 of 38,519) | 1 | 33 | 37.7 % (5,401 of 14,345) | 84.1 % (12,076 of 14,356) | 81.7 % (8,448 of 10,343) |
+| Clean print | 78 | 97.5 % (22,088 of 22,649) | 40 | 74 | 49.9 % (3,286 of 6,584) | 97.2 % (6,080 of 6,254) | 95.2 % (4,310 of 4,527) |
+| Thick or grey print | 26 | 83.2 % (7,101 of 8,532) | 0 | 11 | 32.9 % (658 of 2,000) | 89.4 % (1,771 of 1,980) | 88.0 % (1,207 of 1,371) |
+| By hand | 190 | 76.6 % (29,500 of 38,519) | 1 | 33 | 37.7 % (5,401 of 14,345) | 84.3 % (12,095 of 14,356) | 81.8 % (8,459 of 10,343) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
   count of their time, and as typed (see the count by the page below). Of the clean scores, 65 are at 95 % or more. 441 more notes are needed
-  for 99 % of each clean copy and 556 for every printed note; 5 scores lack one to three notes (441, 559 and 6 after round 81; 442, 565 and 8 after round 80; 442, 571 and 10 after round 79; 445, 574 and 10 after round 78; 449, 578 and 10 after round 77; 455, 585 and 11 after round 76; 458, 588 and 11 after round 75; 451, 582 and 11 after round 74, before the refrain that one page prints once more came into the count with 54 notes, 45 of them read right; 457, 588 and 11 after round 73; 458, 590 and 11 after round 72; 486, 619 and 10 after round 71; 501, 638 and 11 after round 70; 502, 642 and 13 after round 69; 503, 645 and 14 after round 68; 505, 647 and 14 after rounds 63 to 67; 509, 654 and 13 after round 62; 514, 659 and 14 after round 61; 522, 668 and 13 after round 60; 525, 671 and 13 after round 59; 529, 675 and 13 after round 58; 533, 679 and 12 after round 57; 533, 681 and 13 after round 56; 533, 681 and 13 after round 55; 548, 697 and 13 after round 54; 549, 699 and 14 after round 53; 555, 706 and 15 after round 52; 561, 719 and 19 after round 48, by the count of round 48, which no longer sets a lost note of a clean copy apart as recited; 550, 707 and 18 by the count before). The syllables of the own letter reader were last counted before round 47. The mistakes that are left are many small causes;
+  for 99 % of each clean copy and 556 for every printed note; 5 scores lack one to three notes (as after round 82, whose notes round 83 left as they were; 441, 559 and 6 after round 81; 442, 565 and 8 after round 80; 442, 571 and 10 after round 79; 445, 574 and 10 after round 78; 449, 578 and 10 after round 77; 455, 585 and 11 after round 76; 458, 588 and 11 after round 75; 451, 582 and 11 after round 74, before the refrain that one page prints once more came into the count with 54 notes, 45 of them read right; 457, 588 and 11 after round 73; 458, 590 and 11 after round 72; 486, 619 and 10 after round 71; 501, 638 and 11 after round 70; 502, 642 and 13 after round 69; 503, 645 and 14 after round 68; 505, 647 and 14 after rounds 63 to 67; 509, 654 and 13 after round 62; 514, 659 and 14 after round 61; 522, 668 and 13 after round 60; 525, 671 and 13 after round 59; 529, 675 and 13 after round 58; 533, 679 and 12 after round 57; 533, 681 and 13 after round 56; 533, 681 and 13 after round 55; 548, 697 and 13 after round 54; 549, 699 and 14 after round 53; 555, 706 and 15 after round 52; 561, 719 and 19 after round 48, by the count of round 48, which no longer sets a lost note of a clean copy apart as recited; 550, 707 and 18 by the count before). The syllables of the own letter reader were last counted before round 47. The mistakes that are left are many small causes;
   the largest that were found
   since: two voices a second apart that the print sets as one blot of ink brought 41 notes on the clean copies
   in round 19, and a fault of one pixel in the thin ink of the layers brought 32 (42 gained, 10 lost) in round 24.
@@ -94,7 +94,8 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   and round 79 brought 3: notes whose heavy sharp is one blot of ink with their head (4 gained), and a half note with a nearly closed hole that a note that is not there had made long (1 lost);
   and round 80 brought 6, on scores that lacked one to three notes: a note beside a fermata that is no longer read as a note (2), a filled head with a speck in it beside the loop of its flag (2), a printed dot that the rule for the heads of a chord took (1), and a half note whose inside a grey smear half filled (1);
   and round 81 brought 4, on such scores again: a half note whose ring the pale print left open (3), and a head in a pencil ring whose arc was read as its ledger line (1);
-  and round 82 brought 3, on one such score: a half note beside the faint line that a scanner drew down its page (1), and two notes whose places the strokes of engraved flags had taken (2).
+  and round 82 brought 3, on one such score: a half note beside the faint line that a scanner drew down its page (1), and two notes whose places the strokes of engraved flags had taken (2);
+  and round 83 changed no note: its rules are rules for the words.
   The reader also writes 222 notes on the clean copies that are not there (2,515 on
   all scores; 217 with the places that a hand changed counted apart). Until round 77 a head that the count gave to
   two parts of a staff counted twice there: by that count they are 419, 4,604 and 409 (426, 4,625 and 416 after
@@ -126,16 +127,16 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   the scorer lining a staff up with the wrong part: the tool behind that count lined the notes up in its own way,
   and it is not held any more.
 - Words with the optional Tesseract step, its larger language files as further opinions (since round 39) and a
-  list of words: 25,557 of 28,695 syllables are right (89.1 %,
-  counted by the page since round 35; 25,372 of 28,700 as typed):
-  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 88.1 % on
-  the scans (19,904 of 22,590; round 76 brought 13, 6 by two syllables of one read piece that stand under one note and 7 by a row that goes on from the word that the row before leaves open, round 75 brought 1 with the notes, on a clean copy, and counts 10 more in the refrain that one page prints once more, round 74 changed no syllable, round 73 brought 1 with the notes, on a copy by hand, round 72 changed no syllable, round 71 changed no syllable, round 70 brought 5, by a word that goes on from the row before it, round 68 lost 1 with the notes, on a clean copy whose last chord the count splits crosswise now, round 67 brought 1, by a word that a hyphen leaves open at the end of a row, rounds 63 to 66 changed no syllable, round 62 counts 5 more in the stretch that round 37 had left out, rounds 54 and 55 changed no syllable, round 53 took 3: a rule for a stray word under the clef gains 1 syllable on the clean copies and loses 3 on one copy by hand, and 1 goes with a note; round 52 brought 3, by the word O beside a bracket and with the notes, round 51 brought 27, by a word that every reading of its row holds alike and with the notes, round 50 brought 10 by two rules for the words and 1 by the list of the words by the page, round 48 brought 1 with the notes, round 47 brought 167 with the notes, by the staves and the systems of copies by hand that it reads now, round 44 lost 6 of them with the notes of one copy by hand, round 40 brought 68, round 39 brought 196, the rules of round 37 brought 25 and its count by the page 26, the
+  list of words: 25,599 of 28,695 syllables are right (89.2 %,
+  counted by the page since round 35; 25,413 of 28,700 as typed):
+  92.6 % on the software-made PDFs (their words are text in the PDF; Tesseract is not used there), and 88.3 % on
+  the scans (19,946 of 22,590; round 83 brought 38, 42 gained and 4 lost by seven rules for the words: a stop between two letters, a piece with no vowel, two letters that touch, a slur that touches a word and an open word that the list parts so; round 82 brought 4, by a word that goes on over the end of a page and a 1 that is an i; round 76 brought 13, 6 by two syllables of one read piece that stand under one note and 7 by a row that goes on from the word that the row before leaves open, round 75 brought 1 with the notes, on a clean copy, and counts 10 more in the refrain that one page prints once more, round 74 changed no syllable, round 73 brought 1 with the notes, on a copy by hand, round 72 changed no syllable, round 71 changed no syllable, round 70 brought 5, by a word that goes on from the row before it, round 68 lost 1 with the notes, on a clean copy whose last chord the count splits crosswise now, round 67 brought 1, by a word that a hyphen leaves open at the end of a row, rounds 63 to 66 changed no syllable, round 62 counts 5 more in the stretch that round 37 had left out, rounds 54 and 55 changed no syllable, round 53 took 3: a rule for a stray word under the clef gains 1 syllable on the clean copies and loses 3 on one copy by hand, and 1 goes with a note; round 52 brought 3, by the word O beside a bracket and with the notes, round 51 brought 27, by a word that every reading of its row holds alike and with the notes, round 50 brought 10 by two rules for the words and 1 by the list of the words by the page, round 48 brought 1 with the notes, round 47 brought 167 with the notes, by the staves and the systems of copies by hand that it reads now, round 44 lost 6 of them with the notes of one copy by hand, round 40 brought 68, round 39 brought 196, the rules of round 37 brought 25 and its count by the page 26, the
   rules of round 36 brought 471, the rules of round 35 brought 138 and
   the count by the page 139, round 34 brought 63). Before round 34 these were 21 syllables fewer than in round 17 with the same words read: the
   words are compared in the layout that the count of the notes chooses for a score, and the scorer sets a few
-  scores in another layout or on another part of their pages now. On the clean copies 97.0 % of the syllables and 94.9 % of the whole words are
-  right, and 39 of the 78 scores have 99 % of their syllables (37 before round 76, 36 before round 70, 31 before round 47, 28 before round 39, 25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 170 syllables
-  are lacking for 99 % of each clean score (175 after round 75, 191 after round 47, 195 before it, 200 before round 40, 227 before round 39, 285 before round 37, 366 before round 36). The
+  scores in another layout or on another part of their pages now. On the clean copies 97.2 % of the syllables and 95.2 % of the whole words are
+  right, and 44 of the 78 scores have 99 % of their syllables (40 before round 83, 39 before round 82, 37 before round 76, 36 before round 70, 31 before round 47, 28 before round 39, 25 before round 36, 20 before round 35, 15 in round 10, 4 in round 9); 158 syllables
+  are lacking for 99 % of each clean score (168 after round 82, 170 after round 76, 175 after round 75, 191 after round 47, 195 before it, 200 before round 40, 227 before round 39, 285 before round 37, 366 before round 36). The
   list of words is made from the typed hymns of the app without the hymn that is read and its other scores, so no
   score is read with its own text. Without a list the scans have about 910 fewer of these syllables and
   about 1,170 fewer whole words (quick count, see the rounds of the words below).
@@ -168,6 +169,134 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 83 (21 November 2026): seven rules for the words: a stop between two letters, a piece of a word with no
+  vowel, two letters that touch, a slur that touches a word, and an open word that the list parts so.
+
+  The round stayed with the clean scores that read every printed note, read none that is not there, and are not
+  whole by their words alone: carol-great-rejoicing (4 syllables lacking), memorial-troparia--s2 (3),
+  nativity-canon-ode-1 (2), nativity-canon-ode-9 (1) and liturgy-mercy-of-peace (18). Each lacking syllable was
+  traced through every stored reading of its row. Two scores lack words that are a hand's: nativity-canon-ode-1
+  the printed words that a hand crossed out (the open question of the count), and liturgy-mercy-of-peace words that
+  a hand wrote on a pasted slip. The others are the reader's, and seven rules of the words step came of them. No
+  rule touches the notes: only `scorereader/ocr.py` changes. carol-great-rejoicing and memorial-troparia--s2 are
+  whole now. Each rule was counted by the quick count from stored rows, with the rule off against all rules on, on
+  the clean copies, on all scan pages and on the fresh set, and the full passes were read at the end.
+
+  - **A stop between two letters ends a word** (`ocr.STOP_INSIDE`). memorial-troparia--s2 read "Lord,where" as one
+    piece: the print sets the two words close, and Tesseract gave one word. Such a piece was parted only where the
+    list holds both halves (`ocr.ENDS`), and the hymn that is read is left out of the list. A comma, a full stop or
+    another stop that stands between two letters now ends a word. The census of the stored rows: 51 such tokens on
+    LitChoir's scan pages, 18 of them two typed words of their hymn, the others labels and addresses ("S.S.A.",
+    "www.PODOBEN.com") and rows of stray ink. Clean copies 2 syllables gained and none lost; all scan pages 7 gained
+    and 3 lost, 8 whole words more (the losses are rows of two copies by hand where another reading of the row then
+    wins: liturgy-first-antiphon 2, cherubic-voronkoff 1); the fresh set 29 gained and none lost. On the fresh set
+    its whole words are 19 gained and 8 lost. The 8 stand at a hyphen that Tesseract read as a full stop or a
+    colon inside a word ("sâr.ba", "Domnu.lui", "In:tru"): before, such a word was one piece with its syllables
+    wrong and counted as a whole word; now its syllables count and the word is two, and in one row another reading
+    wins with it. No token of LitChoir's pages has such a stop at any size (a census of every stop between two
+    letters, labelled by the typed words), so no guard was written, as the rules for the fresh set say.
+  - **A piece between a cut and a hyphen holds a vowel** (`ocr.CUT_VOWEL`). carol-great-rejoicing read "An-gels" as
+    "An-g" and "els". The step that parts two words at a wide gap inside one read word (`ocr.CUT`) counts the
+    pieces of ink against the signs that Tesseract read, and where two letters touch (the A and the n) the pieces
+    stand a sign off: the gap after the hyphen cut the word a letter early. A piece with no vowel between the cut
+    and the next hyphen is no syllable, and such a cut is not made ("UN-DI-VI" and "D-ED" in liturgy-we-have-seen,
+    where the print sets the letters of one syllable wide apart). Clean copies 2 gained and none lost; all scan
+    pages 4 and 1 (pascha-canon-ode-6, a noisy row where another reading wins); the fresh set 4 and 1. The one of
+    the fresh set is a Romanian "ei l-au", whose l before its hyphen is a word: the rule acts only on a page whose
+    words fit the list, and that page fits it by its rows of "la la la". It is said here and left.
+  - **A piece with no vowel is no word** (`ocr.ENDS_VOWEL`). pascha-hypakoe and its second scan read "sav-eth" as
+    "save" and "th": a list that is made from typed hymns holds "th" as a word, from a "wi-th" that a hymn spreads
+    under two notes. A piece of two letters or more with no vowel is not cut off as a word. Two first forms went
+    wrong, and the fresh set showed both. The test took every letter outside the plain alphabet for a consonant
+    (56 syllables and 90 whole words lost there): it judges the plain letters only now, on a page whose words fit
+    the list. And it sorted the ways to part a word before the test for one way, so that of two ways one was left
+    and a word that had stayed whole was parted ("in-tru"): it looks at the one way that was found and only takes
+    its cut away. Clean copies 2 gained and none lost; all scan pages 15 and 1 (st-basil-champion-leader--s2, a
+    copy by hand), 10 whole words more; the fresh set 8 and none.
+  - **The first word of a row goes on from the open word** (`ocr.ENDS_CARRIED`). memorial-troparia--s2 ends a row
+    with "a-" and begins the next with "lone", which was parted into "lo" and "ne", two words of the list. The
+    first word of a row is not parted where it is a word of the list together with the word that the row before
+    leaves open (`ocr.MEND_BEFORE`). 1 syllable gained on the clean copies and on all scan pages, none lost; no
+    word of the fresh set changes.
+  - **Two letters that touch, read as one** (`ocr.MEND_TWIN`). carol-great-rejoicing read "born" as "bom": an r and
+    an n that touch are an m for Tesseract at every size and with every language file, and it is sure of the m, so
+    no rule for a word that it is not sure of mends it. A word of three letters or more that the list lacks becomes
+    the list's word with "rn" where the m was read, where the list holds one such word. The census of the stored
+    rows named five tokens on LitChoir's pages ("bom" four times, and "up-bome", which is "upborne"). 1 syllable
+    gained on the clean copies, 3 on all scan pages, none lost; no word of the fresh set changes.
+  - **A slur that touches a word, and a dash that is a piece of a bow** (`ocr.BOW`, a rule for one print in what
+    it trims). carol-great-rejoicing sets the slurs of the lower staff into its rows of words, and Tesseract read
+    letters from them: "the" with a slur behind it is "thes", "a" is "avs", "in" is "inn.". A bow is one thin
+    stroke in each column, over a row height or more, whose middle rises or falls; a level stroke is a hyphen or
+    the line of a held syllable. A word that the list lacks and that Tesseract is not sure of, with such a bow
+    behind its letters, is its letters before the bow where they are a word of the list. The first form trimmed 30
+    words on LitChoir's scan pages and 5 of them rightly: the hook of a clef by hand, a hyphen over a slur, a slur
+    alone and the tail of a letter by hand had been read as short words, and the trim made words of one letter of
+    them. Measured at each of the 30 places, the ink before the bow tells: true letters fill the rows of their row
+    (0.84 of them or more against 0.61 at most), and as many stand there as were read, by the usual width of a
+    letter of the row (within 0.15 of a letter against 0.49 or more). The five that are left are three words of
+    the carol and two of two copies by hand ("O" and "sit"). The second half of the rule: a dash that would join
+    two words as a hyphen does is no hyphen where a bow runs through its middle. Tesseract gives one box to a true
+    hyphen and the piece of a slur that comes close to it: of the 114 dashes that the first form dropped, 57 hold
+    other ink in their box, and 10 of the 16 of those that were looked at hold a true hyphen. A dash goes only
+    where its box holds nothing but the bow. What the rule takes out of a row is taken out for the test that sets
+    the readings of a row beside each other too (`ocr.MEND_ALIKE`): that test had found "praisingthes" at every
+    size and the mending then left it. Clean copies 2 gained and none lost; all scan pages 4 and none; no word of
+    the fresh set changes. The rule acts at 62 places of the stored rows (5 words, 57 dashes) and at 27 more in the
+    full pass, on the pages whose stored rows are older than the page (see below). Each was looked at on the page:
+    every dash that went is a piece of a slur, of a tie or of a fermata.
+  - **An open word that the list parts so is not mended** (`ocr.MEND_HEAD`). One dash that the first form of the
+    slur rule dropped was a true hyphen, and its loss had made a word right: nativity-kontakion ends a row with
+    "shep-", the mending made "she-" of it, and without the hyphen it stayed "shep". The step that lost the word
+    was the mending. A word that a hyphen leaves open at the end of a row is the beginning of a word, and the list
+    is asked how often it parts a word after these letters ("shep" of "shep-herds", "cher-u" of "cher-u-bim"), not
+    whether it holds them as a word. Such a word is not mended, and no word of another reading takes its place,
+    unless the other word begins the list's parted words more often: holding back every such piece lost "up-",
+    which was read "op-" ("op" begins a parted word 3 times in the list, "up" 85 times). A credit for such a piece
+    in the choice among the readings of a row gained 10 syllables and lost 7 on all scan pages, a border that
+    moves, and is not in the rule. Clean copies 1 gained and none lost; all scan pages 7 and none
+    (cherubic-kastorsky and its hierarchical scan "cher-u-", pascha-come-take-light--s2 "glo-ri-"); the fresh set 1
+    and none.
+  - The stored rows of the quick count are older than the page on 39 scan pages of LitChoir. They are a census of
+    16 November, and those pages were built anew since: their rows stand at other rows of the picture now, by 88
+    pixels on one page. A rule of the quick count that looks at the ink looked at the music over the row
+    there and seemed to drop a true hyphen. The quick count leaves the slur rule off on those pages (a list with
+    the wide test, outside git; none on the fresh set), and the full pass, which wrote down every place where the
+    rule acts, showed them. A new census of the rows of these pages is due.
+  - Looked at, no rule. nativity-canon-ode-9 lacks an "in" under a loop in pencil: every reading holds a lone "i"
+    in a box as wide as two letters there. A census of the 87 lone small i of LitChoir's rows showed about 18 such
+    wide boxes, most of them stray ink at the start of a row: no rule. wedding-alleluia-grechaninov lacks one syllable
+    that only the credit for an open word had found. All seven rules together, by the quick count: 11 syllables
+    gained and none lost on the clean copies, 39 and 4 on all scan pages, 43 and 1 on the fresh set.
+  - The full reading with the words, every scan page with Tesseract (`w376v1` against `w375v1`; the lists by the
+    page and the scorer are as in round 82): no note, no layout and no window of any score differs. Clean copies
+    22,088 of 22,649 notes (97.5 %; 40 at 99 %; 21,956 of 22,605 as typed), as before; 6,080 of 6,254 syllables
+    (97.2 %; 6,016 of 6,259 as typed) and 4,310 of 4,527 whole words (95.2 %): 11 syllables gained and none lost
+    (carol-great-rejoicing 4, memorial-troparia--s2 3, nativity-kontakion, liturgy-we-have-seen, pascha-hypakoe
+    and its second scan 1 each), 10 whole words gained and 1 lost. The base scored as typed gives the figures of
+    round 82 exactly (21,956 of 22,605 and 6,005 of 6,259). 37 clean scores read every printed note (556 lacking),
+    43 every syllable (174 lacking; 39 and 185 before), 31 both (29), 39 have no note that is not there (217 with
+    the places that a hand changed apart, 222 without) and 31 are whole in all three (29). 44 clean scores have
+    99 % of their syllables (40), and 158 syllables are lacking for 99 % of each (168). The whole word that a
+    clean score lost is an "Al-le-lu-ia" of cherubic-lvovsky that goes on over the end of a system. Its hyphens
+    stand under a slur that runs into the bar line, and Tesseract read them with the slur as "=———=—+", which is
+    no hyphen for the reader because of the +; the hyphen after "lu" had been read from a piece of the slur, which
+    the slur rule takes now. The word was right by a wrong reading: the rule stays, and a hyphen that is read with
+    a stray sign is on the list of what is left (a first count of it from stored rows: 6 syllables gained and none
+    lost on all scan pages). In a row of that score that the count does not take, the same rule takes a piece of a
+    slur that had joined two stray words at the end of the row, and a reading with "CHE-RU-B-IM" then wins over
+    the reading with "CHE-RU-BIM": the stray words are a slur that was read as a word, which is left too. All
+    scores 78,705 of 89,863 notes and 2,515 that are not there, as before; syllables 25,599 of 28,695 (89.2 %;
+    25,413 of 28,700 as typed), 42 gained and 4 lost, and whole words 16,905 of 20,590, 34 gained and 8 lost. The
+    full pass gains 3 syllables more than the quick count, which reads one row for each staff and leaves the slur
+    rule off on 39 pages. The four lost are on the three scores that the quick count named (liturgy-first-antiphon 2, pascha-canon-ode-6 1,
+    st-basil-champion-leader--s2 1). Scans 19,946 of 22,590 syllables (88.3 %) and 13,976 of 16,241 whole words;
+    thick copies 1,771 of 1,980 and 1,207 of 1,371; copies by hand 12,095 of 14,356 and 8,459 of 10,343. The kit:
+    6,232 of 6,901 by parts and 5,800 of 6,419 staff by staff, as before. The fresh set, every page read with the
+    words (`fr376` against `fr375`): 39,957 of 41,761 notes (95.7 %) and 630 that are not there, as before; 8,344
+    of 11,341 syllables (73.6 %), 43 gained and 1 lost, and 5,917 of 6,647 whole words (89.0 %), 27 gained and 9
+    lost (7 at a hyphen that was read as a stop, see above, and 2 with the lost syllable). The repository's code
+    was read against the measured copy by the quick count on all scan pages and on the fresh set: no word differs.
 - Round 82 (21 November 2026): a wedge of paper at a staff line, the faint line that a scanner draws down a page, the
   stroke of an engraved flag, a word that goes on over the end of a page, and a 1 that is an i.
 
@@ -6200,6 +6329,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 80 (a fermata that is no note, a speck in a filled head beside its flag, a sure dot in a chord and a half note between two read heads: 6 pages differ, all of them by the fermata, 22 notes that are not there fewer, no note and no syllable gained or lost) | 214 | 95.6 % (39,939 of 41,761) | 99 | 183 | 73.2 % (8,302 of 11,341) | 88.7 % (5,899 of 6,647) | 97.9 % |
 | After round 81 (a half note whose ring is open, the arc of a pencil ring under a head, a chord of three half notes on lines and the middle of a bold slur: 1 page differs, a letter of a heading that was read as a note before is a half note now and counts as one more note that is not there, no note and no syllable gained or lost) | 214 | 95.6 % (39,939 of 41,761) | 99 | 183 | 73.2 % (8,302 of 11,341) | 88.7 % (5,899 of 6,647) | 97.9 % |
 | After round 82 (a wedge of paper at a staff line, the faint line of a scanner, the stroke of an engraved flag, a word over the end of a page and a 1 that is an i: 61 pages differ, 54 by the wedge and 8 by the flag, 19 notes gained and 1 lost, an eighth note that only notes that are not there had made short, 156 notes that are not there fewer, 630 where 786 were; no word changes) | 214 | 95.7 % (39,957 of 41,761) | 101 | 183 | 73.2 % (8,302 of 11,341) | 88.7 % (5,899 of 6,647) | 97.9 % |
+| After round 83 (seven rules for the words: a stop between two letters, a piece with no vowel, two letters that touch, a slur that touches a word and an open word that the list parts so: no page differs in its notes; 43 syllables gained and 1 lost, 27 whole words gained and 9 lost, 7 of them at a hyphen that was read as a stop inside a word: its syllables count now, and the word is two) | 214 | 95.7 % (39,957 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | of these, last counted after round 47: English (Orthodox Liturgics) | 109 | 95.6 % (13,779 of 14,415) | 49 | 87 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.7 % (17,144 of 18,288) | 37 | 77 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -6454,6 +6584,7 @@ typed hymns, of all typed notes.
 - Over all hymns the own rules read more notes right than the network they replaced: 90.3 % against 81 %.
 - They are behind the network on two kinds: old copies (87 % against 88 %) and the two poor pages (81 % against 95 %).
 - 12 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 6 are under 80 %.
+- Round 83 leaves the kit as it was (6232 by parts, 5800 staff by staff): its rules are rules for the words.
 - Round 82 leaves the kit as it was (6232 by parts, 5800 staff by staff): one note that is not there goes in
   pascha-christ-is-risen-stomp, a wedge of paper at a staff line, and no count moves.
 - Round 81 leaves the kit as it was (6232 by parts, 5800 staff by staff).
@@ -6633,6 +6764,22 @@ typed hymns, of all typed notes.
    Round 69 left: the printed signs that are still not read on the clean copies, about 12 notes: a small natural
    that is read as a flat or lost beside the heads of a chord, a sign that is read as a head from its stroke (its
    rule lost on the fresh set and is off), and signs glued to their own head, under the staff or crossed by a slur.
+   Round 83 left, for the words: a hyphen that Tesseract reads with a stray sign ("=———=—+", hyphens under a slur
+   that runs into a bar line) is no hyphen for the reader, and an "Al-le-lu-ia" of cherubic-lvovsky is no whole
+   word by it (a first count of such a token as a hyphen, from stored rows: 6 syllables gained and none lost on all
+   scan pages, none either way on the clean copies and on the fresh set). A slur that is read as a word of its own
+   stays in its row, and a reading with it can win (cherubic-lvovsky, "CHE-RU-B-IM" in a row that the count does
+   not take). The stored rows of the quick count are older than the page on 39 scan pages: a new census of their
+   rows is due before a rule that looks at the ink is counted there. nativity-canon-ode-9 lacks an "in" under a
+   loop in pencil (a lone i in a box as wide as two letters; 18 such boxes among 87 lone i, most of them stray
+   ink). A credit for an open word that the list parts so, in the choice among the readings of a row, gained 10
+   syllables and lost 7 (wedding-alleluia-grechaninov lacks the one syllable that it found). The trimmed "a" of
+   "ad-or-a-tion" in carol-great-rejoicing keeps no hyphen behind it. On the fresh set a hyphen is read as a full
+   stop or a colon inside a word in 5 tokens, which no page of LitChoir shows, and a Romanian page that fits the
+   list by its rows of "la la la" loses a cut before "l-au". Three clean scores read every note and none that is
+   not there and still lack syllables: nativity-canon-ode-1 (2, printed words that a hand crossed out: the open
+   question of the count), nativity-canon-ode-9 (1) and liturgy-mercy-of-peace (18, words by hand on a pasted
+   slip). What round 82 left for the notes stands.
    Round 82 left: 5 clean scores lack one to three notes (megalynarion-zakkak 2, pascha-receive-short 2,
    pascha-christ-is-risen-romanian 1, the second scan of cherubic-georgian 3, pascha-hypakoe 3), and 8 read every
    printed note and are not whole (carol-great-rejoicing, nativity-canon-ode-1 and nativity-canon-ode-9 lack one to

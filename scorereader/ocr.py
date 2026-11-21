@@ -54,6 +54,26 @@ SOLID = (0.3, 0.9, 0.5)  # a word of two letters or more is no word where this s
 #                          letter fills its column over the row or under it, not both. The picture that Tesseract
 #                          gets stays as it is: with the edge painted out it read other words of the row otherwise
 #                          (None: off)
+BOW = (1.0, 0.45, 0.3, 80, 0.3, 0.5, 0.15, 0.75)   # with a list of words: a word that the list does not hold and
+#                          that Tesseract is less sure of than the fourth number, whose box holds a bow after its
+#                          letters: one stroke of
+#                          ink in each column over the first number of row heights or more, at most the second number
+#                          of row heights thick, whose middle rises or falls by the third (a level stroke is a hyphen or
+#                          the line of a held syllable). It is the slur of the staff under the row, which touches the
+#                          word, and Tesseract reads letters from it ('the' with a slur is 'thes'), or a dash, which
+#                          would join two words as a hyphen does: a dash is no hyphen where such a bow runs through
+#                          its middle, in its columns and a row height at each side. The word is its letters before
+#                          the bow where they are a word of the list and letters of the row stand there: the ink before
+#                          the bow fills the last number of the rows of the row or more (the hook of a clef by hand, a
+#                          hyphen and a slur alone were read as short words, and do not: 0.61 at most against 0.84 or
+#                          more on LitChoir's pages), as many letters as were read stand there by the usual width of a
+#                          letter of the row, within the fifth number of letters (0.15 at most where the letters are
+#                          the word, 0.49 or more where the bow begins inside a letter), and no letter stands behind
+#                          the bow (less than a letter's width of other ink). The ink is looked at in the rows of the
+#                          row and the sixth number of row heights over and under it, and a stroke is one stroke
+#                          where its middle moves by the seventh number of row heights at most from a column to the
+#                          next. A rule for one print in what it trims (three words of one carol, and two words of
+#                          two copies by hand). None: off
 CLEF = (3.0, 50, 2, 1.5)   # a word that ends within this many staff spaces of the left end of the staff over its row, in
 #                          the columns of the clef, and that Tesseract is less sure of than the second number is no
 #                          word: the tail of the clef, the brace, a smudge at the edge of the page. The words of a
@@ -85,6 +105,14 @@ CUT = (0.3, 2.0, 2, 1, 1.6, 0.2, 1.3)   # two words that Tesseract read as one a
 #                          centre (the distances differ by this share of the usual one at most), is from a
 #                          typewriter: there the letters at the two sides of a cut stand this many times the usual
 #                          distance apart (None: off)
+CUT_VOWEL = True         # no cut where the letters between the cut and the next hyphen of the word hold no vowel: a
+#                          piece with no vowel is no syllable ('An-g' and 'els' of 'An-gels', whose A and n touch so
+#                          that the pieces of ink stand a sign off; 'UN-DI-VI' and 'D-ED', where a print sets the
+#                          letters of one syllable wide apart). Only on a page whose words fit the list of words
+#                          (see MEND): in another language a consonant beside a hyphen is a word ('s-a', 'n-am'),
+#                          and only the letters of the plain alphabet are judged
+STOP_INSIDE = True       # a comma or another stop between two letters of a word ends a word: two words that stand
+#                          close were read as one ('Lord,where'). (Without it the list must hold both words: ENDS.)
 MEND = (4, 2, 80, 50, 0.2)   # with a list of words: a word of this many letters or more that the list does not hold
 #                          becomes the list's word that is one letter away (one letter more, less or other), when
 #                          the list holds one such word only, and holds it this often or more. Only a word that
@@ -93,6 +121,10 @@ MEND = (4, 2, 80, 50, 0.2)   # with a list of words: a word of this many letters
 #                          sure of it than the fourth number. And only on a page of whose letters this share or more
 #                          stands in words that the list holds: else the page is in another language than the list
 #                          (None: off)
+MEND_TWIN = (('m', 'rn'),)   # with a list of words: a word of three letters or more that the list does not hold becomes
+#                          the list's word that has the two letters where the one letter was read ('bom' is 'born':
+#                          an r and an n that touch are an m for Tesseract at every size and with every file, and it
+#                          is sure of the m), where the list holds one such word (None: off)
 MEND_PAIR = 7            # two words side by side that the list does not hold, of this many letters or more together,
 #                          become the one word of the list that they are with one letter read otherwise: the end
 #                          of a word under a long melody stands far from its start, with no hyphen that was read
@@ -113,6 +145,11 @@ MEND_PAIR_RARE = 20      # two words side by side are mended into one (MEND_PAIR
 #                          is never joined
 MEND_OPEN = True         # a word that a hyphen leaves open at the end of a row ('foun-', the row goes on with
 #                          'tain') is not mended by a letter added at its end ('found'): the word is not whole there
+MEND_HEAD = True         # a word that a hyphen leaves open at the end of a row and that the list does not hold is the
+#                          beginning of a word as the list parts it ('shep-', and the next row goes on with 'herds';
+#                          'cher-u-' before 'bim'): it is not mended into a word of the list ('she'), and no word of
+#                          another reading takes its place ('thee'), unless that word begins the parted words of the
+#                          list more often ('op-' is 'up-': 'up-on')
 MEND_BEFORE = 2          # the first word of a row is the rest of the word that the row before leaves open at its
 #                          end ('glo-', and the next row begins 'ri-ous') where the list holds the two together:
 #                          it is not mended alone ('pious'). A letter of it that was read wrongly is mended by the
@@ -211,6 +248,12 @@ ENDS = (2, 2, 3, 0.001)   # with a list of words: a word that the list does not 
 #                          the other one has this many letters or more, and when it is this share of all the words
 #                          of the list or more (a list holds stray letters too). And two words are joined that the
 #                          list holds as one word (None: off)
+ENDS_VOWEL = True        # a piece of two letters or more that holds no vowel is no word there: a list that is made
+#                          from typed hymns holds such pieces ('th' of a 'wi-th' that a hymn spreads under two notes),
+#                          and 'sav-eth' was parted into 'save' and 'th'. The test only takes a cut away: where it
+#                          left the other ways to part a word, it made new cuts ('in-tru')
+ENDS_CARRIED = True      # the first word of a row is not parted where it is a word of the list with the word that
+#                          the row before leaves open ('a-' and then 'lone': not 'lo' and 'ne'; see MEND_BEFORE)
 THREE = (0.0003, 0.0025)  # three words that were read as one ('mercyonus') are parted too, on a page whose language
 #                          the list holds: each of them is this share of all the words of the list or more, and a
 #                          word of under three letters this share (two cuts need more witness than one; None: off)
@@ -330,6 +373,16 @@ def _in_word(found: list[dict], words: list[tuple[str, float, float, float]], nu
     return bool(word) and word in known
 
 
+def _at_stops(piece: str) -> list[str]:
+    """A piece of a line cut after each stop that stands between two letters (see STOP_INSIDE)."""
+    parts, start = [], 0
+    for at in range(1, len(piece) - 1):
+        if piece[at] in STOPS and piece[at - 1].isalpha() and piece[at + 1].isalpha():
+            parts.append(piece[start:at + 1])
+            start = at + 1
+    return parts + [piece[start:]]
+
+
 def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, int] | None = None,
                high: float | None = None, carried: str = '') -> list[dict]:
     """Cuts the words of a line into syllables: {'text', 'x0', 'x1', 'join' (a hyphen follows), 'sure'} each. A hyphen
@@ -378,8 +431,11 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
                 if found and found[-1]['text'][-1] not in STOPS:
                     found[-1]['join'] = True
             elif piece and piece[0] not in LINES and any(sign.isalpha() for sign in piece):
-                found.append({'text': piece, 'x0': left + wide * at, 'x1': left + wide * (at + len(piece)), 'join': False,
-                              'sure': sure})
+                start = at
+                for part in _at_stops(piece) if STOP_INSIDE else [piece]:
+                    found.append({'text': part, 'x0': left + wide * start, 'x1': left + wide * (start + len(part)),
+                                  'join': False, 'sure': sure})
+                    start += len(part)
             at += len(piece)
     return found
 
@@ -426,12 +482,34 @@ def _pitch(texts: list[str], pieces: list[list[tuple[int, int]]]) -> tuple[float
     return usual, float(np.percentile(apart, 90) - np.percentile(apart, 10)) / max(1.0, usual)
 
 
-def _cut_wide(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[str, float, float, float]]:
+def _mute(piece: str) -> bool:
+    """Whether a piece of a word holds letters and no vowel: letters of the plain alphabet only, each a consonant. (A
+    letter with a sign of its own or of another alphabet is not judged: the list of vowels is that of the plain one.)"""
+    letters = [sign for sign in piece.lower() if sign.isalpha()]
+    return bool(letters) and all(sign in ABC and sign not in VOWELS for sign in letters)
+
+
+def _mute_cut(text: str, cut: int) -> bool:
+    """Whether a cut before sign `cut` of a word leaves a piece with no vowel between the cut and the next hyphen of
+    the word, at one of its sides (see CUT_VOWEL)."""
+    marks = JOINS + LINES
+    before, after = text[:cut], text[cut:]
+    pieces = []
+    if any(sign in marks for sign in before):
+        pieces.append(re.split('[' + re.escape(marks) + ']', before)[-1])
+    if any(sign in marks for sign in after):
+        pieces.append(re.split('[' + re.escape(marks) + ']', after)[0])
+    return any(_mute(piece) for piece in pieces)
+
+
+def _cut_wide(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
+              voiced: bool = False) -> list[tuple[str, float, float, float]]:
     """Cuts a word at its wide gaps. Where the words of a row stand close under quick notes, Tesseract reads two or
     three of them as one word. The pieces of ink in the word's box are counted, column by column: when each sign of
     the word is one piece, the gaps between the pieces are the gaps between its signs. A gap beside a hyphen is wide
     in any word and does not count. In a row from a typewriter the gap beside a thin letter (i, l) is wide in any
-    word: there two words are parted only where their letters stand further apart than a letter's box."""
+    word: there two words are parted only where their letters stand further apart than a letter's box. `voiced`: the
+    words of the page fit the list of words, and each piece at a cut holds a vowel (see CUT_VOWEL)."""
     found = []
     high = band['bottom'] - band['top']
     boxes = [(max(0, int(round(left))), min(grey.shape[1], int(round(right)) + 1)) for _, left, right, _ in words]
@@ -450,6 +528,8 @@ def _cut_wide(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
                 if typed:
                     cuts = [number for number in cuts
                             if (runs[number][0] + runs[number][1]) / 2 - (runs[number - 1][0] + runs[number - 1][1]) / 2 >= CUT[6] * pitch[0]]
+                if CUT_VOWEL and voiced:
+                    cuts = [number for number in cuts if not _mute_cut(text, number)]
                 edges = [0] + cuts + [len(text)]
                 if any(sum(sign.isalpha() for sign in text[begin:end]) < CUT[2] for begin, end in zip(edges, edges[1:])):
                     cuts = []
@@ -464,8 +544,10 @@ def _cut_wide(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
 
 class _Known(dict):
     """The list of words by letters alone (see _known), with `pairs`: the words that follow each other in the
-    list's text (see PAIR)."""
+    list's text (see PAIR), and `heads`: the beginnings of the words that the list parts, each with how often the
+    list parts a word there (see MEND_HEAD)."""
     pairs: frozenset = frozenset()
+    heads: dict | None = None
 
 
 def _known(lex) -> dict[str, int]:
@@ -479,6 +561,15 @@ def _known(lex) -> dict[str, int]:
         letters = plain(word)
         known[letters] = known.get(letters, 0) + count
     known.pairs = frozenset((plain(first), plain(second)) for first, second in (getattr(lex, 'pairs', None) or ()))
+    if MEND_HEAD:
+        # The beginnings of the words that the list parts ('shep' of 'shep-herds', 'al' and 'alle' of 'al-le-lu-ia'),
+        # each with how often the list parts a word there.
+        known.heads = {}
+        for parts, count in (getattr(lex, 'parts', None) or {}).items():
+            way = [plain(part) for part in parts]
+            for cut in range(1, len(way) if all(way) else 0):
+                head = ''.join(way[:cut])
+                known.heads[head] = known.heads.get(head, 0) + count
     return known
 
 
@@ -673,6 +764,9 @@ def _cuts(read: str, known: dict[str, int], fits: bool = False) -> list[int]:
     words. The first of these that the list allows decides, and only when it allows one way."""
     total = sum(known.values())
 
+    def mute(pieces: list[str]) -> bool:
+        return bool(ENDS_VOWEL) and any(len(piece) > 1 and _mute(piece) for piece in pieces)
+
     def two(pieces: list[str], short: bool) -> bool:
         small = [piece for piece in pieces if len(piece) < ENDS[1]]
         if any(known.get(piece, 0) < ENDS[0] for piece in pieces) or bool(small) != short:
@@ -692,16 +786,19 @@ def _cuts(read: str, known: dict[str, int], fits: bool = False) -> list[int]:
         ways = [list(cuts) for cuts in itertools.combinations(range(1, len(read)), count - 1)
                 if allowed([read[first:last] for first, last in zip((0,) + cuts, cuts + (len(read),))])]
         if ways:
-            return ways[0] if len(ways) == 1 else []
+            # (A way with a piece that holds no vowel counts as a way and is not taken: ENDS_VOWEL only takes cuts away.)
+            return ways[0] if len(ways) == 1 and not mute([read[first:last] for first, last in
+                                                           zip([0, *ways[0]], [*ways[0], len(read)])]) else []
     return []
 
 
-def _ends(syllables: list[dict], known: dict[str, int], fits: bool = False) -> list[dict]:
+def _ends(syllables: list[dict], known: dict[str, int], fits: bool = False, carried: str = '') -> list[dict]:
     """Sets where the words end by the list of words. Tesseract reads the line of a held syllable as a hyphen
     ('Thy-church'), it reads two words that stand close as one ('thelord'), and it misses a hyphen here and there
     ('re joice'). A word that the list does not hold is parted at the one place, at a hyphen or between two letters,
     where the list holds the words on both sides, or (`fits`: on a page in the list's language) at two places ('mercyonus'). Two words in a row are joined where the list holds them as one
-    word and does not hold one of them alone."""
+    word and does not hold one of them alone. `carried`: the letters of the word that the row before leaves open (see
+    ENDS_CARRIED)."""
     found: list[dict] = []
     word: list[dict] = []
     for number, syllable in enumerate(syllables):
@@ -712,7 +809,8 @@ def _ends(syllables: list[dict], known: dict[str, int], fits: bool = False) -> l
         read = ''.join(part['text'][at] for part, at in places).lower()
         label = LABEL and number + 1 == len(word) and len(word) == 1 and word[0]['text'].rstrip().endswith(':') \
             and word[0]['text'][:1].isupper()
-        for at in reversed(_cuts(read, known, fits) if known.get(read, 0) < ENDS[0] and not label else []):
+        going = bool(ENDS_CARRIED and carried and not found and known.get(carried + read, 0) >= ENDS[0])
+        for at in reversed(_cuts(read, known, fits) if known.get(read, 0) < ENDS[0] and not label and not going else []):
             part, place = places[at]
             before = places[at - 1][0]
             if before is not part:
@@ -751,6 +849,35 @@ def _odd(word: str, known: dict[str, int]) -> int:
                                     for at in range(len(text) - 2)), max(known.values(), default=0)]
     text = '^' + word + '$'
     return sum(text[at:at + 3] not in _RUNS[1] for at in range(len(text) - 2))
+
+
+def _mend_twin(syllables: list[dict], known: dict[str, int], mended: list | None = None) -> list[dict]:
+    """Mends a word that the list does not hold where two letters that touch were read as one (see MEND_TWIN): the
+    word becomes the one word of the list that has the two letters at one such place. `mended` takes each word that
+    was mended, as it was read."""
+    found: list[dict] = []
+    word: list[dict] = []
+    for number, syllable in enumerate(syllables):
+        word.append(dict(syllable))
+        if syllable['join'] and number + 1 < len(syllables):
+            continue
+        places = [(part, at) for part in word for at, sign in enumerate(part['text']) if sign.isalpha()]
+        read = ''.join(part['text'][at] for part, at in places).lower()
+        found.extend(word)
+        word = []
+        if len(read) < 3 or read in known:
+            continue
+        meant = {(at, two) for one, two in MEND_TWIN for at in range(len(read))
+                 if read.startswith(one, at) and known.get(read[:at] + two + read[at + len(one):], 0) >= MEND[1]}
+        if len(meant) != 1:
+            continue
+        (at, two), = meant
+        part, place = places[at]
+        text = part['text']
+        part['text'] = text[:place] + (two.upper() if text[place].isupper() else two) + text[place + 1:]
+        if mended is not None:
+            mended.append(read)
+    return found
 
 
 def _mend_pair(syllables: list[dict], known: dict[str, int], mended: list | None = None, carried: str = '') -> list[dict]:
@@ -837,6 +964,11 @@ def _stray_before(row: list[dict], known: dict[str, int], carried: str) -> list[
     return row
 
 
+def _begins(known: dict[str, int], letters: str) -> int:
+    """How often the list of words parts a word after these letters (see MEND_HEAD)."""
+    return (getattr(known, 'heads', None) or {}).get(letters, 0)
+
+
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
           agreed: frozenset[str] | set[str] = frozenset(), alike=None, carried: str = '') -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
@@ -895,6 +1027,8 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
         (new, (at, how)), = meant.items()
         if MEND_OPEN and parts[-1]['join'] and how == 'more' and at == len(read):
             continue
+        if MEND_HEAD and parts[-1]['join'] and _begins(known, read) >= max(1, _begins(known, new)):
+            continue              # the word goes on in the next row, and the list parts a word so
         last = at >= len(read) - 1 + (how == 'more')
         if MEND_S and last and ((how == 'less' and read[-1] == 's') or (how == 'more' and new[-1] == 's')):
             continue
@@ -1088,6 +1222,83 @@ def _no_solid(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
     return found
 
 
+def _bow_from(line: np.ndarray, middle: np.ndarray, high: float, through: int | None = None) -> tuple[int, int] | None:
+    """The first bow in the columns of a piece of a row (see BOW), from its first column to the column after its last:
+    `line` says which columns hold one thin stroke, `middle` its row there. `through`: only a bow that runs through
+    this column counts."""
+    start = None
+    for column, lined in enumerate([*line, False]):
+        # One stroke: its middle moves little from a column to the next (a hyphen beside the end of a slur is not).
+        goes = lined and (start is None or abs(float(middle[column] - middle[column - 1])) <= BOW[6] * high)
+        if start is not None and not goes:
+            rows = middle[start:column]
+            if column - start >= BOW[0] * high and float(rows.max() - rows.min()) >= BOW[2] * high \
+                    and (through is None or start <= through < column):
+                return start, column
+            start = None
+        if lined and start is None:
+            start = column
+    return None
+
+
+def _no_bow(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
+            known: dict[str, int]) -> list[tuple[str, float, float, float]]:
+    """The words of a row without what was read from a bow (see BOW): a word without the letters that were read from
+    a bow behind it, and no hyphen that is a piece of a bow."""
+    high = band['bottom'] - band['top']
+    wide = [(right - left) / len(text) for text, left, right, sure in words if sure >= BOW[3] and len(text) > 1]
+    if high <= 0 or not wide:
+        return words
+    usual = float(np.median(wide))
+    room = int(BOW[5] * high)
+    upper, lower = max(0, int(band['top']) - room), min(grey.shape[0], int(band['bottom']) + room + 1)
+
+    def strokes(first: int, last: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The columns that hold one thin stroke, the row of the ink's middle in each column, the columns with ink."""
+        ink = (grey[upper:lower, first:last] < 128).astype(np.int8)
+        thick = ink.sum(axis=0)
+        count = (np.diff(np.pad(ink, ((1, 0), (0, 0))), axis=0) > 0).sum(axis=0)
+        return ((count == 1) & (thick <= BOW[1] * high),
+                (ink * np.arange(ink.shape[0])[:, None]).sum(axis=0) / np.maximum(1, thick), thick > 0)
+
+    found = []
+    for text, left, right, sure in words:
+        first, last = max(0, round(left)), min(grey.shape[1], round(right) + 1)
+        if text and all(sign in JOINS for sign in text):
+            # A hyphen is short and level. A stroke that goes on past it and rises or falls is a bow. The dash is the
+            # bow where its box holds no other ink: a true hyphen that a slur comes close to stands beside the bow.
+            begin = max(0, first - int(high))
+            line, middle, inked = strokes(begin, min(grey.shape[1], last + int(high)))
+            bow = _bow_from(line, middle, high, (first + last) // 2 - begin)
+            other = inked[first - begin:last - begin].copy()
+            if bow is not None:
+                other[max(0, bow[0] - (first - begin)):max(0, bow[1] - (first - begin))] = False
+            if bow is None or other.any():
+                found.append((text, left, right, sure))
+            continue
+        found.append((text, left, right, sure))
+        places = [at for at, sign in enumerate(text) if sign.isalpha()]
+        read = ''.join(text[at] for at in places).lower()
+        if len(read) < 2 or sure >= BOW[3] or read in known or last - first < BOW[0] * high:
+            continue
+        line, middle, _ = strokes(first, last)
+        bow = _bow_from(line, middle, high)
+        if bow is None or bow[0] < 1 or int((~line[bow[0]:]).sum()) >= usual:
+            continue          # (letters stand after the bow too: two words that were read as one)
+        cut = bow[0]
+        letters = grey[int(band['top']):int(band['bottom']) + 1, first:first + cut] < 128
+        if letters.any(axis=1).mean() < BOW[7]:
+            continue          # (no letters of the row before the bow: stray ink that was read as a short word)
+        count = cut / max(1.0, usual)
+        heads = [number for number in range(1, len(read))
+                 if abs(number - count) <= BOW[4] and known.get(read[:number], 0) >= MEND[1]
+                 and (read[:number] in ('a', 'i', 'o') if number == 1 else not _mute(read[:number]))]
+        if len(heads) != 1:
+            continue
+        found[-1] = (text[:places[heads[0] - 1] + 1], left, float(first + cut), sure)
+    return found
+
+
 def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
     """Whether a line of text is a row of words: how sure Tesseract is of its letters, each letter counted once."""
     if ROW is None:
@@ -1125,19 +1336,23 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
         letters = [pair for pair, stays in zip(letters, keep) if stays]
     if LONE_I:
         words = _lone_i(words, grey, band)
+    if BOW and known and mend:
+        words = _no_bow(words, grey, band, known)
     if CUT:
-        words = _cut_wide(words, grey, band)
+        words = _cut_wide(words, grey, band, bool(known) and mend)
     row = _syllables(words, known, band['bottom'] - band['top'], band.get('carried', '') if MEND_BEFORE else '')
     for syllable in row:
         syllable['read'] = syllable['text']         # the piece as it was read (see 'cut' in _parted)
     if not known:
         return row, sure, False
     if ENDS:
-        row = _ends(row, known, mend)
+        row = _ends(row, known, mend, band.get('carried', '') if MEND_BEFORE else '')
     if MEND_REST_STRAY and MEND_BEFORE and mend and band.get('carried'):
         row = _stray_before(row, known, band['carried'])
     mended: list[str] = []
     if MEND and mend and mending:
+        if MEND_TWIN:
+            row = _mend_twin(row, known, mended)
         if MEND_PAIR:
             row = _mend_pair(row, known, mended, band.get('carried', '') if MEND_BEFORE else '')
         row = _mend(row, known, mended, agreed, alike, band.get('carried', ''))
@@ -1228,12 +1443,13 @@ def _other_size(row: list[dict], others: list[list[dict]], known: dict[str, int]
         choice = None
         if text and text not in known:
             left, right = word[0]['x0'], word[-1]['x1']
+            begins = _begins(known, text) if MEND_HEAD and word[-1]['join'] else 0    # the word goes on in the next row
             for other in others:
                 for there in _read_words(other):
                     new = letters(there)
                     first, last = there[0]['x0'], there[-1]['x1']
                     if known.get(new, 0) >= least and len(new) >= 2 and abs(len(new) - len(text)) <= 1 \
-                            and text != new + 's' \
+                            and text != new + 's' and not 0 < begins >= _begins(known, new) \
                             and min(right, last) - max(left, first) >= share * max(right - left, last - first, 1e-6) \
                             and (choice is None or known[new] > known[letters(choice)]):
                         choice = there
@@ -1332,9 +1548,10 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         # The words that every reading of the row holds with the same letters (see MEND_ALIKE), read when first asked.
         if not same:
             sizes = (HIGH,) + tuple(AGAIN or ()) + (tuple(size for size in more if size > 0) if MEND_ALIKE > 1 else ())
+            bare = (lambda words: _no_bow(words, grey, band, known)) if BOW and known and mend else (lambda words: words)
             same.append(set.intersection(*(
                 {''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
-                 for word in _read_words(_syllables(read(size), known, band['bottom'] - band['top']))} for size in sizes)))
+                 for word in _read_words(_syllables(bare(read(size)), known, band['bottom'] - band['top']))} for size in sizes)))
         return same[0]
 
     for size in (HIGH,) + tuple(AGAIN or ()) + tuple(more):
