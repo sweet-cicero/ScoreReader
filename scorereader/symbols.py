@@ -3616,6 +3616,15 @@ LEAN_END = 0.4             # a stem that leans toward its thin head: the head's 
 #                            that end lies at most this many staff spaces from the stem's middle column (0: off)
 THIN_PAIR = 1.3            # two thin heads, one over the other: the stem of the one runs on into the other, so its own
                            # head lies up to this many staff spaces before the stroke's end (0: off)
+LOST_OWN = 0.35            # a stroke is another head's own stem where it stands within this many staff spaces of that stem's
+#                            middle column and leaves that head the same way. The column that a stem is stored with is
+#                            that of its far end, and a stem that was followed into a beam or that leans ends beside its
+#                            own stroke there: the stroke then looked like a stem that no head has, and the head past
+#                            the stem's own head got it as the stem that the copy cut from it (two voices a third apart
+#                            in one column: the upper head with its stem up was read for the lower voice too, with the
+#                            stem down of the head under it). Only for a head that has a stem: a mark with no stem at
+#                            all is the next head of a chord on that stem as often as not, and where the stroke has a
+#                            head at each of its ends (a flag that was read as a head) the stem says nothing. (0: off)
 
 
 def _across(heads: list[dict], x: float, top: float, bottom: float, space: float) -> bool:
@@ -3638,6 +3647,9 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         return 0
     space = layers['space']
     used = [(stem['x'], min(head['cy'], stem['end']), max(head['cy'], stem['end'])) for head in heads for stem in head['stems']]
+    # The stems whose middle column is not the column that they are stored with (LOST_OWN).
+    own = [(stem['mid'], min(head['cy'], stem['end']), max(head['cy'], stem['end']), stem['direction'])
+           for head in heads for stem in head['stems'] if stem.get('mid') is not None and stem['mid'] != stem['x']] if LOST_OWN else []
     strokes = [stroke for stroke in layers['strokes'] if stroke['slim'] and stroke['y1'] - stroke['y0'] + 1 >= THIN_STEM * space]
     given = 0
     for stroke in strokes:
@@ -3680,6 +3692,10 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     far = abs(aside) + max(0.0, apart)
                     if best is None or far < best[0]:
                         best = (far, head, direction, end)
+        if best and best[1]['stems'] and any(abs(x - other) <= LOST_OWN * space and first - 0.5 * space <= bottom
+                                             and top <= last + 0.5 * space and way == best[2] for other, first, last, way in own):
+            stroke['owned'] = True                     # the stem of the head between: thin_heads() leaves it too
+            continue
         if best:
             _, head, direction, end = best
             if not any(head is other for other in heads):
@@ -4222,6 +4238,8 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             continue
         if _across(heads, x, top, bottom, space):
             continue
+        if stroke.get('owned'):
+            continue                                   # another head's own stem (see LOST_OWN)
         # A sharp and a natural have two upright strokes side by side.
         if any(other is not stroke and abs(other['x'] - x) <= 0.9 * space
                and min(other['y1'], bottom) - max(other['y0'], top) >= 0.5 * min(other['y1'] - other['y0'], bottom - top)

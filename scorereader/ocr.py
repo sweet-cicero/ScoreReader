@@ -172,6 +172,15 @@ MEND_BEFORE = 2          # the first word of a row is the rest of the word that 
 #                          its place ('Moth-' and 'were', another reading begins 'er'). A piece of one letter is a
 #                          stray stroke as often as a letter: 'has-' and 'v' is no 'hast'. The row before is the
 #                          first row under the staff of the same part in the system before. 0: off
+MEND_FRAME = (3, 2, 1)   # the first word of a row ends the word that the row before leaves open, and the syllable
+#                          between was misread ('Al-le-', and the next row begins 'fas-ia': the seam of a scan cut the
+#                          letters of the row in half): the list holds one word only that begins with the open piece
+#                          (this many letters or more) and ends with the last syllable of the first word (the second
+#                          number of letters or more), with as many letters between as were read, give or take the
+#                          third number, and Tesseract is not sure of the syllable between. The syllable is written
+#                          in capitals where its row was read in capitals. (Two rows of LitChoir's scan pages and
+#                          none of the fresh set: the row at the seam, and 'FOR-' before 'E — VER-MORE', where the
+#                          lone E is lost in its line and a letter added to 'VER' had given the same word.) None: off
 MEND_PAGE = True         # the row before the first row of a page is the last row of the page before it in the hymn:
 #                          a word that the end of a page leaves open goes on over the page ('Al-le-', and the next page
 #                          begins 'lu-ia'), as it does from system to system (MEND_BEFORE). False: a page begins anew
@@ -993,6 +1002,22 @@ def _begins(known: dict[str, int], letters: str) -> int:
     return (getattr(known, 'heads', None) or {}).get(letters, 0)
 
 
+def _framed(carried: str, parts: list[dict], known: dict[str, int]) -> str | None:
+    """The letters between the piece that the row before leaves open and the last syllable of the first word of a row,
+    where the word has two syllables, the list holds one word only in that frame and Tesseract is not sure of the
+    first syllable (MEND_FRAME)."""
+    if len(parts) != 2 or parts[-1]['join'] or parts[0].get('sure', 0.0) >= MEND[2]:
+        return None
+    read, tail = (''.join(sign for sign in part['text'].lower() if sign.isalpha()) for part in parts)
+    if len(carried) < MEND_FRAME[0] or len(tail) < MEND_FRAME[1] or not read:
+        return None
+    meant = {word[len(carried):len(word) - len(tail)] for word, count in known.items()
+             if count >= MEND[1] and len(word) > len(carried) + len(tail) and word.startswith(carried) and word.endswith(tail)
+             and abs(len(word) - len(carried) - len(tail) - len(read)) <= MEND_FRAME[2]}
+    between = meant.pop() if len(meant) == 1 else None
+    return between if between != read else None        # read as the list has it: nothing to mend
+
+
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
           agreed: frozenset[str] | set[str] = frozenset(), alike=None, carried: str = '') -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
@@ -1028,6 +1053,18 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
                 part, place = places[at]
                 text = part['text']
                 part['text'] = text[:place] + (new[at].upper() if text[place].isupper() else new[at]) + text[place + 1:]
+                if mended is not None:
+                    mended.append(read)
+                continue
+            between = _framed(carried, parts, known) if MEND_FRAME else None
+            if between:
+                text = parts[0]['text']
+                first = next(at for at, sign in enumerate(text) if sign.isalpha())
+                last = max(at for at, sign in enumerate(text) if sign.isalpha())
+                capitals = sum(sign.isupper() for sign in text)       # a row in capitals stays in capitals
+                between = between.upper() if capitals > max(1, sum(sign.islower() for sign in text)) \
+                    else between.capitalize() if text[first].isupper() else between
+                parts[0]['text'] = text[:first] + between + text[last + 1:]
                 if mended is not None:
                     mended.append(read)
                 continue

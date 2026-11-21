@@ -26,12 +26,12 @@ must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
 scans; 95 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,092 of 22,649, counted by the page;
-21,960 of 22,605 as typed; 41 of the 78 counted scores at 99 %; 39 scores read every printed note, 44 every
-syllable, 33 both, 41 have no note that is not there, 33 are whole in all three; 552 printed notes and 170 syllables
-are lacking and 213 notes are read that are not there, each printed head counted once since round 78: 402 by the
+21,960 of 22,605 as typed; 41 of the 78 counted scores at 99 %; 39 scores read every printed note, 46 every
+syllable, 35 both, 41 have no note that is not there, 34 are whole in all three; 552 printed notes and 168 syllables
+are lacking and 212 notes are read that are not there, each printed head counted once since round 78: 401 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.3 % with Tesseract, its larger
-files and a list of words (6,085 of 6,255, counted by the page; 6,021 of 6,260 as typed; 95.3 % of the whole words; 45 scores at 99 % of the syllables);
-89.2 % of all syllables with Tesseract (88.3 % on scans), and 90.3 % on the kit (6234 of 6901).
+files and a list of words (6,087 of 6,255, counted by the page; 6,023 of 6,260 as typed; 95.3 % of the whole words; 47 scores at 99 % of the syllables);
+89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.3 % on the kit (6234 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1311,6 +1311,41 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   Read the place of an insertion once it is made.
 - A background job is done when its own last line stands in its log. A date that the look at the log prints itself
   is not the job's: a second census was started over the first one, which was still running.
+- The column that a stem is stored with is that of its far end. A stem that was followed into its beam, or that leans,
+  ends beside its own stroke there, and by that column the stroke looked like a stem that no head has: the head past
+  the stem's own head got it as a second stem, and was read for the other voice too (`symbols.LOST_OWN`). The first
+  form (no stroke at the middle column of a stem is a lost stem) was wrong in three ways that its census of 102
+  strokes and its pages showed. A stroke that one finder refuses is handed to the next one: `thin_heads` read new
+  heads from three of them, so the refused stroke is marked. A mark with no stem past the end of a stem is the next
+  head of a chord on that stem (2 notes lost on two scans of one print). And where a stroke has a head at each of
+  its ends (a flag that was read as a head) the stem does not tell which one is the head. The rule takes the one
+  shape of its case: a head that has a stem of its own, and a stroke that leaves the head between the same way.
+- A head that is read for both voices costs nothing in the count, which splits a staff by the top and the bottom
+  note of each column: 84 such copies went on 35 pages, and the count moved by 4 notes, where a copy had taken the
+  beam of the other voice's stem. A rule for the written music is judged by its pages set beside each other note
+  by note, sorted by kind (a copy in another voice that is gone, a note that is gone, a new note, a changed length;
+  a script outside git, with the wide test).
+- The second note of a tie sings no new syllable. The words of a column were set under its top note, and where
+  that note is the second note of a tie, the count joined the tie and the syllable went with it
+  (`lyrics.TIED_NOT`: the words are those of a voice that strikes its note there). Such a rule cannot lose in the
+  count for the voice that holds; look at each word that moves on the page.
+- The seam of two scans that were joined into one page cuts the letters of a row in half, and no reading of the
+  row holds the word. The word that the row before leaves open frames it: the list holds one word only that begins
+  with the open piece and ends with the last syllable that was read (`ocr.MEND_FRAME`, a rule for one case). The
+  tools that show the readings of one row do not hand the row the open word of the row before; the full replay
+  does. And a pass of the words on a plan of pages does not read the page before a planned page: a first syllable
+  that such a pass loses there is the pass's, not the rule's.
+- The replay of the words compares letters. A rule that acts where an older step had reached the same letters
+  shows no row there, and the full pass showed one as a word whose capitals changed ("ev-ER" to "ev-er": the frame
+  of "FOR-" and "MORE" gives the "ever" that a letter added to "VER" had given). A spy in the rule's own function,
+  in the replay, lists every row where it acts; and the two full passes are compared file by file, also where no
+  count moves. A syllable that a rule writes keeps the capitals of its row.
+- Black ink alone is no second look for a word under a loop in pencil: where the pencil crosses the letters and
+  where the hand pressed, it is as black as the print (the "in" of one clean score reads "im" and "Ir}" so), and
+  the list's pairs hold no phrase that only the hymn itself has. No rule.
+- `thin_heads` asks 4,395 strokes of LitChoir's scan pages that stand at the middle column of a stem that a head
+  has, and 416 of them have a head that was read from a stem beside them. The wider form of the stem rule (such a
+  stroke is that stem for every finder) needs a census of its own with the scorer's verdicts before it is tried.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
