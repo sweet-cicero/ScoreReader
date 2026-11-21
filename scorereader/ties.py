@@ -114,6 +114,39 @@ TIE_BREAK_LINE = 0.5     # the long bow over the end of a line may begin in a st
 #                         staff. Ink that goes on past the lines is no bow that a line hid (a pen lay on one page).
 
 
+TIE_SOFT = (0.1, 1.0, 0.3, 0.3)   # a bow in pencil between two printed heads is no tie (None: off). Of the columns where the
+#                         bow's ink shows and no staff line lies within 3 px, under the first share hold black ink at the
+#                         bow (layers.BLACK; 2 px over and under its row), and these columns are the second number of staff
+#                         spaces or more. The two heads are print: black in the third share of their ink or more, and so
+#                         are the lines of the staff along the bow, in the last share of their ink or more. (Of the 298
+#                         bows that LitChoir's scan pages read a tie from, one is such a bow, a phrase mark in pencil
+#                         with black in 0.07 of its columns; the others hold black in 0.4 or more, but for the ties of
+#                         one grey copy, whose staff lines hold no black either. A rule for one case.)
+
+
+def _soft_bow(layers: dict, way: dict, x: int, one: dict, two: dict) -> bool:
+    """Is the bow `way`, followed from the column x, a line in pencil between two printed heads (TIE_SOFT)?"""
+    ink, black, lines = layers['ink'], layers['black'], layers['lines']
+    height = ink.shape[0]
+    clear = dark = 0
+    for number, (row, shown) in enumerate(zip(way['rows'], way['shown'])):
+        row, column = int(round(row)), x + number
+        if not shown or column >= ink.shape[1] or lines[max(0, row - 3):min(height, row + 4), column].any():
+            continue
+        clear += 1
+        dark += bool(black[max(0, row - 2):min(height, row + 3), column].any())
+    staff = layers['staves'][one['staff']]
+    if clear < TIE_SOFT[1] * staff['space'] or dark >= TIE_SOFT[0] * clear:
+        return False
+    for head in (one, two):
+        y0, x0, y1, x1 = max(0, int(head['y0'])), max(0, int(head['x0'])), int(head['y1']) + 1, int(head['x1']) + 1
+        if float(black[y0:y1, x0:x1].sum()) < TIE_SOFT[2] * float(ink[y0:y1, x0:x1].sum()):
+            return False
+    top, bottom = max(0, int(staff['rows'][0]) - 3), min(height, int(staff['rows'][4]) + 4)
+    line = lines[top:bottom, x:x + len(way['rows'])] > 0
+    return float(black[top:bottom, x:x + len(way['rows'])][line].sum()) >= TIE_SOFT[3] * max(1, int(line.sum()))
+
+
 def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, space: float,
             thick: float | None = None) -> dict | None:
     """Follows thin ink from (x, y) toward the column `last`, to where it breaks off: {'rows': the bow's row in each
@@ -253,17 +286,20 @@ def _dips(way: dict, lines: np.ndarray, x: int, space: float) -> bool:
 
 
 def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float,
-         core: np.ndarray | None = None, swell: np.ndarray | None = None) -> bool:
-    """Is there a bow from the head `one` to the head `two`? `core` is the thin ink for the flat bow (TIE_FLAT)."""
-    if _way(thin, lines, one, two, space, False, None, swell):
+         core: np.ndarray | None = None, swell: np.ndarray | None = None, layers: dict | None = None) -> bool:
+    """Is there a bow from the head `one` to the head `two`? `core` is the thin ink for the flat bow (TIE_FLAT).
+    With `layers`, a bow in pencil is no bow (TIE_SOFT)."""
+    if _way(thin, lines, one, two, space, False, None, swell, layers):
         return True
-    return bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True)
+    return bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True, None, None, layers)
 
 
 def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float, low: bool,
-         thick: float | None = None, swell: np.ndarray | None = None) -> bool:
+         thick: float | None = None, swell: np.ndarray | None = None, layers: dict | None = None) -> bool:
     """Is there a way of thin ink from the head `one` to the head `two` that is a bow? `low`: a flat bow counts.
-    `thick`: how thick the bow may be, in staff spaces (TIE_THIN when None)."""
+    `thick`: how thick the bow may be, in staff spaces (TIE_THIN when None). With `layers`, a way in pencil is
+    left out (TIE_SOFT)."""
+    pencil = (lambda way, column: _soft_bow(layers, way, column, one, two)) if TIE_SOFT and layers is not None else (lambda way, column: False)
     first, last = int(one['x1']) + 1, int(two['x0']) - 1
     if last - first < TIE_LEAST * space:
         return False
@@ -305,14 +341,14 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                 continue
             if way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
                 if TIE_APART and not low and abs(one['cy'] - two['cy']) <= TIE_APART[4] * space \
-                        and _apart(way, column, first, last, space):
+                        and _apart(way, column, first, last, space) and not pencil(way, column):
                     return True
                 if swell is not None and not low and way['seen'] >= TIE_SWELL[1] * count and count >= TIE_SWELL[2] * space:
                     # A bow that swells: the same way in ink that may be fatter.
                     fat = _follow(swell, lines, column, float(row), last, space, TIE_SWELL[0])
                     if fat is not None and fat['end'] >= last - side and abs(fat['rows'][-1] - two['cy']) <= high \
                             and fat['seen'] + fat['hidden'] >= TIE_SEEN[1] * len(fat['rows']) \
-                            and fat['seen'] >= TIE_SEEN[0] * len(fat['rows']) and _is_bow(fat, space):
+                            and fat['seen'] >= TIE_SEEN[0] * len(fat['rows']) and _is_bow(fat, space) and not pencil(fat, column):
                         return True
                 continue
             if way['seen'] < TIE_SEEN[0] * count and not (TIE_DIP and way['seen'] >= TIE_DIP[0] * count
@@ -320,7 +356,7 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                                                          and _dips(way, lines, column, space)):
                 continue
             flat = low and min(abs(way['rows'][0] - one['cy']), abs(way['rows'][-1] - two['cy'])) >= TIE_FLAT[2] * space
-            if not _is_bow(way, space, flat):
+            if not _is_bow(way, space, flat) or pencil(way, column):
                 continue
             return True
     return False
@@ -597,7 +633,7 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
                     break
             if two is None:
                 continue
-            tied = _bow(thin, lines, one, two, space, core, swell) or bool(TIE_LINE and _in_line(layers, one, two, space)) \
+            tied = _bow(thin, lines, one, two, space, core, swell, layers) or bool(TIE_LINE and _in_line(layers, one, two, space)) \
                 or (bold is not None and _way(bold, lines, one, two, space, False, TIE_BOLD))
             if tied:
                 one['tie_start'] = True
@@ -607,7 +643,7 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
                     for other in own[number + 1:]:
                         if other is not two and round(other['place']) == place and voices[id(other)] != voices[id(two)] \
                                 and 0 <= other['x0'] - two['x1'] <= TIE_BOTH * space and not other.get('tie_stop'):
-                            if _bow(thin, lines, one, other, space, core, swell):
+                            if _bow(thin, lines, one, other, space, core, swell, layers):
                                 other['tie_stop'] = True
                                 found.append((one, other))
                             break
