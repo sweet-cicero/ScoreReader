@@ -22,7 +22,7 @@ from . import music as _music
 from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
+from .symbols import arc_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
     ring_heads, slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_strokes, without_flag_trails, without_flat_cells, without_clip_cells, without_grey_marks, without_f_marks, without_line_marks, without_p_bowls, without_beam_pieces, without_bow_middles, without_stem_end_marks, without_stem_meets, without_stem_spans, without_joints, without_upright_holes, chord_wholes, dotless_wholes
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -275,6 +275,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = [head for head in heads if id(head) not in gone] + from_holes
     # A head read from its stem at one arc of an open ring is the whole ring, where no inside was read there.
     heads = ring_heads(heads)
+    # A whole note in the space next to the staff that was left as two bold arcs.
+    heads += arc_wholes(layers, heads, ends)
     # The numbers of a new time signature are no notes.
     times = mid_signs(layers, ends, bars) if TIMES else {}
     if TIMES:

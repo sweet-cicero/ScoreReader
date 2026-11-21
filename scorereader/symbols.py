@@ -4476,6 +4476,123 @@ def ring_heads(heads: list[dict]) -> list[dict]:
 
 
 # ----------------------------------------------------------------------------------------------------------------
+# A whole note in the space next to the staff whose thin rim the scan lost
+
+ARC_WHOLE = (1.4, 1.9, 0.9, 1.25)   # one print draws the rim of a whole note bold at its two sides and as a hairline over
+#   and under them. In the space next to the staff, the staff's outer line hides one hairline and the scan lost the
+#   other: two bold arcs are left side by side, they close no paper (or the break is closed and the open hole has no
+#   stem), and no head was read. The two arcs are a whole note where their whole shape is that of the oval: together
+#   this wide (the first two numbers) and this high (the next two), in staff spaces of their staff, hanging on the
+#   outer line (ARC_NEAR), narrowing to their far end with their tips turned to each other (ARC_FAR), and alone in
+#   paper (ARC_ALONE). A rule for one print: of the 142 such pairs at a staff's outer line on LitChoir's scan pages,
+#   three are whole notes, all of one hymn and all three lacking before, and only those three pass. The others are
+#   two letters of the words that stand against the staff: the nearest pair (the letters I and A, alone under a
+#   staff) fails only the outline, which is widest at its far end (0.94 of the widest row against 0.45 at most),
+#   and every other pair fails two tests or more. None: off
+ARC_PIECE = (0.25, 1.1, 0.6, 1.5, 0.35, 0.05, 0.9, 0.6)   # each arc is this wide (the first two numbers) and this high (the
+#   next two), in staff spaces of the page, and fills this share of its box; the paper between their boxes is this
+#   wide (the next two), and they stand side by side in this share of the rows of the lower one
+ARC_NEAR = (0.2, 0.1, 0.2, 0.8)     # the pair begins at the staff's outer line: at most the first number of staff spaces
+#   into the line and the second away from it; within the third number of staff spaces there, the line closes this
+#   share of the columns between the arcs
+ARC_FAR = (0.6, 0.2, 0.4, 0.2)      # the outline of the pair in the last fifth of its rows is at most this share of its
+#   widest row, the two arcs end at most this many staff spaces apart in height, and within the third number of staff
+#   spaces past them at most this share of the columns between the arcs holds ink; and their tips stand closer than
+#   the paper between them is wide in the middle third of its rows
+ARC_ALONE = (0.7, 0.02)             # within this many staff spaces at each side, in the rows of the pair, and past its far
+#   end, in its columns, there is at most this much ink that is no staff line, in staff spaces squared
+
+
+def arc_wholes(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]:
+    """The whole notes that were left as two bold arcs at the outer line of a staff (ARC_WHOLE): hollow heads with
+    no stem, in the space next to the staff. No head was read where they stand."""
+    if not ARC_WHOLE:
+        return []
+    space = layers['space']
+    bare, ink = (layers['bare'] > 0).astype(np.uint8), layers['ink']
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(bare, connectivity=8)
+    arcs = []
+    for index in range(1, count):
+        x, y, wide, high, area = (int(value) for value in stats[index])
+        if ARC_PIECE[0] * space <= wide <= ARC_PIECE[1] * space \
+                and ARC_PIECE[2] * space <= high <= ARC_PIECE[3] * space and area >= ARC_PIECE[4] * wide * high:
+            arcs.append((x, y, wide, high, index))
+    arcs.sort()
+    out = []
+    for first, left in enumerate(arcs):
+        for right in arcs[first + 1:]:
+            gap = right[0] - (left[0] + left[2])
+            if gap > ARC_PIECE[6] * space:
+                break
+            top, bottom = max(left[1], right[1]), min(left[1] + left[3], right[1] + right[3])
+            if gap < ARC_PIECE[5] * space or bottom - top < ARC_PIECE[7] * min(left[3], right[3]):
+                continue
+            x0, x1 = left[0], right[0] + right[2] - 1
+            y0, y1 = min(left[1], right[1]), max(left[1] + left[3], right[1] + right[3]) - 1
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            staff = _staff_of(layers, cx, cy)
+            if staff is None or cx < ends[staff] + 0.3 * space:
+                continue
+            lines = layers['staves'][staff]
+            own = lines['space']
+            if not (ARC_WHOLE[0] * own <= x1 - x0 + 1 <= ARC_WHOLE[1] * own
+                    and ARC_WHOLE[2] * own <= y1 - y0 + 1 <= ARC_WHOLE[3] * own):
+                continue
+            under = cy > lines['rows'][4]
+            if not under and not cy < lines['rows'][0]:
+                continue
+            touch = (y0 - lines['rows'][4]) / own if under else (lines['rows'][0] - y1) / own
+            if not -ARC_NEAR[0] <= touch <= ARC_NEAR[1]:
+                continue
+            if any(other['x0'] <= x1 and other['x1'] >= x0 and other['y0'] <= y1 and other['y1'] >= y0
+                   for other in heads + out):
+                continue
+            # The rows of the pair from the staff's line to the far end: the paper between the arcs and their outline.
+            one, two = (labels[y0:y1 + 1, x0:x1 + 1] == arc[4] for arc in (left, right))
+            if not under:
+                one, two = one[::-1], two[::-1]
+            paper, outline = [], []
+            for row in range(one.shape[0]):
+                a, b = np.nonzero(one[row])[0], np.nonzero(two[row])[0]
+                if len(a) and len(b):
+                    paper.append(int(b[0] - a[-1] - 1))
+                columns = np.nonzero(one[row] | two[row])[0]
+                outline.append(int(columns[-1] - columns[0] + 1) if len(columns) else 0)
+            if len(paper) < 0.5 * len(outline):
+                continue
+            fifth = max(2, len(outline) // 5)
+            if float(np.mean(outline[-fifth:])) > ARC_FAR[0] * max(outline):
+                continue
+            last = [int(np.nonzero(arc.any(axis=1))[0][-1]) for arc in (one, two)]
+            if abs(last[0] - last[1]) > ARC_FAR[1] * own:
+                continue
+            third = max(1, len(paper) // 3)
+            tips = int(np.nonzero(two[last[1]])[0][0]) - int(np.nonzero(one[last[0]])[0][-1]) - 1
+            if tips >= float(np.mean(paper[third:-third] or paper)):
+                continue
+            # The line closes the paper at the near end, and nothing closes it at the far end.
+            c0, c1 = left[0] + left[2], right[0] - 1
+            near, far = max(2, int(round(ARC_NEAR[2] * own))), int(ARC_FAR[2] * own)
+            closed = ink[max(0, y0 - near):y0 + 2, c0:c1 + 1] if under else ink[y1 - 1:y1 + near + 1, c0:c1 + 1]
+            opened = ink[y1 - 1:y1 + far + 1, c0:c1 + 1] if under else ink[max(0, y0 - far):y0 + 2, c0:c1 + 1]
+            if not closed.size or closed.any(axis=0).mean() < ARC_NEAR[3] \
+                    or (opened.size and opened.any(axis=0).mean() > ARC_FAR[3]):
+                continue
+            # Alone in paper: no letter stands beside the pair, and nothing past its far end.
+            side = int(round(ARC_ALONE[0] * own))
+            past = bare[y1 + 2:y1 + 2 + side, x0:x1 + 1] if under \
+                else bare[max(0, y0 - 1 - side):max(0, y0 - 1), x0:x1 + 1]
+            beside = (bare[y0:y1 + 1, max(0, x0 - side):max(0, x0 - 1)], bare[y0:y1 + 1, x1 + 2:x1 + 1 + side], past)
+            if max(int(part.sum()) for part in beside) > ARC_ALONE[1] * own * own:
+                continue
+            out.append({'x0': x0, 'y0': y0, 'x1': x1, 'y1': y1, 'cx': cx, 'cy': cy, 'staff': staff,
+                        'place': -5.0 if under else 5.0, 'hollow': True,
+                        'hole': sum(paper) / ((x1 - x0 + 1) * (y1 - y0 + 1)), 'stems': [], 'mark': None,
+                        'from_hole': True, 'core': None, 'alt': None, 'ledgers': [], 'arcs': True})
+    return out
+
+
+# ----------------------------------------------------------------------------------------------------------------
 # Lengths: flags, beams and dots
 
 TAIL_ZONE = 1.3      # flags and beams stand in this many staff spaces from the far end of a stem
