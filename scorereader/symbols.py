@@ -762,6 +762,93 @@ def _dash_pair(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: int
     return []
 
 
+DASH_HOLLOW = (1.8, 0.45, 0.85, 1.3, 0.3, 1.9, 2.4, 0.05)   # a half note on a thick ledger dash and a half note on the
+#                     first line of the staff, a third apart, as one piece of ink (a rule for one case, on the print
+#                     of DASH_PAIR). The dash is thick ink and longer than its head, so the rows of the piece are
+#                     widest there, and the valley of the rows lies in the inside of the head on the staff's line,
+#                     which the line cuts into slivers that are no holes: the piece was cut through that head, the
+#                     head on the dash was too wide for a head with its dash, and the pieces of the other were read
+#                     a step low. Such a piece is cut between its dash and the staff's line. The dash: rows whose
+#                     ink goes on for the first number of heads or more without a gap, one run of rows, at most the
+#                     second number of staff spaces thick, from the third to the fourth number of staff spaces
+#                     beside the staff's first line. The piece ends half a head past the dash and half a head past
+#                     the staff's line (within the fifth number of heads), so it is from the sixth to the seventh
+#                     number of heads high; each half shuts in paper (the last number of staff spaces squared or
+#                     more); and the cut by the valley of its rows goes through paper that the half at the staff's
+#                     line shuts in. Of the 111 pieces of LitChoir's scan pages with such a dash beside the staff,
+#                     7 have the two heads' shape (two pairs of whole notes, three pairs that are cut rightly at
+#                     their valley, a sharp before a pair) and one is cut through a head (None: off)
+
+
+def _dash_hollow(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float, blob: int) -> list:
+    """The two hollow heads of a piece of ink that is a head on a thick ledger dash and a head on the first line of
+    the staff, where the valley of its rows lies in a head (DASH_HOLLOW): the head on the dash without the ends of
+    its dash, and the other, each with its place ('line_place'); an empty list when the piece is no such pair."""
+    own_high, own_wide = mask.shape
+    bar, thick, near, far, ends, least, most, paper_least = DASH_HOLLOW
+    if not (least * high <= own_high <= most * high and own_wide >= bar * wide):
+        return []
+    index = _staff_of(layers, x + own_wide / 2, y + own_high / 2)
+    if index is None:
+        return []
+    staff = layers['staves'][index]
+    # The longest run of ink of each row.
+    padded = np.zeros((own_high, own_wide + 2), np.int8)
+    padded[:, 1:-1] = mask
+    runs = np.zeros(own_high, int)
+    for row in range(own_high):
+        edges = np.flatnonzero(np.diff(padded[row]))
+        runs[row] = int((edges[1::2] - edges[::2]).max()) if len(edges) else 0
+    rows = np.nonzero(runs >= bar * wide)[0]
+    if len(rows) == 0 or rows[-1] - rows[0] + 1 != len(rows) or len(rows) > thick * staff['space']:
+        return []
+    dash = y + float(rows.mean())
+    half = high / 2
+    for above in (True, False):
+        edge = staff['rows'][0] if above else staff['rows'][-1]
+        gap = (edge - dash) if above else (dash - edge)
+        if not near * staff['space'] <= gap <= far * staff['space']:
+            continue
+        outer, inner = (y, y + own_high - 1) if above else (y + own_high - 1, y)
+        if abs(outer - (dash - half if above else dash + half)) > ends * high \
+                or abs(inner - (edge + half if above else edge - half)) > ends * high:
+            continue
+        cut = int(round((dash + edge) / 2)) - y
+        if not 0 < cut < own_high:
+            continue
+        paper = (layers['ink'][y:y + own_high, x:x + own_wide] == 0).astype(np.uint8)
+        number, labels, _, _ = cv2.connectedComponentsWithStats(paper, connectivity=4)
+        rim = set(labels[0]) | set(labels[-1]) | set(labels[:, 0]) | set(labels[:, -1])
+        shut = np.isin(labels, [label for label in range(1, number) if label not in rim])
+        if min(shut[:cut].sum(), shut[cut:].sum()) < paper_least * staff['space'] * staff['space']:
+            continue
+        first, last = (cut, own_high) if above else (0, cut)          # the rows of the head on the staff's line
+        slivers = shut & ~holes
+        if not any(first <= row < last and slivers[max(0, row - 1):row + 2].any()
+                   for row, _ in _cut_rows(mask, holes, layers['space'])[1:]):
+            continue
+        on_dash, on_line = np.zeros_like(mask), np.zeros_like(mask)
+        on_line[first:last] = mask[first:last]
+        if above:
+            on_dash[:cut] = mask[:cut]
+        else:
+            on_dash[cut:] = mask[cut:]
+        # The head on the dash without the ends of its dash: the columns that hold most of its ink.
+        columns = on_dash.sum(axis=0)
+        body = np.nonzero(columns >= 0.6 * columns.max())[0]
+        on_dash[:, :body[0]] = False
+        on_dash[:, body[-1] + 1:] = False
+        pair = [_mark(on_dash, holes, x, y, blob), _mark(on_line, holes, x, y, blob)]
+        if not all(pair):
+            continue
+        pair[0]['line_place'], pair[1]['line_place'] = (6.0, 4.0) if above else (-6.0, -4.0)
+        pair[0]['dash'] = dash
+        for part in pair:
+            part['pair_box'] = (x, y, x + own_wide - 1, y + own_high - 1)
+        return pair if above else pair[::-1]
+    return []
+
+
 def _pair_at_stem(layers: dict, mask: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float,
                   blob: int) -> list:
     """The two heads of a piece of ink that a stem cuts into a higher part at the left and a lower part at the right
@@ -992,6 +1079,17 @@ def thick_marks(layers: dict) -> list[dict]:
         for index, made in again:
             pieces = [piece for piece in pieces if piece[0]['blob'] != index] + made
     marks = []
+    if DASH_HOLLOW:
+        # A pair of hollow heads at a thick ledger dash whose rows were cut through a head is cut anew, as a whole.
+        for index in sorted({piece[0]['blob'] for piece in pieces}):
+            if index >= count or sum(1 for piece in pieces if piece[0]['blob'] == index) < 2:
+                continue
+            x, y, own_wide, own_high, _ = (int(value) for value in stats[index])
+            pair = _dash_hollow(layers, labels[y:y + own_high, x:x + own_wide] == index,
+                                layers['holes'][y:y + own_high, x:x + own_wide] > 0, x, y, wide, high, index)
+            if pair:
+                pieces = [piece for piece in pieces if piece[0]['blob'] != index]
+                marks += pair
     for mark, mask, holes, x, y in pieces:
         if STUB:
             part = _without_stub(mask, space, high)
@@ -5595,6 +5693,33 @@ def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
 
 FLAT_CELL = (0.6, 0.95, 2.0, 0.85)   # a hollow mark is no head where its closed paper is this many staff spaces
 #   high or more and has a top or a bottom that is level in this share of its columns (within a pixel of its first or
+CLIP_CELL = 0.3          # a hollow mark is no head where the wire of a paperclip (layers.CLIP) closes its inside: of the
+#   ink around its closed paper, this share or more is the wire. The bow of a clip that hangs into a staff closes a
+#   cell with a staff line, and the cell was read as a half note; the inside of a head is closed by the head's own
+#   ink. (At the reader's own step the rule acts at one mark of LitChoir's scan pages, where the wire is 0.69 of the
+#   rim: a rule for one case.) None: off
+
+
+def without_clip_cells(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the hollow marks whose inside the wire of a paperclip closes (CLIP_CELL)."""
+    clip = layers.get('clip')
+    if not CLIP_CELL or clip is None or not clip.any():
+        return heads
+    out = []
+    for head in heads:
+        if head['hollow']:
+            y0, x0 = max(0, int(head['y0']) - 2), max(0, int(head['x0']) - 2)
+            y1, x1 = int(head['y1']) + 3, int(head['x1']) + 3
+            count, labels, stats, _ = cv2.connectedComponentsWithStats(layers['holes'][y0:y1, x0:x1].astype(np.uint8), connectivity=4)
+            if count >= 2:
+                inside = (labels == 1 + int(np.argmax(stats[1:, 4]))).astype(np.uint8)
+                rim = cv2.dilate(inside, np.ones((5, 5), np.uint8)) & (1 - inside) & layers['ink'][y0:y1, x0:x1]
+                if rim.any() and float((rim & clip[y0:y1, x0:x1]).sum()) >= CLIP_CELL * float(rim.sum()):
+                    continue
+        out.append(head)
+    return out
+
+
 #   last row) at a staff line (the line's middle within the third number of px, or half its thickness): a cell between
 #   the line and a slanted stroke (a pencil ring, a slur that crosses the staff, the loop of a flag, a rest, a piece
 #   of a clef). The inside of a printed head is round and stands clear of the lines: of the 95 such marks that were

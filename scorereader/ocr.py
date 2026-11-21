@@ -83,12 +83,25 @@ CLEF = (3.0, 50, 2, 1.5)   # a word that ends within this many staff spaces of t
 #                          staff: a label in the margin is another matter. Such a word can hold letters of the
 #                          list ('la', 'las') and make a reading win that leaves out a true syllable. (None: off)
 CLEF_WHOLE = True        # a reading that lost such a word is not whole, as a reading with a mended word is not
+UNREAD = (0.3, 1.5, 0.85, 0.6, 0.5, 0.25, 0.6, 1.6)   # a reading that holds only words of the list is not whole where a
+#                          letter stands between two of its words that it did not read: a lone capital O between
+#                          "THEE," and "LORD," stood in no reading at one size, that reading was whole, and the other
+#                          sizes were not read. The piece is a letter by its ink: as wide as 0.3 to 1.5 heights of the
+#                          row, with ink in 0.85 of the row's rows, no more than 0.6 heights over the row and 0.5 under
+#                          it (a bar line and a stem go on), 0.25 heights of paper to both words, and strokes 0.6 to 1.6
+#                          times those of the row. A rule for one row of LitChoir's scan pages (None: off)
+DIGIT_END = ('47', '5')  # behind the letters of a word of the list a 4 or a 7 is a stroke beside the word (a bar line
+#                          through the last letter, a full stop, the end of a slur: "THY4", "a4.", "us7"), and a 5 is the
+#                          s of a hand where the list holds the word with it ("a5" is "as"). The digits with a bow of
+#                          their own (2, 3, 6, 8, 9) stand for a letter by hand as often as for stray ink, and stay
 #                          (MEND_WHOLE): the other sizes are read too. Without it a first reading that held only
 #                          words of the list beside the stray word won, and a syllable that it misread stayed lost
 ROW = 40                 # a row that Tesseract is less sure of than this, over all its letters, is no row of words (stray
 #                          ink under a staff: a slur, a hairpin, the ends of stems). None: every row is kept
-ROUND_SIDE = ('()[]', '@')   # the word O with a bracket at one side ('0)', '@)'): the ring of a large O is read as
-#                          a round sign and a bracket. The second: signs that are the word O only so. (None: off)
+ROUND_SIDE = ('()[]', '@©')  # the word O with a bracket at one side ('0)', '@)', '©)'): the ring of a large O is read
+#                          as a round sign and a bracket. The second: signs that are the word O only so (the sign of a
+#                          copyright line has no bracket; of 4 such tokens of LitChoir's scan pages 3 are an O and
+#                          one, in a reading of a copy by hand that is not kept, is not). (None: off)
 JOINS = '-‐‑‒–—~='     # what a hyphen between two syllables can be read as
 STOPS = '.,;:!?'         # a dash after a syllable that ends with one of these is the line of a held syllable, no hyphen
 LINES = '_'              # the line after a syllable that is held
@@ -414,6 +427,17 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
             elif ROUND_SIDE and core != core.strip(ROUND_SIDE[0]) and '(' + core.strip(ROUND_SIDE[0]) + ')' not in core \
                     and core.strip(ROUND_SIDE[0]) in ROUND[0] + tuple(ROUND_SIDE[1]):
                 text = text.replace(core.strip(ROUND_SIDE[0]), 'O')
+        if DIGIT_END and known:
+            marks = STOPS + JOINS + LINES + '\'"‘’“”'
+            core = text.rstrip(marks)
+            stray, hand = DIGIT_END
+            bare = core.rstrip(stray).rstrip('\'"‘’“”') if stray else core
+            if bare != core and bare and not any(sign.isdigit() for sign in bare) \
+                    and ''.join(sign for sign in bare.lower() if sign.isalpha()) in known:
+                text = bare + text[len(core):]
+            elif hand and core[-1:] and core[-1] in hand and not any(sign.isdigit() for sign in core[:-1]) \
+                    and core[:-1].isalpha() and core[:-1].lower() + 's' in known:
+                text = core[:-1] + 's' + text[len(core):]
         if all(sign in JOINS + LINES + '.,' for sign in text):
             if found and any(sign in JOINS for sign in text) and found[-1]['text'][-1] not in STOPS:
                 found[-1]['join'] = True
@@ -1170,6 +1194,47 @@ def _stroke(ink: np.ndarray) -> float:
     return float(np.median(runs)) if runs else 0.0
 
 
+def _unread(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[int, int]]:
+    """The letters of a row that a reading left out (see UNREAD): the columns of each piece of ink between two words
+    of the reading that is as wide and as high as a letter of the row, ends with the row, stands apart from both
+    words and has strokes as thick as the row's letters."""
+    if not UNREAD:
+        return []
+    least, most, share, over, under, apart, slim, fat = UNREAD
+    top, bottom = max(0, int(band['top'])), int(band['bottom'])
+    high = max(1, bottom - top)
+    usual = None
+    found = []
+    # A bar line that was read as a stroke covers no letter: its box can begin in one.
+    words = [word for word in words if word[0].strip('|')]
+    for (_, _, before, _), (_, after, _, _) in zip(words, words[1:]):
+        first, last = max(0, int(before) + 1), min(grey.shape[1], int(after))
+        if last - first < (least + 2 * apart) * high:
+            continue
+        columns = (grey[top:bottom + 1, first:last] < 128).any(axis=0)
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], columns.astype(np.int8), [0]))))
+        for begin, end in zip(edges[::2].tolist(), edges[1::2].tolist()):
+            if not least * high <= end - begin <= most * high or begin < apart * high or last - first - end < apart * high:
+                continue
+            piece = grey[:, first + begin:first + end] < 128
+            rows = piece.any(axis=1)
+            if rows[top:bottom + 1].mean() < share:
+                continue
+            up, down = top, min(bottom, len(rows) - 1)
+            while up > 0 and rows[up - 1]:
+                up -= 1
+            while down + 1 < len(rows) and rows[down + 1]:
+                down += 1
+            if top - up > over * high or down - bottom > under * high:
+                continue
+            if usual is None:
+                usual = _stroke(grey[top:bottom + 1, max(0, int(words[0][1])):min(grey.shape[1], int(words[-1][2]) + 1)] < 128)
+            thick = _stroke(piece[up:down + 1])
+            if usual > 0 and slim * usual <= thick <= fat * usual:
+                found.append((first + begin, first + end - 1))
+    return found
+
+
 def _lone_i(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[str, float, float, float]]:
     """The word I that Tesseract read as a stroke. A '|' that stands alone between two words is a bar line, a line
     by hand or the letter I. The letter is as high as the row's capitals (its ink begins near the top of the band
@@ -1576,6 +1641,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
                 continue
         if best is None or fit > best[1]:
             best = (row, fit)
+        if whole and not again and known and mend and _unread(read(size), grey, band):
+            whole = False        # a letter of the row stands in no word of this reading: the other sizes are read
         if whole:
             break
     row = best[0] if best else []
