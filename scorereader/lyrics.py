@@ -76,6 +76,11 @@ ONE_NOTE = 0.65         # two syllables that the list of words made of one piece
 #                         beside the middle of the piece (the fresh set: 2 syllables gained and 7 lost). A piece
 #                         that begins under its note, as a held syllable does, is left out with it: a first
 #                         syllable of one letter begins under its note too. None: off
+TIED_NOT = True         # the words of a column of notes are set under a note that begins there. The second note of
+#                         a tie sings no new syllable: where the top note of the column is one, the words are those
+#                         of the voice of the staff that strikes its note there ('you' under the alto's whole note,
+#                         where the soprano holds hers over the bar line; the count joins a tie, and the syllable
+#                         went with its second note). False: under the top note of the column
 RECITED = True          # a syllable that has no note of its own is sung on the note before it (a reciting note holds
 #                         many syllables, and a note that was not read must not cost its syllable): it is written
 #                         after that note's syllable. False: such a syllable is left out
@@ -895,6 +900,11 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
         for j, text in texts.items():
             column = columns[j]
             top = min(column, key=lambda at: (result['notes'][at]['voice'], -result['notes'][at]['midi']))
+            if TIED_NOT and result['notes'][top].get('tie_stop'):
+                # The second note of a tie sings no new syllable: the words are those of a voice that strikes its note.
+                struck = [at for at in column if not result['notes'][at].get('tie_stop')]
+                if struck:
+                    top = min(struck, key=lambda at: (result['notes'][at]['voice'], -result['notes'][at]['midi']))
             # Where the note's words stand in a word: a hyphen before them, a hyphen after them.
             inside = first[j] > 0 and bool(row[first[j] - 1].get('join'))
             goes_on = bool(row[final[j]].get('join'))
