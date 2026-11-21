@@ -197,6 +197,17 @@ WHOLE_FOOT = (0.9, 0.4, 1.2, 7.5, 0.3, 0.15, 0.7)   # a hollow oval with no stem
 #                      a dynamic mark is such an oval with a level top too, and its stroke goes on under it: the
 #                      fresh set showed it, and the eleven notes of LitChoir's pages gave the measure (None: off)
 LEDGER_FROM = 0.5    # a ledger line lies at least this many staff spaces from the staff
+LEDGER_TWIN = (0.3, 3)   # two rows of level ink less than half a staff space apart are one ledger line that leans or
+#                      that is thick, unless paper parts them: where they stand this many staff spaces apart or more
+#                      and this many rows between them are paper at both sides of the head, they are two strokes, a
+#                      ledger line and the arc of a pencil ring or a stroke of the pen. The ledger line is the one
+#                      that stands nearer to a whole number of staff spaces from the staff, and the other one goes
+#                      where it lies outside the head's box. A row of the head's own ink is left to the older rules:
+#                      with it the first form gained 3 notes and lost 1 on LitChoir's scan pages (a head by hand that
+#                      is read from its upper half, right only by the row between the two). A census of every head
+#                      with two such rows (105 on the scan pages, 26 of them parted by paper; round 81): two have
+#                      the stray row outside the box, a printed head in a pencil ring on a clean copy and a half
+#                      note by hand whose upper rim stands apart, both read a step low before. None: off
 LEDGER_PAPER = (0.75, 0.3, 0.15, 0.8, 0.7, 1.3, 0.3)   # a print that sets its first ledger line near the staff (up to this
 #                      many staff spaces from it) has little room for a head past that line: the head is a half moon on
 #                      top of the line, and its middle lies hardly past it. But a head ON the line has its near half
@@ -264,6 +275,14 @@ WHOLE_SLIT = (1.2, 1.5, 0.15, 0.01, 0.1, 0.32, 0.4, 0.6, 0.83, 1.3)   # an oval 
 #                      fill 0.8 of that part at most (None: off)
 LINE_CHORD = 0.75    # hollow heads that touch, each on a line: the first and the last cell of their insides lie this
 #                      many staff spaces further apart than as many heads less two in the spaces would (0: off)
+LINE_CHORD_ENDS = 4   # in a mark with this many cells or more (three heads on lines), the first and the last cell count
+#                      twice against the largest cell: they hold half an inside each, and a smudge at the lowest head
+#                      left the last cell of one final chord a hair under a quarter of the largest (five heads were
+#                      cut where three stand). With three cells (two heads) the same count changes 119 marks of
+#                      LitChoir's scan pages that are read right today, and it is not made there. A rule for one
+#                      case: of the 136 marks where the count changes, 17 have four cells or more, 15 of them clefs
+#                      and one the numbers of a time signature, which give no heads either way; the notes of one
+#                      page change, the chord's (round 81). 0: off
 LINE_PAIR = (0.9, 1.4, 1.6, 2.1, 0.22, 0.25, 1.0)   # a hollow mark that is from this to this many heads wide and from this to
 #                      this many heads high holds two heads a third apart, one over the other, and no more: where
 #                      its insides give three holes, a staff line has cut the inside of a head in two, and a half of
@@ -567,8 +586,11 @@ def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tupl
         cells = {}
         for hole in found:
             cells.setdefault(sum(1 for line in ordered if line < y + hole['cy']), []).append(hole)
-        largest = max(sum(hole['area'] for hole in cell) for cell in cells.values())
-        gaps = sorted(gap for gap, cell in cells.items() if sum(hole['area'] for hole in cell) >= 0.25 * largest)
+        # The first and the last cell hold half an inside each, the cells between them two halves.
+        ends = (min(cells), max(cells)) if LINE_CHORD_ENDS and len(cells) >= LINE_CHORD_ENDS else ()
+        size = {gap: sum(hole['area'] for hole in cell) * (2 if gap in ends else 1) for gap, cell in cells.items()}
+        largest = max(size.values())
+        gaps = sorted(gap for gap in cells if size[gap] >= 0.25 * largest)
         if len(gaps) >= 3 and gaps[-1] - gaps[0] == len(gaps) - 1 and len(gaps) == len(cells):
             middle = lambda gap, axis: sum(hole[axis] * hole['area'] for hole in cells[gap]) / sum(hole['area'] for hole in cells[gap])
             if middle(gaps[-1], 'cy') - middle(gaps[0], 'cy') <= (len(gaps) - 2 + LINE_CHORD) * step:
@@ -1743,6 +1765,24 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
         if inside:
             own = min(inside) if up else max(inside)
             rows = [row for row in rows if (row >= own - 0.5 if up else row <= own + 0.5)]
+    if LEDGER_TWIN:
+        edge = staff['rows'][0] if up else staff['rows'][-1]
+        free = layers['free']
+        first, last = int(head['cx'] - 0.95 * space), int(head['cx'] + 0.95 * space)
+        index = 0
+        while index + 1 < len(rows) and first >= 0:
+            one, two = rows[index], rows[index + 1]
+            if LEDGER_TWIN[0] * space <= two - one < 0.5 * space:
+                band = free[int(round(one)) + 1:int(round(two)), first:last + 1]
+                sides = (band[:, :max(0, head['x0'] - first)], band[:, max(0, head['x1'] + 1 - first):])
+                if all(side.size and int(((1 - side).mean(axis=1) >= 0.8).sum()) >= LEDGER_TWIN[1] for side in sides):
+                    # Paper between the two rows at both sides of the head: one of them is no ledger line.
+                    off = [abs(abs(row - edge) / space - round(abs(row - edge) / space)) for row in (one, two)]
+                    stray = index if off[0] > off[1] else index + 1
+                    if not head['y0'] <= rows[stray] <= head['y1']:
+                        del rows[stray]
+                        continue
+            index += 1
     merged = []
     for row in rows:
         if merged and row - merged[-1] < 0.5 * space:
@@ -3401,6 +3441,20 @@ LINE_REST = 0.6            # a piece no higher than a staff line is a rest of th
 ONE_ALONG = 1.0            # on the one stem of a thick head too, when it lies this many staff spaces from that head (0: off)
 ALONG_HIGH = 0.4           # such a thin head is at least this high, in staff spaces: the rest of a staff line is flat
 OPEN_RIM = 0.5             # an open hole has the head's own ink at this share of its rim (0: off)
+THIN_RING = (0.05, 0.2, 0.6, 1.2, 0.85, 0.85, 0.8, 1.25)   # a head that is read from its stem and whose ink shows no inside: a
+#                            pale print leaves the ring of a half note open in two places, and the piece at the stem's end
+#                            is one arc of it. The paper that the thin ink and the stems close in around the piece, when
+#                            breaks of 0.35 staff spaces are closed, is the inside of a printed half note: this much of it,
+#                            in staff spaces squared, stays paper after the closing; it is this large at least; from this
+#                            to this wide and high, in staff spaces; this share of its hull; ink at this share of its
+#                            rim; and its width is from this to this of its height (a hand's stroke beside a line and
+#                            the cell between two staff lines are long and low). The head is hollow then, and it stands
+#                            where the ring stands. A census of every head read from a stem on LitChoir's scan pages
+#                            (3,189, round 81): five pass that the scorer lines up with a typed half note, none with a
+#                            typed quarter or eighth note. The head becomes the ring only after the hollow heads were
+#                            read from their insides (ring_heads): made hollow at once, it stood in the way of that
+#                            step on three pages, where a head that is read from its inside kept one of its two stems.
+#                            None: off
 LOOP_STEM = True           # an open oval may have its stem as one of its sides
 THROUGH_SLANT = (0.5, 1.0) # a thin head that crosses a staff line at a low slant: its part over the line stands up to this
 #                            many staff spaces right of its part under the line, and each part is at most this wide and
@@ -3857,6 +3911,49 @@ def _stem_arc(layers: dict, x: float, end: float, head: float) -> bool:
     return all(_way_bow(part, space)[0] / bend >= 0 for part in ([p for p in way if p[0] <= half], [p for p in way if p[0] > half]))
 
 
+def _thin_ring(layers: dict, ink: np.ndarray, piece: dict, space: float) -> dict | None:
+    """The inside of a hollow head whose rim is open, around a piece of thin ink (THIN_RING): its box and its middle,
+    or None. The paper that the thin ink and the stems shut in when small breaks are closed, of the shape of the
+    inside of a printed half note."""
+    grow = int(round(0.7 * space))
+    y0, y1 = max(0, piece['y0'] - grow), min(ink.shape[0], piece['y1'] + 1 + grow)
+    x0, x1 = max(0, piece['x0'] - grow), min(ink.shape[1], piece['x1'] + 1 + grow)
+    window = ((ink[y0:y1, x0:x1] > 0) | (layers['stems'][y0:y1, x0:x1] > 0)).astype(np.uint8)
+    size = int(max(3, round(0.35 * space))) | 1
+    mask = np.pad(window, size)        # paper around the window: OpenCV takes what lies past an edge for ink
+    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
+    outside = (1 - closed).astype(np.uint8)
+    cv2.floodFill(outside, None, (0, 0), 2)
+    core = (outside == 1)[size:-size, size:-size]
+    inside = ((outside != 2)[size:-size, size:-size] & (window == 0)).astype(np.uint8)
+    own = np.zeros_like(window)
+    box = (slice(piece['y0'] - y0, piece['y1'] + 1 - y0), slice(piece['x0'] - x0, piece['x1'] + 1 - x0))
+    own[box] = window[box]
+    beside = cv2.dilate(own, np.ones((5, 5), np.uint8))
+    count, labelled, stats, centres = cv2.connectedComponentsWithStats(inside, connectivity=4)
+    best = None
+    for number in range(1, count):
+        if (beside & (labelled == number)).any() and (best is None or stats[number][4] > stats[best][4]):
+            best = number
+    if best is None:
+        return None
+    left, top, wide, high, area = (int(value) for value in stats[best])
+    if left == 0 or top == 0 or left + wide == window.shape[1] or top + high == window.shape[0]:
+        return None
+    part = (labelled == best).astype(np.uint8)
+    hull = cv2.convexHull(np.argwhere(part)[:, ::-1].astype(np.int32))
+    rim = cv2.dilate(part, np.ones((5, 5), np.uint8)) & (1 - part)
+    measures = (int((part.astype(bool) & core).sum()) / (space * space), area / (space * space), wide / space, high / space,
+                area / max(1.0, cv2.contourArea(hull) + len(hull) / 2), float((rim & window).sum()) / max(1, int(rim.sum())))
+    if not (measures[0] >= THIN_RING[0] and measures[1] >= THIN_RING[1] and THIN_RING[2] <= measures[2] <= THIN_RING[3]
+            and THIN_RING[2] <= measures[3] <= THIN_RING[3] and measures[4] >= THIN_RING[4] and measures[5] >= THIN_RING[5]
+            and THIN_RING[6] <= measures[2] / measures[3] <= THIN_RING[7]):
+        return None
+    ring = {'x0': x0 + left, 'y0': y0 + top, 'x1': x0 + left + wide - 1, 'y1': y0 + top + high - 1,
+            'cx': x0 + float(centres[best][0]), 'cy': y0 + float(centres[best][1]), 'area': area}
+    return ring
+
+
 def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float]) -> list[dict]:
     """The heads that the thick marks do not show: a quick hand draws a head as one thin slanted stroke, and a weak
     copy loses the place where the stem meets it. Such a head is found from its stem. Every upright stroke that is
@@ -4065,7 +4162,7 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                                   and piece['from_end'] <= FLAG_END for piece in hung)
         return flags[id(stem)]
 
-    def make_head(piece: dict, direction: str, x: float, end: float, staff: int) -> dict | None:
+    def make_head(piece: dict, direction: str, x: float, end: float, staff: int, arc: bool = True) -> dict | None:
         place = pitch_place(staves[staff], piece['cy'])
         head = {'x0': piece['x0'], 'y0': piece['y0'], 'x1': piece['x1'], 'y1': piece['y1'], 'cx': piece['cx'], 'cy': piece['cy'],
                 'staff': staff, 'place': place, 'hollow': piece['hole'] >= THIN_HOLLOW, 'hole': piece['hole'], 'thin': True,
@@ -4083,6 +4180,18 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         if piece.get('opened', 0.0) >= THIN_HOLLOW > piece['hole']:
             # The same head, with the place that its ink gave it: only its inside was not seen before.
             head['hollow'], head['hole'] = True, piece['opened']
+        if THIN_RING and arc and not piece.get('open') and max(piece['hole'], piece.get('opened', 0.0)) < THIN_HOLLOW:
+            if 'ring' not in piece:
+                piece['ring'] = _thin_ring(layers, ink, piece, space)
+            ring = piece['ring']
+            if ring is not None:
+                # One arc of an open ring: the head of the whole ring, a rim's width around its inside, is kept
+                # beside this one until the hollow heads were read from their insides (ring_heads).
+                edge = int(round(thick + 1))
+                whole = dict(piece, x0=min(piece['x0'], ring['x0'] - edge), y0=min(piece['y0'], ring['y0'] - edge),
+                             x1=max(piece['x1'], ring['x1'] + edge), y1=max(piece['y1'], ring['y1'] + edge), cx=ring['cx'],
+                             cy=ring['cy'], hole=max(THIN_HOLLOW, ring['area'] / (ring['area'] + piece['area'])))
+                head['ring'] = make_head(whole, direction, x, end, staff, False)
         return head
 
     def other_piece(x: float, top: float, bottom: float, direction: str, held: dict) -> dict | None:
@@ -4226,6 +4335,28 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             if not owners:
                 asked[id(head)] = (x, top, bottom, direction)
     return found
+
+
+def ring_heads(heads: list[dict]) -> list[dict]:
+    """The heads that were read from a stem at one arc of an open ring stand as the whole ring: hollow, and where the
+    ring stands (THIN_RING). This runs after the hollow heads were read from their insides (hole_heads): an inside
+    that is closed, or open by a small break, is read there, and the arc is then a piece of its rim that went. Where
+    the ring gives no head (its place has no ledger line, its stem is an arc), the head stays as it was read."""
+    for head in heads:
+        ring = head.pop('ring', None)
+        if ring is None or not head.get('thin') or head['hollow']:
+            continue
+        if any(other is not head and other['hollow'] and other['x0'] - 2 <= ring['cx'] <= other['x1'] + 2
+               and other['y0'] - 2 <= ring['cy'] <= other['y1'] + 2 for other in heads):
+            continue        # the inside is another hollow head's
+        for name in ('x0', 'y0', 'x1', 'y1', 'cx', 'cy', 'place', 'hollow', 'hole'):
+            head[name] = ring[name]
+        head.pop('ledgers', None)
+        if 'ledgers' in ring:
+            head['ledgers'] = ring['ledgers']
+        for stem in head['stems']:
+            stem['length'] = abs(head['cy'] - stem['end'])
+    return heads
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -5723,6 +5854,58 @@ def without_stem_spans(layers: dict, heads: list[dict]) -> list[dict]:
         if all(sides):
             gone.add(id(head))
     return [head for head in heads if id(head) not in gone]
+
+
+BOW_MIDDLE = (1.8, 0.7, 2.2, 0.4, 0.2)   # the swollen middle of a bold bow, read as a head with the bow's own end as its
+#   stem: a filled mark at least the first number times the page's head wide, whose thick ink is at most the second
+#   number of staff spaces fat, with one stem that ends within the third number of staff spaces of the mark's middle
+#   row and stands within the fifth number of the mark's width of one end of the mark, and with a slim arm at the other
+#   end that leaves the mark the stem's way for the fourth number of staff spaces or more: the two ends of a bow turn
+#   the same way, one at each end of its middle. A head has one stem, and the stem of another voice goes the other
+#   way. A rule for one case: of the 965 wide filled marks with one stem on LitChoir's scan pages (round 81, at the
+#   reader's own step), 26 are this wide and slim with a stem this short, most of them true heads on a ledger dash,
+#   and 5 have such an arm. The stems of two bows stand 0.11 and 0.12 of the width from the end (the slur under two
+#   quarter notes of one clean score, and a bow under two notes that a later step takes); the others are a head on a
+#   ledger dash whose stem stands in its middle, a head by hand with its flag, and a fermata (0.39 to 0.48). The first
+#   form, without the stem's place, took the two heads. None: off
+
+
+def _bow_arm(layers: dict, head: dict, stem: dict) -> float:
+    """How far a slim piece of ink leaves a mark at its end away from the stem, the stem's way, in staff spaces."""
+    space = layers['space']
+    bare = layers['bare']
+    up = stem['direction'] == 'up'
+    end = head['x0'] if abs(stem['x'] - head['x0']) > abs(stem['x'] - head['x1']) else head['x1']
+    first, last = int(max(0, end - 0.7 * space)), int(min(bare.shape[1], end + 0.5 * space))
+    slim = int(0.45 * space)
+    rows = 0
+    for step in range(1, int(1.6 * space)):
+        row = head['y0'] - step if up else head['y1'] + step
+        if not 0 <= row < bare.shape[0]:
+            break
+        ink = int(bare[row, first:last].sum())
+        if 0 < ink <= slim:
+            rows += 1
+        elif ink == 0 and step > 3 and not layers['lines'][row, first:last].any():
+            break
+    return rows / space
+
+
+def without_bow_middles(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the swollen middle of a bold bow whose own end was read as its stem (BOW_MIDDLE)."""
+    if not BOW_MIDDLE or not layers.get('head'):
+        return heads
+    space = layers['space']
+    kept = []
+    for head in heads:
+        if not head['hollow'] and not head.get('thin') and len(head['stems']) == 1 \
+                and head['x1'] - head['x0'] + 1 >= BOW_MIDDLE[0] * layers['head'][0] \
+                and abs(head['stems'][0]['end'] - head['cy']) <= BOW_MIDDLE[2] * space \
+                and min(abs(head['stems'][0]['x'] - head['x0']), abs(head['stems'][0]['x'] - head['x1'])) <= BOW_MIDDLE[4] * (head['x1'] - head['x0'] + 1) \
+                and _fat(layers, head)['fat'] <= BOW_MIDDLE[1] and _bow_arm(layers, head, head['stems'][0]) >= BOW_MIDDLE[3]:
+            continue
+        kept.append(head)
+    return kept
 
 
 BEAM_PIECE = (0.7, 0.75, 0.3)   # a flat mark on the line between the ends of two stems that both carry a flag or a beam is

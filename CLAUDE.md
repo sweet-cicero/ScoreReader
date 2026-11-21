@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,080 of 22,649, counted by the page;
-21,946 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 34 scores read every printed note, 38 every
-syllable, 27 both, 35 have no note that is not there, 26 are whole in all three; 565 printed notes and 187 syllables
-are lacking and 225 notes are read that are not there, each printed head counted once since round 78: 420 by the
+scans; 94 scores at 99 % or more), 97.5 % of the notes on the clean copies (22,085 of 22,649, counted by the page;
+21,950 of 22,606 as typed; 40 of the 78 counted scores at 99 %; 36 scores read every printed note, 38 every
+syllable, 28 both, 37 have no note that is not there, 28 are whole in all three; 559 printed notes and 187 syllables
+are lacking and 222 notes are read that are not there, each printed head counted once since round 78: 416 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.0 % with Tesseract, its larger
 files and a list of words (6,067 of 6,254, counted by the page; 6,003 of 6,259 as typed; 94.9 % of the whole words; 39 scores at 99 % of the syllables);
 89.1 % of all syllables with Tesseract (88.1 % on scans), and 90.3 % on the kit (6232 of 6901).
@@ -1151,6 +1151,34 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A score counts for the milestone only when it is whole. The scores that lack one to three notes are looked at
   place by place, each with its other scans: four notes on three such scores made two of them whole and gave a
   third every note (round 80).
+- A census of the heads that reach the notes shows a rule only those heads. A rule that changes a head where it
+  is made meets more: the heads that a later step replaces, and the pieces whose own head is refused. A head
+  from a stem that is one arc of an open ring (`symbols.THIN_RING`) was made hollow at once in its first form:
+  it stood in the way of the step that reads hollow heads from their insides (three pages of LitChoir, where a
+  head kept one of its two stems), and on the fresh set a ring gave a head where the piece alone gives none (2
+  notes lost). Set such a rule where its census was taken: the head is made as before, and the change acts after
+  the steps that take heads away or replace them (`symbols.ring_heads`).
+- A census from the stored notes measures a mark by the note's middle and its stored size; a rule measures the
+  head's box at its own step. The arm of a bow, counted from the stored notes, stood at one mark of 422, and the
+  rule's own code took three notes on those pages, two of them true (`symbols.BOW_MIDDLE`). Read the first form
+  on the pages of its census before a full run, and take the second census at the reader's own step with the
+  rule's own function: it showed what parts a bow from a head (the stem of a bow stands at the end of its
+  middle, the stem of a head in it).
+- Two measures that an older rule joins into one can make a wrong reading right. Two level rows less than half
+  a staff space apart are one ledger line, at their mean; parted where paper lies between them
+  (`symbols.LEDGER_TWIN`), a head by hand that is read from its upper half lost its pitch, which it had only by
+  the mean of the ledger line and its own rim. List every pair with what each half is before the pair is parted,
+  and leave the pairs whose other half is the head's own ink.
+- A measure that is wrong in principle can be right in what it gives. The first and the last cell of a chord on
+  lines hold half an inside each and were weighed like whole cells; weighed twice in every mark, they change
+  what 119 marks give, pairs of half notes that are read today among them. The mend is made only where the
+  census shows the fault (`symbols.LINE_CHORD_ENDS`: from four cells on, one chord). Say where a rule is a rule
+  for one case.
+- An entry of the list of the notes that a hand changed can name one system of a page: a slip that a hand wrote
+  and pasted over the print is a page by hand for that system.
+- A note that is not there can stand unseen in the count, and a rule that changes its length shows it (a letter
+  of a heading on the fresh set: 3 to 4 notes that are not there in its piece, and no note lost). Look at the
+  note on the page before the rule is blamed: it was read before the round too.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
