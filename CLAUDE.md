@@ -25,14 +25,14 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 97 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,099 of 22,649, counted by the page;
+scans; 97 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,103 of 22,653, counted by the page;
 21,965 of 22,605 as typed; 43 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
-syllable, 36 both, 42 have no note that is not there, 35 are whole in all three; 545 printed notes and 165 syllables
-are lacking and 211 notes are read that are not there, each printed head counted once since round 78: 398 by the
+syllable, 36 both, 43 have no note that is not there, 35 are whole in all three; 545 printed notes and 165 syllables
+are lacking and 203 notes are read that are not there, each printed head counted once since round 78: 387 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.4 % with Tesseract, its larger
 files and a list of words (6,090 of 6,255, counted by the page; 6,025 of 6,260 as typed; 95.4 % of the whole words; 48 scores at 99 % of the syllables);
-89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.4 % on the kit (6236 of 6901).
-On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
+89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.4 % on the kit (6238 of 6901).
+On the fresh test set, which no rule was set on: 95.7 % of the notes (39,967 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
@@ -1401,6 +1401,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   of the stems: the cut parts the insides of two hollow heads, and a pair that was read right through its holes is
   read as one pitch (1 note gained and 4 lost). A dot that a pencil stroke joins is a blot of a dot's size joined to
   other ink at 6 missed dots and at 20 heads that rightly have none: no rule by the blot.
+- A stroke with a mark at each of its ends is the stem of one of them. The beginning of a beam on a staff line over a
+  chord was read as a filled head that took the chord's stem up as its own stem down, and the chord's top head kept no
+  stem toward it (`symbols.FAR_MARK`). A census at the step, with the scorer's verdicts at both marks, gave the height
+  that parts such marks (the false ones up to 0.72 of the page's heads, the first true note at 0.77). A false mark that
+  goes can move the vote of its column: on a copy by hand two bass eighth notes became quarter notes beside a treble
+  eighth whose flag is not read. Say so, and leave the rule where every mark that it took was no note.
+- A small head that the page prints on a voice's stem (a divisi in small notes) is a printed note where the typed hymn
+  leaves it out, and goes on the list of the notes by the page as `add`, after it was looked at four times the size.
+  The list is made by its script: an entry that is written into the list by hand is lost at its next making.
+- A mark that an earlier round called the hand's is looked at in the scan before it is counted so: the "time signature
+  by hand" of one clean score is the printed 2/4, which a pen stroke joins.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
