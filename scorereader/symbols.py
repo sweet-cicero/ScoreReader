@@ -6238,6 +6238,38 @@ def without_stem_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+FAR_MARK = (0.75, 1.5)   # a low filled mark whose own stem ends in the box of a filled head of its staff (at least the
+#   second number of staff spaces away), where that head has no stem that goes toward the mark, is the flag, the beam,
+#   the corner of a box beam or the end of a slur at the far end of that head's stem, and no head: at most the first
+#   number times as high as the page's heads. The stem is the head's: the reader gave it to the mark, which then counted
+#   the head as its own flag. (A census at this step on every scan page of LitChoir: 209 filled marks whose stem ends in
+#   another filled head, each with the scorer's verdicts at both. Of the 53 whose head has no stem toward the mark, the
+#   notes read at marks up to 0.72 of a head high are all marks that are no notes, each looked at: the beginning of a
+#   beam on a staff line over a chord, the top of a flag, the corner of a box beam by hand and a slur at the end of the
+#   stem; the first true note stands at 0.77.) None: off
+
+
+def without_far_marks(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the low marks at the far end of another head's stem that took that stem as their own
+    (FAR_MARK)."""
+    if not FAR_MARK or not layers.get('head'):
+        return heads
+    space = layers['space']
+    gone = set()
+    for head in heads:
+        if head['hollow'] or head['y1'] - head['y0'] + 1 > FAR_MARK[0] * layers['head'][1]:
+            continue
+        for stem in head['stems']:
+            toward = 'up' if stem['direction'] == 'down' else 'down'
+            if any(other is not head and other['staff'] == head['staff'] and not other['hollow']
+                   and abs(other['cy'] - head['cy']) >= FAR_MARK[1] * space
+                   and other['x0'] - 2 <= stem['x'] <= other['x1'] + 2 and other['y0'] - 3 <= stem['end'] <= other['y1'] + 3
+                   and not any(own['direction'] == toward for own in other['stems']) for other in heads):
+                gone.add(id(head))
+                break
+    return [head for head in heads if id(head) not in gone]
+
+
 STEM_END_SPAN = (1.3, 0.9, 1.2)   # a filled mark that stands between the ends of two stems is the beam or the slur
 #   between them and no head: at least the first number times the page's head wide and at most the second times its
 #   head high (a bow or a beam by its shape), with another head's stem at each of its two sides, standing within the
