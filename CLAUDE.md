@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 97 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,103 of 22,653, counted by the page;
-21,965 of 22,605 as typed; 43 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
-syllable, 36 both, 43 have no note that is not there, 35 are whole in all three; 545 printed notes and 146 syllables
-are lacking and 203 notes are read that are not there, each printed head counted once since round 78: 387 by the
+scans; 98 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,107 of 22,653, counted by the page;
+21,965 of 22,605 as typed; 44 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
+syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 541 printed notes and 146 syllables
+are lacking and 201 notes are read that are not there, each printed head counted once since round 78: 383 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.4 % on the kit (6238 of 6901).
@@ -1433,6 +1433,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   joined by columns, and past both halves' letters by the rows that hold a syllable's ink (`ocr.TWIN`): a printed
   word stood past the words that a hand wrote in the lower row. Try such a rule's ways of reading on its pages with
   Tesseract before a full pass: a pass of the planned pages takes three minutes.
+- Two half notes side by side, the one at the right with its stem up and the one at the left with its stem down, are
+  two voices that cross: the voice whose stem goes up sings the lower note. Two voices that do not cross stand in one
+  column. Where the typed hymn gives the higher note to the higher part there, it is typed otherwise than its page
+  prints, and the place goes on the list of the notes by the page.
+- The way of a stem is followed across small gaps of paper at the staff lines, so it can follow the round edges of
+  marks that stand one over the other: three printed dots in a column were read as a head with the two dots under it
+  as its stem. A printed stem is ink of its own that leaves its head (`symbols.DOT_COLUMN`, a rule for one case).
+- A list that a script makes is compared with the stored list before the script makes it anew: the list of the notes
+  that a hand changed held two entries that had been written into it by hand and were not in its script.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

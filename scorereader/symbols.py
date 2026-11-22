@@ -6618,6 +6618,59 @@ def without_stem_meets(layers: dict, heads: list[dict]) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+DOT_COLUMN = (0.75, 2, 0.8, 1.25)   # a column of printed dots, one in each space (a sign before the first chord of one
+#   print), was read as a filled head with the dots under it as its stem: the top dot is a mark of its own with no ink
+#   that leaves it, under the first number times the width of the page's heads, and the "stem" runs through at least
+#   the second number of other such marks, each from the third to the fourth number times the mark's width and
+#   height, the last of which ends it. A printed stem is ink of its own that leaves its head. (A census of every head
+#   of read_symbols that no ink of its own leaves and whose stem runs through other such marks of about its size: 24
+#   places on LitChoir's pages and none on the fresh set; only the column of three dots runs through two or more, and a
+#   reading of every page changes that page only.) A rule for one case. None: off
+
+
+def without_dot_columns(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the top dot of a column of printed dots that was read with the dots under it as a stem
+    (DOT_COLUMN)."""
+    if not DOT_COLUMN:
+        return heads
+    narrow, least, low, high = DOT_COLUMN
+    bare = layers['bare']
+    labels = None
+    gone = set()
+    for head in heads:
+        if head.get('hollow') or len(head['stems']) != 1:
+            continue
+        x0, y0, x1, y1 = int(head['x0']), int(head['y0']), int(head['x1']), int(head['y1'])
+        wide, tall = x1 - x0 + 1, y1 - y0 + 1
+        if wide >= narrow * layers['head'][0]:
+            continue
+        if labels is None:
+            _, labels, stats, _ = cv2.connectedComponentsWithStats(bare.astype(np.uint8), connectivity=8)
+        box = labels[y0:y1 + 1, x0:x1 + 1]
+        if not (box > 0).any():
+            continue
+        own = int(np.bincount(box[box > 0].ravel()).argmax())
+        ox, oy, ow, oh, _ = stats[own]
+        if ox < x0 - 3 or oy < y0 - 3 or ox + ow > x1 + 4 or oy + oh > y1 + 4:
+            continue                    # ink of its own leaves the mark: a stem, a flag, a beam
+        stem = head['stems'][0]
+        down = stem['direction'] == 'down'
+        top, bottom = (y1 + 1, int(stem['end'])) if down else (int(stem['end']), y0 - 1)
+        if bottom <= top:
+            continue
+        column = labels[top:bottom + 1, max(0, int(stem['x']) - 2):int(stem['x']) + 3]
+        others = {int(v) for v in column.ravel() if v and v != own}
+        if len(others) < least:
+            continue
+        boxes = [stats[other] for other in others]
+        if not all(low * wide <= w <= high * wide and low * tall <= h <= high * tall for _, _, w, h, _ in boxes):
+            continue
+        last = max(boxes, key=lambda b: b[1] + b[3]) if down else min(boxes, key=lambda b: b[1])
+        if (abs(last[1] + last[3] - 1 - stem['end']) if down else abs(last[1] - stem['end'])) <= 3:
+            gone.add(id(head))
+    return [head for head in heads if id(head) not in gone]
+
+
 CHORD_WHOLE = (-85.0, -30.0, 1.1, 2.0)   # a whole note that touches the half note of another voice was read with that
 #   note's stem: of the hollow heads that share one stem, the head at the far end from the stem's end (where a stem
 #   begins) is a whole note, and leaves the stem to the others, where its inside leans back: the axis of the inside
