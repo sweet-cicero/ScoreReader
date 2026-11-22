@@ -218,6 +218,15 @@ LONE_I = (0.1, 0.6, 0.2, 0.7, 1.5)   # a stroke that stands alone between two wo
 #                          under LONE_I[1] over it, it ends within LONE_I[2] of the band's foot, and it is LONE_I[3]
 #                          to LONE_I[4] times as thick as the strokes of the row's letters. A bar line goes on over
 #                          the row; a line by hand and a dashed line are hairlines.
+FOUR_A = (0.5, 0.15, 1.0)   # a 4 that stands alone between two words is the letter a where the stem of a note runs into
+#                          the top of the a: its box is one letter wide (at most FOUR_A[2] of the band's height) and holds
+#                          closed paper (the bowl of the a) whose middle lies at least FOUR_A[0] of the band's height
+#                          under the band's top, at most FOUR_A[1] of the band's height squared. The first word of a row
+#                          and a 4 with a full stop are the numbers of verses. (A census of every lone 4 in the stored
+#                          rows of LitChoir's scan pages at the first size, 50 places: the four that pass are an a with a
+#                          stem in it, on three scans of one print and one other; a stem through a hyphen or through an
+#                          i, a tie and a number by hand hold no such paper. At other sizes a 4 was read over a word by
+#                          hand, a stem on a staff line and a blot: each is wider than a letter. None: off)
 SECOND = 1000            # a second language file of Tesseract (SCOREREADER_OCR_SECOND names its folder: the standard or
 #                          the 'best' file beside the small one that Tesseract comes with) is a second opinion: where
 #                          no reading with the first file holds only words of the list, the row is read with the
@@ -1328,6 +1337,34 @@ def _lone_i(words: list[tuple[str, float, float, float]], grey: np.ndarray, band
     return found
 
 
+def _four_a(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[str, float, float, float]]:
+    """The letter a that Tesseract read as a 4 where the stem of a note runs into its top (see FOUR_A): a lone 4
+    between two words whose box holds the small bowl of an a low in the band."""
+    if not FOUR_A or len(words) < 3:
+        return words
+    top, bottom = int(band['top']), int(band['bottom'])
+    high = max(1, bottom - top)
+    found = list(words)
+    for number in range(1, len(words) - 1):
+        text, left, right, sure = words[number]
+        if text.strip('\'"‘’“”(') != '4' or not any(any(sign.isalpha() for sign in word[0]) for word in words[:number]) \
+                or not any(any(sign.isalpha() for sign in word[0]) for word in words[number + 1:]):
+            continue
+        first, last = max(0, int(left)), min(grey.shape[1], int(right) + 1)
+        upper, lower = max(0, top - high), min(grey.shape[0], bottom + high // 2 + 1)
+        if last - first < 3 or lower - upper < 3 or right - left > FOUR_A[2] * high:
+            continue
+        paper = (grey[upper:lower, first:last] >= 128).astype(np.uint8)
+        count, _, stats, middles = cv2.connectedComponentsWithStats(paper, connectivity=4)
+        for label in range(1, count):
+            x, y, wide, tall, area = (int(value) for value in stats[label])
+            if x > 0 and y > 0 and x + wide < paper.shape[1] and y + tall < paper.shape[0] and area >= 4 \
+                    and middles[label][1] + upper - top >= FOUR_A[0] * high and area <= FOUR_A[1] * high * high:
+                found[number] = (text.replace('4', 'a'), left, right, sure)
+                break
+    return found
+
+
 def _no_solid(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict) -> list[tuple[str, float, float, float]]:
     """The words of a line without those that are solid ink (see SOLID)."""
     top, bottom = int(band['top']), int(band['bottom'])
@@ -1457,6 +1494,8 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
         letters = [pair for pair, stays in zip(letters, keep) if stays]
     if LONE_I:
         words = _lone_i(words, grey, band)
+    if FOUR_A:
+        words = _four_a(words, grey, band)
     if BOW and known and mend:
         words = _no_bow(words, grey, band, known)
     if CUT:
