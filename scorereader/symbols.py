@@ -28,6 +28,16 @@ SLIM_STEM = 0.62     # a stem is at most this wide, in staff spaces
 REACH = 3.6          # a head stands at most this many staff spaces over or under its staff (three ledger lines)
 CORE = 0.6           # the core of a head: an oval of this share of its width and height
 HOLLOW = 0.08        # a head is hollow when this share of it was a hole
+TAIL_FLAT = (0.45, 1.5, 0.3)   # a low flat mark at the end of the stem down of a head with its own stem up is no head
+#   (at most this share of the page's head height, at least this many times as wide as high, the stem's end within its
+#   rows and this many staff spaces): the end of the stem where a box beam by hand or a slur meets it. The step for the
+#   flag at the far end of a stem took the stem from the head and read the mark as a note with that stem up. A census at
+#   that step on every scan page of LitChoir (908 stems taken, each with the scorer's verdicts at both marks): of the 17
+#   whose head has its own stem up and whose mark is at most 0.6 of a head high, the 8 marks under 0.45 are such ends
+#   (the corner of a box beam or the curl at the end of a stem at five places on four pages, one of them a clean copy;
+#   the crossing of a slur; the tail of a clef twice, where no note was read). A true quarter note under a U stands at
+#   0.50; a mark at 0.46 is the corner of a box beam where no note was read, and is left as it is. The full reading
+#   changed those five pages only. None: off.
 HOLLOW_PAGE = (0.3, 0.03)   # on a page whose hollow heads have small holes: from this share of their usual hole, and
                             # never under the second number (None: off)
 HOLLOW_WORN = (0.4, 0.2)    # on a page whose hollow heads have large holes (their usual hole is the second share or
@@ -2849,6 +2859,22 @@ def read_symbols(layers: dict) -> dict:
             if mark['kind'] == 'head' and mark['hole'] >= HOLLOW and mark.get('solid_cy') is None \
                     and _flag_loop(layers, marks, mark):
                 mark['kind'] = 'loop'
+    if TAIL_FLAT and layers.get('head'):
+        # A head with a stem of its own going up is no flag. Where its stem down ends at a low, flat mark that
+        # has a stem up to it, the mark is the end of that stem, where a beam or a slur meets it, and no head.
+        for mark in marks:
+            if mark['kind'] != 'head' or not is_stem(mark['ways']['up_right'], space):
+                continue
+            for stem in mark['stems']:
+                for other in (marks if stem['direction'] == 'down' else ()):
+                    high, wide = other['y1'] - other['y0'] + 1, other['x1'] - other['x0'] + 1
+                    if other is mark or other['kind'] != 'head' or other['cy'] - mark['cy'] < 1.5 * space \
+                            or high > TAIL_FLAT[0] * layers['head'][1] or wide < TAIL_FLAT[1] * high \
+                            or not other['y0'] - TAIL_FLAT[2] * space <= stem['end'] <= other['y1'] + TAIL_FLAT[2] * space:
+                        continue
+                    if any(own['direction'] == 'up' and abs(own['x'] - stem['x']) <= 0.35 * space
+                           and own['end'] <= mark['y1'] + 0.3 * space for own in other['stems']):
+                        other['kind'] = 'beam'
     # A mark at the far end of another head's stem is that note's flag or beam: at the top right of a stem that goes
     # up from a head, or at the bottom right of a stem that goes down from a head.
     for mark in marks:
@@ -2945,7 +2971,11 @@ def read_symbols(layers: dict) -> dict:
     # a smaller hole is a hole too.
     limit = HOLLOW
     if HOLLOW_PAGE:
-        sure = [mark['hole'] for mark in marks if mark['kind'] == 'head' and mark['stems'] and mark['hole'] >= HOLLOW]
+        # An inside that only HOLE_LEAN keeps (layers' `lean`) is a whole inside where the page's other insides of
+        # such heads were halves: it does not teach the page its holes.
+        lean = layers.get('lean')
+        sure = [mark['hole'] for mark in marks if mark['kind'] == 'head' and mark['stems'] and mark['hole'] >= HOLLOW
+                and (lean is None or not lean[mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1].any())]
         if len(sure) >= 5:
             limit = min(HOLLOW, max(HOLLOW_PAGE[1], HOLLOW_PAGE[0] * float(np.median(sure))))
             if HOLLOW_WORN and float(np.median(sure)) >= HOLLOW_WORN[1]:

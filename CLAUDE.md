@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 96 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,096 of 22,649, counted by the page;
-21,964 of 22,605 as typed; 42 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
-syllable, 36 both, 41 have no note that is not there, 35 are whole in all three; 548 printed notes and 165 syllables
-are lacking and 212 notes are read that are not there, each printed head counted once since round 78: 401 by the
+scans; 97 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,099 of 22,649, counted by the page;
+21,965 of 22,605 as typed; 43 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
+syllable, 36 both, 42 have no note that is not there, 35 are whole in all three; 545 printed notes and 165 syllables
+are lacking and 211 notes are read that are not there, each printed head counted once since round 78: 398 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.4 % with Tesseract, its larger
 files and a list of words (6,090 of 6,255, counted by the page; 6,025 of 6,260 as typed; 95.4 % of the whole words; 48 scores at 99 % of the syllables);
-89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.3 % on the kit (6234 of 6901).
+89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.4 % on the kit (6236 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,957 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1384,7 +1384,23 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A hand's change of printed words can undo itself: on one clean score the printed words are struck through, a
   replacement is written under them and scribbled out again, and the printed words are written back over the
   staff. A pencil loop that runs through a word crosses nothing out: such a word is print, as a note under a pencil
-  ring is. Look at what the hand wrote beside a crossed-out word before the place is counted.
+  ring is. Look at what the hand wrote beside a crossed-out word before the place is counted. A word that the page
+  ends with is a word that the reader must read (the owner, 22 November 2026: "it is what needs to be counted").
+- A rule that keeps a new kind of inside keeps it out of what the page learns of its insides. The page's measure of a
+  hole comes from its read half notes (`symbols.HOLLOW_PAGE`), and an inside that a faint staff line parts into two
+  staggered halves, taken whole (`layers.HOLE_LEAN`), stood where the page's other such insides were halves: the
+  measure rose, and a dotted half note at the limit became a quarter note. Such insides are a layer of their own
+  (`lean`). A new inside also moves the cut between two heads of one piece: a head that was read right by a border can
+  go, and the worklog names it.
+- A step that takes a stem from a head for the flag at the stem's far end asks whether the head has a stem of its own
+  the other way. A second stem down from a head with its stem up runs to where a box beam by hand or a slur meets the
+  stem of another voice, and the low flat mark there was read as a head with that voice's stem (`symbols.TAIL_FLAT`).
+  The census at the step, with the scorer's verdicts at both marks, gave the height that parts such ends from a true
+  quarter note under a U.
+- Two voices a second apart whose heads touch, with the stems back to back between them, are not cut at the column
+  of the stems: the cut parts the insides of two hollow heads, and a pair that was read right through its holes is
+  read as one pitch (1 note gained and 4 lost). A dot that a pencil stroke joins is a blot of a dot's size joined to
+  other ink at 6 missed dots and at 20 heads that rightly have none: no rule by the blot.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
