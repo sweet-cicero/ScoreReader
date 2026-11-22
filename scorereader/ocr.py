@@ -320,6 +320,12 @@ FIRST = (50, 80)         # the first row under a staff holds the first verse. Wh
 #                          letters than the first number (of 100, the picture as it is) and as sure of the next row
 #                          under the staff as the second, the first row is stray ink (a note by hand, a heading)
 #                          and the next row holds the words. A first row with no letter at all is stray too
+TWIN = (1.0, 0.5, 128)     # one row that the page prints at two heights (scorereader.words.HEIGHTS) is read as two rows,
+#                          and their readings are joined: each keeps the syllables in its own columns (its letters, and
+#                          this many staff spaces past them, at most to the middle between the two rows' letters), and
+#                          drops those in the other row's columns, where it read the other row's letters cut in half; a
+#                          syllable past both keeps the row whose rows hold this share of its ink or more (ink: darker
+#                          than this). None: off
 
 
 def program() -> str | None:
@@ -1546,6 +1552,42 @@ def _sure(words: list[tuple[str, float, float, float]]) -> float:
     return sum(number * sure for number, sure in letters) / count if count else 0.0
 
 
+def _twin_row(first: list[dict], second: list[dict], upper: dict, lower: dict, grey: np.ndarray, space: float,
+              band: tuple) -> list[dict]:
+    """The syllables of one row that the page prints at two heights (see TWIN), from the readings of its two rows:
+    `first` of the upper row, `second` of the lower one, whose band holds 'reach' (the columns of the letters of each
+    row). The syllables of the second row take the band of the first (`band`)."""
+    past, share, dark = TWIN
+    start, end, low, high = lower['reach']
+    if end < low:      # the upper row's letters stand at the left
+        cut = (end + low) / 2
+        own = ((start - past * space, min(end + past * space, cut)), (max(low - past * space, cut), high + past * space))
+    else:
+        cut = (high + start) / 2
+        own = ((max(start - past * space, cut), end + past * space), (low - past * space, min(high + past * space, cut)))
+    middle = (upper['bottom'] + lower['top']) / 2
+    rows = ((int(upper['top']), int(min(upper['bottom'], middle)) + 1), (int(max(lower['top'], middle)), int(lower['bottom']) + 1))
+
+    def upper_ink(syllable: dict) -> float:
+        left, right = max(0, int(syllable['x0'])), int(syllable['x1']) + 1
+        ink = [int((grey[top:bottom, left:right] < dark).sum()) for top, bottom in rows]
+        return ink[0] / max(1, sum(ink))
+
+    kept = []
+    for which, row in enumerate((first, second)):
+        for syllable in row:
+            at = (syllable['x0'] + syllable['x1']) / 2
+            if own[which][0] <= at <= own[which][1]:
+                keep = True
+            elif own[1 - which][0] <= at <= own[1 - which][1]:
+                keep = False
+            else:
+                keep = (upper_ink(syllable) >= share) == (which == 0)
+            if keep:
+                kept.append(dict(syllable, band=band) if which else syllable)
+    return sorted(kept, key=lambda syllable: syllable['x0'])
+
+
 def _stray_first(rows: list[tuple[list[dict], float]]) -> bool:
     """Whether the first of the rows under one staff is stray ink and the next one holds the words (see FIRST).
     Each row: its syllables, and how sure Tesseract is of the row as it is (_sure)."""
@@ -1848,17 +1890,26 @@ def read_rows(layers: dict, page: int = 0, lex=None, before: dict | None = None)
         under: dict[int, list[tuple[list[dict], float]]] = {}
         # The first row under a staff of each part: the word that its last hyphen leaves open.
         opened: dict = before if MEND_PAGE and before is not None else {}
+        leaders: dict[int, object] = {}   # the rows that lead under their staff: the voice of each
         for number, ((read, more), band) in enumerate(zip(readers, bands)):
             # The rows under one staff, from the top (as scorereader.lyrics.set_under() gives a row to the staff over it).
             over = [index for index, staff in enumerate(layers.get('staves') or []) if staff['rows'][4] < band['top']]
             above = max(over, key=lambda index: layers['staves'][index]['rows'][4]) if over else None
-            leads = above is not None and band.get('with') is None and above not in under
+            twin = band.get('twin') if TWIN else None
+            leads = above is not None and band.get('with') is None and twin is None and above not in under
             voice = layers['staves'][above].get('number') if leads else None
             if MEND_BEFORE and leads and opened.get(voice):
                 band = dict(band, carried=opened[voice])
             row = [dict(syllable, band=(page, number)) for syllable in _pick(read, grey, band, known, mend, ways, more)]
             if leads:
                 opened[voice] = _open(row)
+                leaders[number] = voice
+            if twin is not None and twin < len(found):
+                # The other half of the row over it (see TWIN): the two readings are one row.
+                found[twin][:] = _twin_row(found[twin], row, bands[twin], band, grey, space, (page, twin))
+                if twin in leaders:
+                    opened[leaders[twin]] = _open(found[twin])
+                row = []
             if row and above is not None and band.get('with') is None:
                 under.setdefault(above, []).append((row, _sure(read(HIGH))))
             found.append(row)
