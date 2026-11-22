@@ -69,6 +69,23 @@ LINE_WIDE = 1.2      # such a piece may be this many times as wide and as large 
 HOLE_NECK = 0.05     # a staff line that is faint inside a head leaves the two pieces of the inside joined by a neck
                      # (0: off): with the neck filled in the line's rows (this share of the piece or more) the piece
                      # fills LINE_ROUND of its hull; at least this share of it lies over the line and as much under it
+HOLE_LEAN = (0.2, 0.5)   # the inside of a printed half note lies on its side and rises to the right. Where a staff line that is
+#                      faint inside the head leaves its two parts joined by a neck (as HOLE_NECK), the parts stand
+#                      staggered, the upper one at the right of the lower one, and no paper of the one stands over the
+#                      other: filled upright, the neck stays a dent. Such a piece is an inside where it is at least as wide
+#                      as high, each of the two parts beside its narrowest row in the rows of the line holds the first
+#                      number of its paper or more and is an inside by itself (small, or round), and the middle of the
+#                      upper part stands to the right of the middle of the lower one by the second number of their
+#                      distance in height or more. A census at this step on every scan page of LitChoir (142 dented pieces
+#                      as large as an inside that cross the row of a staff line, each with the scorer's verdict for the
+#                      note at it): 16 pass, all half notes on a line of four prints, 8 of them read as quarter notes
+#                      and 7 made right by their columns; their parts lean by 0.71 to 1.38 and hold 0.24 or more. The
+#                      paper in an older quarter rest (two parts, 0.48 and 0.57, a piece that stands upright), the ring
+#                      of a head by hand (0.41 at most) and the cell of a sign do not pass. At a ledger line the same holds
+#                      where the line is seen at both sides of the head (as HOLE_LEDGER asks): of 19 such pieces 3 pass,
+#                      all half notes. Such an inside is whole where the page's other insides of the kind were halves, so
+#                      it does not teach the page how large its holes are (the layer `lean`, see symbols.HOLLOW_PAGE).
+#                      (None: off)
 HOLE_LEDGER = (3, 0.9, 0.2)   # the rows of this many ledger lines over and under each staff count as lines for such a
 #                      neck, where the ledger line is seen: at both sides of the paper, within the second number of
 #                      staff spaces, a thin level stroke stands in the line's row over the third number of staff
@@ -412,7 +429,7 @@ def _whole_inside(ink: np.ndarray, part: np.ndarray, x: int, y: int, space: floa
 
 def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[float] | None = None,
                clefs: list[tuple[float, float, float, float]] | None = None, least: float | None = None,
-               ledgers: list[float] | None = None) -> np.ndarray:
+               ledgers: list[float] | None = None, lean: list | None = None) -> np.ndarray:
     """1 where paper is closed in by ink and can be the inside of a hollow note head.
 
     The inside of a head is round: it has no dent. Paper that is closed in between two marks has one. A sharp or a
@@ -432,6 +449,7 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
     count, labels, stats, _ = cv2.connectedComponentsWithStats((1 - ink).astype(np.uint8), connectivity=4)
     keep = np.zeros(count, bool)
     dented = []
+    leaned = []        # the insides that only HOLE_LEAN keeps (handed back in `lean`)
     pressed = []       # cells that are a whole note's inside but for a side that is a little thin (see WHOLE_OVER)
     for index in range(1, count):
         x, y, width, height, area = stats[index]
@@ -458,7 +476,11 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
             if not (line and HOLE_NECK and lined is not None and _necked(part, area, line, y, lined)):
                 if not (line and HOLE_NECK and beside is not None and _necked(part, area, line, y, beside)
                         and _ledger_at(ink, x, y, width, height, beside, line, space)):
-                    continue
+                    if not (line and HOLE_LEAN and lined is not None and _leaning(part, area, line, y, lined, space, least)) \
+                            and not (line and HOLE_LEAN and beside is not None and _leaning(part, area, line, y, beside, space, least)
+                                     and _ledger_at(ink, x, y, width, height, beside, line, space)):
+                        continue
+                    leaned.append(index)
         keep[index] = True
     for index in pressed:
         x, y, width, height, area = stats[index]
@@ -491,6 +513,8 @@ def head_holes(ink: np.ndarray, space: float, line: float = 0.0, rows: list[floa
                 both[uh:uh + gap] &= columns.astype(np.uint8)
                 if _round(both, int(both.sum()), LINE_ROUND):
                     keep[upper] = keep[lower] = True
+    if lean is not None:
+        lean.append(np.isin(labels, leaned).astype(np.uint8))
     return keep[labels].astype(np.uint8)
 
 
@@ -564,6 +588,34 @@ def _necked(part: np.ndarray, area: int, line: float, top: int, rows: np.ndarray
         filled = part | (closed & lined[:, None].astype(np.uint8))
         whole = int(filled.sum())
         if whole - area >= HOLE_NECK * area and _round(filled, whole, LINE_ROUND):
+            return True
+    return False
+
+
+def _leaning(part: np.ndarray, area: int, line: float, top: int, rows: np.ndarray, space: float,
+             least: float | None = None) -> bool:
+    """True for the inside of a printed half note that a faint staff line cuts nearly in two where its two parts stand
+    staggered (HOLE_LEAN): the inside lies on its side and rises to the right, so the part over the line stands at the
+    right of the part under it, and _necked(), which fills the line upright, finds nothing between them. The piece is
+    cut at its narrowest row in the rows of the line; each part is a good part of it and an inside by itself, and the
+    line from the middle of the lower part to the middle of the upper one rises to the right."""
+    if part.shape[1] < part.shape[0]:
+        return False        # the inside of a head lies on its side
+    at = np.arange(top, top + part.shape[0])
+    widths = part.sum(axis=1)
+    for row in rows[(rows > top) & (rows < top + part.shape[0] - 1)]:
+        near = np.nonzero(np.abs(at - row) <= line / 2 + 2)[0]
+        neck = int(near[np.argmin(widths[near])])
+        over, under = part[:neck], part[neck + 1:]
+        if min(int(over.sum()), int(under.sum())) < HOLE_LEAN[0] * area:
+            continue
+        over_rows, over_columns = np.nonzero(over)
+        under_rows, under_columns = np.nonzero(under)
+        aside = float(over_columns.mean() - under_columns.mean())
+        down = float(under_rows.mean() + neck + 1 - over_rows.mean())
+        if aside < HOLE_LEAN[1] * down:
+            continue
+        if all(int(half.sum()) < 0.06 * space * space or _round(half, int(half.sum()), least) for half in (over, under)):
             return True
     return False
 
@@ -650,8 +702,9 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
              for staff in staves] if HOLE_SIDE else None
     ledgers = [staff['rows'][end] + side * step * staff['space'] for staff in staves for end, side in ((0, -1), (4, 1))
                for step in range(1, HOLE_LEDGER[0] + 1)] if HOLE_LEDGER else None
+    lean = []
     holes = head_holes(ink, space, max(staff['thick'] for staff in staves), [row for staff in staves for row in staff['rows']], clefs,
-                       ledgers=ledgers)
+                       ledgers=ledgers, lean=lean)
     # The rim of a hollow head can have a small break, in print and in a copy: the paper inside is closed in again
     # when the break is closed. These open holes are kept apart: they are asked only where a head is missing.
     size = int(max(3, round(HOLE_GAP * space))) | 1
@@ -667,6 +720,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
         gone = np.isin(labels, np.unique(labels[(no_holes > 0) & (holes > 0)])) & (holes > 0)
         holes = holes & (1 - gone.astype(np.uint8))
         open_holes = open_holes & (1 - gone.astype(np.uint8))
+    lean = lean[0] & holes
     solid = ink | holes
     lines = staff_lines(solid, staves)
     free = solid & (1 - lines)
@@ -724,7 +778,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     return {'grey': grey, 'ink': ink, 'holes': holes, 'open_holes': open_holes, 'ragged': ragged, 'solid': solid,
             'lines': lines, 'free': free, 'joined': joined, 'up': up,
             'stems': stems, 'marks': marks, 'thick': thick, 'strokes': strokes, 'staves': staves, 'space': space,
-            'bare': bare, 'weak': weak, 'bridge': bridge, 'clip': clip, 'black': black}
+            'bare': bare, 'weak': weak, 'bridge': bridge, 'clip': clip, 'black': black, 'lean': lean}
 
 
 def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float) -> tuple[list[dict], np.ndarray]:
