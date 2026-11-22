@@ -27,10 +27,10 @@ must catch up with it. The notes are read by rules alone, with no model.
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
 scans; 97 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,103 of 22,653, counted by the page;
 21,965 of 22,605 as typed; 43 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
-syllable, 36 both, 43 have no note that is not there, 35 are whole in all three; 545 printed notes and 165 syllables
+syllable, 36 both, 43 have no note that is not there, 35 are whole in all three; 545 printed notes and 162 syllables
 are lacking and 203 notes are read that are not there, each printed head counted once since round 78: 387 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.4 % with Tesseract, its larger
-files and a list of words (6,090 of 6,255, counted by the page; 6,025 of 6,260 as typed; 95.4 % of the whole words; 48 scores at 99 % of the syllables);
+files and a list of words (6,093 of 6,255, counted by the page; 6,028 of 6,260 as typed; 95.4 % of the whole words; 48 scores at 99 % of the syllables);
 89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.4 % on the kit (6238 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,967 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
@@ -1412,6 +1412,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   The list is made by its script: an entry that is written into the list by hand is lost at its next making.
 - A mark that an earlier round called the hand's is looked at in the scan before it is counted so: the "time signature
   by hand" of one clean score is the printed 2/4, which a pen stroke joins.
+- A digit that stands alone between two words can be a letter that the stem of a note runs into: where a stem of
+  the staff over the row joins the top of an a, Tesseract reads a 4 (`ocr.FOUR_A`). The paper of the letter tells:
+  the small bowl of the a is closed, low in the band, in a box one letter wide. A census of every lone 4 in the stored
+  rows (50 places, a tile of each) gave the shape: a stem through a hyphen or through an i, a tie and a number by hand
+  close no such paper, and the number of a verse stands first in its row or carries a full stop.
+- A mark that one print draws in one shape can be misread in a different step at each of its places: the head on top
+  of the loop that an eighth's flag closes with its stem was read as a sharp, as the loop of a flag, as a fat stem and
+  as a half note at four places of two scans. Count what each step would take before a rule for one of them: of the 84
+  marks of the clean pages that are read as sharps because their strokes at one end are another head, one is a head.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
