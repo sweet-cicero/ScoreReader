@@ -143,6 +143,13 @@ WHOLE_BESIDE = (0.35, 0.2, 0.2, 0.2)   # a whole note that touches the head of t
 #                    of a filled head, at most this many staff spaces from the stem the hollow oval was given, is not its
 #                    own when the two boxes are at most this far apart, their left edges are this near, and the oval is
 #                    wider than the filled head by this much (None: off)
+PAIR_SHARP = (0.3, 0.3, 0.5, 0.35, 0.7, 1.4, 0.7, 0.5)   # the lower head of two voices that touch, read as a sharp: a
+#                    filled mark that _kind calls a sharp is a head where a head over it with a stem up and a stem down
+#                    stands within the first number of staff spaces at its sides, reaches into the mark's rows by the
+#                    second number at most and stands the third number over them at most, the stem down of that head
+#                    is the mark's own way down at its left to within the fourth number, the mark is the fifth to the
+#                    sixth number of the page's heads wide and high, the head over it at least the seventh, and no
+#                    other head on that head's stem up shares the last number of its columns (None: off)
 RIM_STEM = 0.3       # upright ink that ends in the box of another head of its piece of ink, or this many staff spaces
 #                    past it, is the rim of that head and no stem (0: off)
 RIM_BOW = None       # (0.7, 0.2): ... or the first number past it where both heads are hollow, that head has no stem and the ink
@@ -2039,6 +2046,51 @@ def _stem_stays(mark: dict, way: str, far: float) -> bool:
     return bool(ends) and max(ends) < far
 
 
+def _pair_sharp(layers: dict, marks: list[dict], space: float) -> None:
+    """Two heads of two voices that touch, the upper one with its stem up at its right and the lower one with its
+    stem down at its left. Several prints draw the flag of the lower note back up to its head, and the stem and the
+    flag close a narrow wedge of paper under it: the four ways that leave the lower head then made it a sharp, and the
+    head over it took the stem down through it as a second stem. Such a mark is the lower voice's head, with that stem;
+    the head over it keeps its stem up (`_share_stems` parts the two).
+
+    The lower head is filled and as large as the page's heads, and the head over it is a whole head with no head over
+    it in its own columns: a piece of the rim of a half note, of a punch hole and of a mark by hand stood over such
+    marks, and the crossbar of a letter under a chord whose heads the staff lines cut into pieces. (The flag of the
+    upper note is read as a head at the end of its stem, beside it.) The heads the other way round (the upper head
+    read as a sharp, its stem up taken by the head under it) were the flag over a head, a sharp of a key and a mark
+    by hand on LitChoir's pages, and are not read."""
+    side, over, apart, near, least, most, whole, column = PAIR_SHARP
+    head_wide, head_high = layers['head']
+    heads = [mark for mark in marks if mark['kind'] == 'head'
+             and sorted(stem['direction'] for stem in mark['stems']) == ['down', 'up']
+             and mark['x1'] - mark['x0'] + 1 >= whole * head_wide and mark['y1'] - mark['y0'] + 1 >= whole * head_high]
+    for mark in marks:
+        if mark['kind'] != 'sharp' or mark.get('whole_sign') or mark['hole'] >= HOLLOW:
+            continue
+        wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+        if not (least * head_wide <= wide <= most * head_wide and least * head_high <= high <= most * head_high):
+            continue
+        way = mark['ways'].get('down_left')
+        if not way:
+            continue
+        for head in heads:
+            if not (head['x0'] - side * space <= mark['x1'] and head['x1'] + side * space >= mark['x0']
+                    and mark['y0'] - apart * space <= head['y1'] <= mark['y0'] + over * space and head['y0'] < mark['y0']):
+                continue
+            stem = next(stem for stem in head['stems'] if stem['direction'] == 'down')
+            if abs(way['x'] - stem['x']) > near * space or abs(way['end'] - stem['end']) > near * space:
+                continue
+            up = next(stem for stem in head['stems'] if stem['direction'] == 'up')
+            if any(other is not head and other['kind'] == 'head' and up['end'] < other['cy'] < head['cy']
+                   and min(other['x1'], head['x1']) - max(other['x0'], head['x0']) + 1 >= column * (head['x1'] - head['x0'] + 1)
+                   for other in marks):
+                continue        # a head over it in its own columns, on its stem up: a piece of a column of heads
+            mark['kind'] = 'head'
+            mark['stems'] = [dict(stem, length=abs(mark['cy'] - stem['end']))]
+            mark['pair_sharp'] = tuple(head[key] for key in ('x0', 'y0', 'x1', 'y1'))
+            break
+
+
 def _share_stems(marks: list[dict], space: float) -> None:
     """Heads of two voices that stand close share one line of ink: the stem of the upper voice goes up from the
     upper head, the stem of the lower voice goes down from the lower head. Followed from either head, the ink leads
@@ -2955,6 +3007,8 @@ def read_symbols(layers: dict) -> dict:
                        and other['y0'] - reach(other) <= stem['end'] <= other['y1'] + reach(other)
                        and (other['cy'] < mark['cy']) == (stem['direction'] == 'up') for other in heads):
                     mark['stems'].remove(stem)
+    if PAIR_SHARP:
+        _pair_sharp(layers, marks, space)
     _share_stems(marks, space)
     if TWO_HEADS:
         split = []

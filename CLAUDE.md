@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
-scans; 98 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,112 of 22,653, counted by the page;
-21,970 of 22,605 as typed; 44 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
-syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 536 printed notes and 146 syllables
-are lacking and 201 notes are read that are not there, each printed head counted once since round 78: 383 by the
+scans; 99 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,118 of 22,653, counted by the page;
+21,976 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
+syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 530 printed notes and 146 syllables
+are lacking and 202 notes are read that are not there, each printed head counted once since round 78: 384 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.4 % on the kit (6239 of 6901).
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,967 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1453,6 +1453,16 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   sharing looked at the input only, and both heads kept the stem down.
 - A guard by the widest row of an inside meets the slit of a half note by hand, whose rows are two to eight pixels
   wide: its widest row lies anywhere by chance. Ask for the whole shape: the widest row of a wedge spans its box.
+- A mark that a step names wrongly can be told by its neighbour. The lower head of two voices that touch, whose flag
+  a print draws back up to the head, was called a sharp (its four ways leave it), and the head over it held the
+  mark's stem down as its own second stem (`symbols.PAIR_SHARP`). The neighbour is asked for its own shape too: a
+  sliver of a half note's rim, a punch hole and a small mark by hand stood over the false marks, and the heads that
+  the staff lines cut out of one blot all hold both stems, so the crossbar of a letter under such a column passed.
+- A rule for a pair is read in each direction alone. The same shape the other way round (the upper head read as a
+  sharp, its stem up taken by the head under it) was the flag over a head, a sharp of a key or a mark by hand at
+  every place where the first form took it, and cost a clean score 5 notes. Places at the start of a staff (clefs,
+  the sharps of a key) cost no note, because the start of the notes drops their heads, but a census lists them:
+  count the places inside the music before a rule is judged by how often it acts.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

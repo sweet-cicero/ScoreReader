@@ -185,6 +185,57 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 94 (22 November 2026): the lower of two touching eighths, read as a sharp.
+
+  - **The lower head of two voices that touch** (`symbols.PAIR_SHARP`). Censuses of the notes that the clean copies
+    lack found no cause of more than a few notes: 280 insides refused near hollow notes that are lacking, of every
+    kind; dots joined to other ink, which the column of their notes parts no better than chance (21 true and 20
+    false); wide slim strokes (8 lacking notes among 526); two arcs side by side inside the staff (2 true of 111). A
+    census of every mark that `_kind` calls a sharp (5,086 on LitChoir's scan pages) showed one shape on several
+    prints: two heads of two voices that touch, the upper one with its stem up at its right and the lower one with its
+    stem down at its left, where the print draws the flag of the lower note back up to its head. The stem and the flag
+    close a narrow wedge of paper under the head, the four ways that leave the lower head made it a sharp, and the head
+    over it took the stem down through it as a second stem. Such a mark is the lower voice's head with that stem, and
+    `_share_stems` parts the two stems.
+  - The first form took every sharp under (or over) a head with both stems where that head's stem was the mark's own
+    way: 102 places on 64 pages, 47 of them inside the music; the others are clefs and the sharps of key signatures,
+    whose heads the start of the notes drops. It gained 17 notes and lost 9 on all scores, 6 and 6 on the clean copies,
+    and every gain was a lower head. The heads the other way round (the upper head read as a sharp, its stem up taken
+    by the head under it) were the flag over a head, a sharp of a key and a mark by hand, and cost a clean score 5 notes
+    (liturgy-mercy-of-peace): that half is not read. The false lower marks were a piece of the rim of a half note
+    under a sliver of it, a punch hole, marks by hand under small heads, hollow lower heads (half notes that the step of
+    the insides reads), and the crossbar of a letter under a chord whose heads the staff lines cut out of one blot,
+    each piece with both stems. The guards: the mark is filled (under `HOLLOW`), the head over it is at least 0.7 of
+    the page's heads wide and high, and no other head on its stem up shares half of its columns (the flag of the upper
+    note, which is read as a head at the end of its stem, stands beside it).
+  - The rule as it stands acts at 21 places, 17 of them inside the music: 10 notes gained and none lost on all scores,
+    6 on the clean copies (cherubic-lvovsky, extra-rejoice-o-virgin-rachmaninov, liturgy-one-is-holy--s2,
+    trisagion-arabic, two on pascha-exapostilarion), and staff by staff 10 and 7. The PDFs are not read by this step.
+  - Every new head is a printed note. Two of them cost notes beside them, and the rule stays: a sixteenth of
+    carol-heaven-and-earth--s2 is read as an eighth, and the vote of its column makes eighths of the two sixteenths
+    after it (the score is level: a pair elsewhere on the page is read right); a worn eighth of cherubic-lvovsky whose
+    flag is broken is read as a quarter and makes a quarter of the eighth under it on the next staff.
+  - A printed head that the count calls a note that is not there now: on cherubic-lvovsky a chord of three heads
+    stands twice on the upper staff (D5, B flat 4 and F4, then D5, B flat 4 and G4), where the typed hymn gives the
+    two upper heads. Before the round the G4 stood for the B flat 4 that was not read, as a wrong pitch; with the B flat
+    4 read, it is left over. Both third heads are candidates for the list of the notes by the page.
+  - **Left**: the same pair where the layer of the stems holds both heads, so that no mark is made there (the stem,
+    the two heads and the flag are one upright piece; cherubic-lvovsky, two notes at one place). Further pairs of that
+    print are glued into one mark or broken by the wear. The heads the other way round are not read.
+
+    Clean copies 22,118 of 22,653 notes (97.6 %; 45 at 99 %; 21,976 of 22,605 as typed, 21,970 before); 6,109 of 6,255
+    syllables (97.7 %; 6,044 of 6,260 as typed) and 4,332 of 4,528 whole words, as before. The reading before the
+    round, scored as typed, gives the figures of round 93 exactly. 41 clean scores read every printed note (530
+    lacking, 536 before), 47 every syllable (146), 37 both, 44 have no note that is not there (202, 201 before: the
+    third head above) and 36 are whole in all three; 6 scores lack one to three notes (pascha-exapostilarion is one of
+    them now), and 418 notes are needed for 99 % of each. All scores 78,826 of 89,867 notes (87.7 %; 99 at 99 %), 10
+    gained and none lost, and 2,480 that are not there (4,542 by the count before round 78); syllables 25,649 of 28,696
+    and whole words 16,939 of 20,591, as before. Scans 58,810 of 69,704 notes (84.4 %; 46 at 99 %), thick copies 7,125
+    and copies by hand 29,567. Staff by staff 76,179 of 92,682 notes, 10 gained and none lost, the clean copies 21,202
+    of 23,094 (7 gained). The kit 6,242 of 6,901 by parts and 5,808 of 6,419 staff by staff (3 and 2 gained). The
+    fresh set 39,967 of 41,761 notes, 618 that are not there, 8,344 of 11,341 syllables and 5,917 of 6,647 whole words
+    (as before; its files are the same as before, file for file: no pair of its pages is read so).
+
 - Round 93 (22 November 2026): two half notes a third apart that touch, and the head beside the staff that was lost.
 
   - **A head in the first space beside the staff** (`symbols.HOLE_FIVE`). Of the 38 half notes that the clean copies
@@ -7444,13 +7495,15 @@ typed hymns, of all typed notes.
 | Printed | 12 | 67 % | 82 % | 76 % | 93 % |
 | Old copy (notes drawn by hand) | 9 | 76 % | 37 % | 88 % | 87 % |
 | By hand | 5 | 65 % | 70 % | 79 % | 87 % |
-| Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 82 % |
+| Poor (faded or broken) | 2 | 93 % | 49 % | 95 % | 83 % |
 | Digital PDF | 3 | 81 % | 72 % | 81 % | 100 % |
-| All 31 hymns | 31 | 71 % | 66 % | 81 % | 90.4 % (6239 notes) |
+| All 31 hymns | 31 | 71 % | 66 % | 81 % | 90.5 % (6242 notes) |
 
-- Over all hymns the own rules read more notes right than the network they replaced: 90.4 % against 81 %.
-- They are behind the network on two kinds: old copies (87 % against 88 %) and the two poor pages (82 % against 95 %).
-- 12 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 6 are under 80 %.
+- Over all hymns the own rules read more notes right than the network they replaced: 90.5 % against 81 %.
+- They are behind the network on two kinds: old copies (87 % against 88 %) and the two poor pages (83 % against 95 %).
+- 12 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 5 are under 80 %.
+- Round 94 brings the kit 3 notes by parts and 2 staff by staff (6242 and 5808): two pairs of touching eighths on the
+  poor page of pascha-christ-is-risen-stomp, which passes 80 %.
 - Round 93 brings the kit 1 note by parts and 1 staff by staff (6239 and 5806): a half note in the first space beside the staff.
 - Round 92 brings the kit no note and no syllable (6238 and 5805).
 - Round 91 brings the kit no note and no syllable (6238 and 5805).
