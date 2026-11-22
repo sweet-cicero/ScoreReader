@@ -3186,6 +3186,23 @@ OPEN_BESIDE = 0.25   # a piece of the rim can lie just outside the box of an ope
 #                      was read as a sign is no sign: the second head of a chord, which hangs on the same stem, is
 #                      asked without them.
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+HOLE_FIVE = (0.75, 0.12, 0.4, 0.85)   # a hollow head in the first space beside the staff (no ledger line belongs there)
+#                      is a head without a ledger line. A head of a chord that touches the head on the staff's outer
+#                      line is lost so: the other head keeps the stem that goes past this one, and this one takes the
+#                      stem at its own side (the upper head goes up, the lower one down). A head without a stem is no
+#                      head where ink stands at both sides of its rim within the first number of staff spaces: a mark
+#                      between two strokes is a letter of a word, a letter p between brackets, or the ison's breve
+#                      between its bars. And the inside of a head hangs from the line with its rim between them, as an
+#                      oval: an inside whose widest row lies next to the staff (within the second number of its height,
+#                      where it is the third number of staff spaces high or more) and spans the fourth share of its box
+#                      or more is a wedge between the line and a stroke, a pencil ring or a flag that bends back. (The
+#                      slit of a half note by hand leans, and none of its rows spans its box.) A census of every such
+#                      head on LitChoir's pages (121, on 72 pages; none on the fresh set), each looked at: the strokes
+#                      take 3 letters and 13 breves, the wedge 5 cells of pencil rings and flags, and 3 false heads stay
+#                      (the room of a flag whose inside is no wedge, a circle by hand with a line through it, a chord
+#                      drawn over by hand). A test of the stems (a stem that ends in the head that owns it, a stem that
+#                      is an arc) took nothing that the wedge had not taken, and is not in the rule. (None: only the
+#                      second head of a read mark)
 HOLE_BIG = None      # (2.5, 4): the hole of a mark that is this many times the usual hole of the page's hollow heads (the
 #                    median of this many or more) is no inside of a head, and the page is read again without it.
 #                    Off: a slur does close in paper with a stem and a staff line, and filled it hides the stem of
@@ -3497,16 +3514,29 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 if any(other['y1'] - other['y0'] + 1 >= OPEN_PIECE * layers['head'][1] and not other.get('thin')
                        for other in head['replaces']):
                     continue
+            five = False
             if abs(place) > 4.6:
                 # Beside the staff a head lies on its ledger lines. The letter p of the words has a bowl and a stem too.
                 head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
                 found = ledger_place(layers, layers['staves'][staff], head)
                 if found is None or not head['ledgers']:
-                    if second is None or abs(place) > 5.5:
-                        continue      # (the second head of a read mark is no letter, and needs no line next to the staff)
-                    found = float(round(place))
+                    if abs(place) > 5.5:
+                        continue
+                    if second is None:
+                        if not HOLE_FIVE:
+                            continue      # (the second head of a read mark is no letter, and needs no line next to the staff)
+                        five = True
+                    found = float(round(place)) if not five else (5.0 if place > 0 else -5.0)
                 head['place'] = found
-            if paper is lean:
+            if five:
+                if high >= HOLE_FIVE[2] * space:
+                    widths = (labels[y:y + high, x:x + wide] == index).sum(axis=1)
+                    widths = widths if found < 0 else widths[::-1]
+                    if int(np.argmax(widths)) <= HOLE_FIVE[1] * (high - 1) and widths.max() >= HOLE_FIVE[3] * wide:
+                        continue
+                if not stems and _between_strokes(layers, x, wide, cy, space):
+                    continue
+            if paper is lean or (five and stems):
                 if not stems:
                     continue
                 # A head right over or under this one that found the same stems: of two stems, one up and one down,
@@ -3531,6 +3561,19 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                         upper = cy < other['cy']
                         stems = head['stems'] = [way for way in stems if (way['direction'] == 'up') == upper]
                         other['stems'] = [stem for stem in other['stems'] if (stem['direction'] == 'up') != upper]
+                if five and {way['direction'] for way in stems} == {'up', 'down'}:
+                    # A head of the staff that this one touches, read before or in this step, has a stem that passes
+                    # this head: this head keeps the stem at its own side, away from the staff, and the other head
+                    # leaves it that stem.
+                    outer = 'up' if found > 0 else 'down'
+                    touching = [other for other in heads + out if abs(other['cx'] - cx) <= 0.5 * space
+                                and 0 < (other['cy'] - cy) * (1 if found > 0 else -1) <= 1.3 * space
+                                and any(same(stem, way) for stem in other['stems'] for way in stems)]
+                    if touching:
+                        stems = head['stems'] = [way for way in stems if way['direction'] == outer]
+                        for other in touching:
+                            if len(other['stems']) >= 2:
+                                other['stems'] = [stem for stem in other['stems'] if stem['direction'] != outer]
             out.append(head)
             pieces.update(id(other) for other in head.get('replaces', []))
     if OPEN_BESIDE:
@@ -3546,6 +3589,31 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 upper['stems'] = [stem for stem in upper['stems'] if stem['direction'] == 'up']
                 lower['stems'] = [stem for stem in lower['stems'] if stem['direction'] == 'down']
     return out
+
+
+def _between_strokes(layers: dict, x: int, wide: int, cy: float, space: float) -> bool:
+    """Whether ink stands at both sides of the rim of a head without a stem whose inside spans the columns from x on
+    (wide columns), within HOLE_FIVE[0] staff spaces past the rim, in the rows of the head's middle (no staff line)."""
+    free = layers['free']
+    rows = free[max(0, int(cy - 0.15 * space)):int(cy + 0.15 * space) + 1]
+    for way, edge in ((-1, x), (1, x + wide - 1)):
+        column, rim, paper, found = edge + way, True, 0, False
+        while 0 <= column < rows.shape[1]:
+            dark = bool(rows[:, column].any())
+            if rim and dark:
+                column += way
+                continue
+            rim = False
+            if dark:
+                found = True
+                break
+            paper += 1
+            if paper > HOLE_FIVE[0] * space:
+                break
+            column += way
+        if not found:
+            return False
+    return True
 
 
 # ----------------------------------------------------------------------------------------------------------------

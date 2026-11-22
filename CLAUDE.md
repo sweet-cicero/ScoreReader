@@ -24,14 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
-scans; 98 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,107 of 22,653, counted by the page;
-21,965 of 22,605 as typed; 44 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
-syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 541 printed notes and 146 syllables
+Not reached yet: 87.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
+scans; 98 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,112 of 22,653, counted by the page;
+21,970 of 22,605 as typed; 44 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
+syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 536 printed notes and 146 syllables
 are lacking and 201 notes are read that are not there, each printed head counted once since round 78: 383 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.4 % on the kit (6238 of 6901).
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.4 % on the kit (6239 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,967 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1442,6 +1442,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   as its stem. A printed stem is ink of its own that leaves its head (`symbols.DOT_COLUMN`, a rule for one case).
 - A list that a script makes is compared with the stored list before the script makes it anew: the list of the notes
   that a hand changed held two entries that had been written into it by hand and were not in its script.
+- A test that cannot hold at a place refuses every head that reaches it there. A hollow head that the step of the
+  insides reads in the first space beside the staff needed a ledger line, and no ledger line belongs to that space
+  (`symbols.HOLE_FIVE`). A census of every head that this one test alone refused (121 on 72 pages of LitChoir, none on
+  the fresh set), each looked at, held the true heads that the clean copies lacked there and the shapes of the false
+  ones: a mark between two strokes (a letter, a letter p between brackets, the ison's breve between its bars) and a
+  wedge between the line and a pencil ring or a flag.
+- A head that a step makes beside another head can meet a head that the same step made before it: that head stands
+  in the step's output, not in its input. Two touching heads share their stems where both are known: the first
+  sharing looked at the input only, and both heads kept the stem down.
+- A guard by the widest row of an inside meets the slit of a half note by hand, whose rows are two to eight pixels
+  wide: its widest row lies anywhere by chance. Ask for the whole shape: the widest row of a wedge spans its box.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
