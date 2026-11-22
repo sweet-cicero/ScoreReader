@@ -27,11 +27,11 @@ must catch up with it. The notes are read by rules alone, with no model.
 Not reached yet: 87.6 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.2 % on
 scans; 97 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,103 of 22,653, counted by the page;
 21,965 of 22,605 as typed; 43 of the 78 counted scores at 99 %; 40 scores read every printed note, 47 every
-syllable, 36 both, 43 have no note that is not there, 35 are whole in all three; 545 printed notes and 162 syllables
+syllable, 36 both, 43 have no note that is not there, 35 are whole in all three; 545 printed notes and 146 syllables
 are lacking and 203 notes are read that are not there, each printed head counted once since round 78: 387 by the
-count before), and of their syllables 49.9 % with the own letter reader and 97.4 % with Tesseract, its larger
-files and a list of words (6,093 of 6,255, counted by the page; 6,028 of 6,260 as typed; 95.4 % of the whole words; 48 scores at 99 % of the syllables);
-89.3 % of all syllables with Tesseract (88.4 % on scans), and 90.4 % on the kit (6238 of 6901).
+count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.4 % on the kit (6238 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,967 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1421,6 +1421,18 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   of the loop that an eighth's flag closes with its stem was read as a sharp, as the loop of a flag, as a fat stem and
   as a half note at four places of two scans. Count what each step would take before a rule for one of them: of the 84
   marks of the clean pages that are read as sharps because their strokes at one end are another head, one is a head.
+- A line of words that does not fit under its notes is set at two heights, and the finder of the rows takes each
+  half for a row as wide as the staves: the first row under the staff then holds one half and the other half's
+  letters cut in two. The halves stand in columns apart, no letter of one over or under a letter of the other
+  (`words.HEIGHTS`). A slur over the lower half lies in the rows of the higher one as a free piece of a letter's size,
+  and kept the first form from the case it was made for: such a piece is one thin stroke that crosses each of its
+  columns once, and all 40 of them in the first two rows under every staff of LitChoir and the fresh set were slurs.
+- A word whose letter touches a stem is no free letter, and a reading that is cut to the columns of the free letters
+  loses it (the first word of a row on two scans); a reading as wide as the staves gives a word a box that runs into
+  the other half's letters beside it. The two halves are read each from its letters outward, and their readings are
+  joined by columns, and past both halves' letters by the rows that hold a syllable's ink (`ocr.TWIN`): a printed
+  word stood past the words that a hand wrote in the lower row. Try such a rule's ways of reading on its pages with
+  Tesseract before a full pass: a pass of the planned pages takes three minutes.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

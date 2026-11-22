@@ -25,6 +25,15 @@ STAGGER = (5, 0.12, 0.6, 0.3, 1.0)   # rows of words that stand staggered (a ref
 BESIDE = True              # a row of such a stretch that stands beside the first row under the staff, with no letter
 #                            over or under a letter of it, goes on that row: the refrain that every verse sings is
 #                            printed once, at the middle of the rows of the verses (band['with']: the number of the first row)
+HEIGHTS = (0.8, 1.0, 2.0, 0.5)   # one row of words that the page prints at two heights (its left half higher than its
+#                            right half, or lower): the first two rows under a staff whose letters stand in columns apart,
+#                            no letter of one over or under a letter of the other, and at most this many times the taller
+#                            row's height apart, are one row (band['twin']: the number of the first; the words step joins
+#                            their readings, see scorereader.ocr.TWIN). The second row is read from this many staff spaces
+#                            before its letters on the side of the first row's letters, which it would read cut in half.
+#                            A slur over the lower row is no letter of the higher one: a piece this many times as wide as
+#                            high or more, that crosses each of its columns once, never longer than this share of its
+#                            height. None: off
 SPARSE = 4                 # a stretch between two staves, or under the last, with no band: a row that crosses this many
 #                            letters or more is a row of few words all the same (a word that is held over a long
 #                            melody: 'A - men', 'Al - le - lu - i - a'), for the step that reads the words only
@@ -83,8 +92,9 @@ def _staggered(letters: list[tuple], space: float, left: int, right: int) -> lis
 def word_rows(layers: dict) -> list[dict]:
     """The rows of the words of a page for the step that reads the words: the bands of word_bands(), and with them
     the rows of a stretch where the rows stand staggered (STAGGER; 'own': True) and the row that each such row
-    goes on ('with', see BESIDE), and the row of few words of a stretch with no band ('few': True, see SPARSE). The
-    notes are read with the bands alone, as they were."""
+    goes on ('with', see BESIDE), the row that the second row under a staff is the other half of ('twin', see
+    HEIGHTS), and the row of few words of a stretch with no band ('few': True, see SPARSE). The notes are read with
+    the bands alone, as they were."""
     return word_bands(layers, True)
 
 
@@ -97,10 +107,22 @@ def word_bands(layers: dict, staggered: bool = False) -> list[dict]:
     if not WORDS:
         return []
     bare, space = layers['bare'], layers['space']
-    count, _, stats, _ = cv2.connectedComponentsWithStats(bare.astype(np.uint8), connectivity=8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(bare.astype(np.uint8), connectivity=8)
     low, high, wide, flat = LETTERS
     letters = [(int(x), int(y), int(w), int(h)) for x, y, w, h, _ in stats[1:count]
                if low * space <= h <= high * space and w <= wide * space and w <= flat * h]
+    pieces = {(int(x), int(y), int(w), int(h)): number for number, (x, y, w, h, _) in enumerate(stats[1:count], 1)}
+
+    def bow(letter: tuple) -> bool:
+        # A slur that crosses a row of words (see HEIGHTS): one thin stroke that bends.
+        x, y, w, h = letter
+        if w < HEIGHTS[2] * h:
+            return False
+        ink = (labels[y:y + h, x:x + w] == pieces[letter]).astype(np.int8)
+        edges = np.diff(np.vstack([np.zeros((1, w), np.int8), ink, np.zeros((1, w), np.int8)]), axis=0)
+        if (edges == 1).sum(axis=0).max() > 1:
+            return False
+        return int(ink.sum(axis=0).max()) <= HEIGHTS[3] * h
     bands = []
     for top, bottom, upper, lower in _gaps(layers):
         cover = np.zeros(bottom - top, dtype=int)
@@ -146,19 +168,25 @@ def word_bands(layers: dict, staggered: bool = False) -> list[dict]:
                     and not any(band['top'] <= y + h / 2 <= band['bottom'] for band in found)]
             bands.extend(_staggered(rest, space, int(min(upper['x0'], lower['x0'])), int(max(upper['x1'], lower['x1']))))
         if BESIDE and staggered:
-            _beside([band for band in bands if top <= band['top'] < bottom], letters)
+            _beside([band for band in bands if top <= band['top'] < bottom], letters,
+                    bow if HEIGHTS and top >= upper['rows'][4] else None, space)
     bands.sort(key=lambda band: band['top'])
     for band in bands:
-        if 'with' in band:
-            band['with'] = next(number for number, other in enumerate(bands) if other is band['with'])
+        for mark in ('with', 'twin'):
+            if mark in band:
+                band[mark] = next(number for number, other in enumerate(bands) if other is band[mark])
     return bands
 
 
-def _beside(bands: list[dict], letters: list[tuple]) -> None:
-    """Marks the rows between two staves that go on the first of them (see BESIDE): band['with'] = that first row."""
-    def reach(band: dict) -> tuple[int, int]:
+def _beside(bands: list[dict], letters: list[tuple], bow=None, space: float = 0.0) -> None:
+    """Marks the rows between two staves that go on the first of them (see BESIDE): band['with'] = that first row.
+    With `bow` (it tells a slur from a letter), the rows under a staff are also looked at as one row that the page
+    prints at two heights (HEIGHTS): band['twin'] = the first row, and band['reach'] the columns of the letters of the
+    first row and of this one."""
+    def reach(band: dict, bows=None) -> tuple[int, int]:
         inside = [(x, x + w) for x, y, w, h in letters
-                  if band['top'] <= y + h / 2 <= band['bottom'] and band['x0'] <= x + w / 2 <= band['x1']]
+                  if band['top'] <= y + h / 2 <= band['bottom'] and band['x0'] <= x + w / 2 <= band['x1']
+                  and not (bows and bows((x, y, w, h)))]
         return (min(x for x, _ in inside), max(x for _, x in inside)) if inside else (band['x0'], band['x1'])
 
     bands = sorted(bands, key=lambda band: band['top'])
@@ -166,6 +194,17 @@ def _beside(bands: list[dict], letters: list[tuple]) -> None:
         return
     first = bands[0]
     taken = [reach(first)]
+    if HEIGHTS and bow and not any(band.get('own') or band.get('few') for band in bands[:2]):
+        # Each half of a row at two heights was found as a row of its own, as wide as the staves.
+        second = bands[1]
+        (start, end), (low, high) = reach(first, bow), reach(second, bow)
+        tall = max(first['bottom'] - first['top'], second['bottom'] - second['top'])
+        if (high < start or low > end) and second['top'] - first['bottom'] <= HEIGHTS[0] * tall:
+            second['twin'], second['reach'] = first, (int(start), int(end), int(low), int(high))
+            if low > end:
+                second['x0'] = max(second['x0'], int(low - HEIGHTS[1] * space))
+            else:
+                second['x1'] = min(second['x1'], int(high + HEIGHTS[1] * space))
     for band in bands[1:]:
         if not (band.get('own') or first.get('own')):
             continue
