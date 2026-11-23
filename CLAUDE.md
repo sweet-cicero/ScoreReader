@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
-scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,125 of 22,655, counted by the page;
-21,981 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
-syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 525 printed notes and 146 syllables
-are lacking and 200 notes are read that are not there, each printed head counted once since round 78: 384 by the
+scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,134 of 22,655, counted by the page;
+21,990 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
+syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 516 printed notes and 146 syllables
+are lacking and 201 notes are read that are not there, each printed head counted once since round 78: 382 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
@@ -1472,6 +1472,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   and the numbers of a time signature stand around their stroke. Ink that a rule moves from one layer to another is
   only the ink that the rule is about: released whole, the closed flag went to the marks with its head, the cut of the
   piece at a staff line parted its paper into two insides, and a false half note stood where the eighth stayed lost.
+- A whole note whose hairlines the scan lost is two short bold strokes that face each other, and in the staff the
+  staff lines join their ends and a ledger line runs through both (`symbols.arc_pairs`). Such pairs are counted in
+  the ink without its level lines, and a ledger line is joined back to a stroke only across the gap that it leaves in
+  the stroke's own columns. The shape of the pair is also that of letters, of words that a hand wrote on a staff and
+  of a line through struck-out words: the height of one whole note or of two a third apart, and a ledger line as
+  short as one note's, part them. A print can set its first ledger line closer to the staff than a staff space
+  (0.8): a note that a ledger line crosses stands on that line, whatever its distance.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

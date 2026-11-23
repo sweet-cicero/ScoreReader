@@ -4745,6 +4745,155 @@ def arc_wholes(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]
 
 
 # ----------------------------------------------------------------------------------------------------------------
+# A whole note in the staff or on a ledger line whose thin rim the scan lost
+
+ARC_PAIR = (1.2, 1.8, 0.25, 0.9, 0.2, 0.36)   # the print of ARC_WHOLE, in the staff and on a ledger line: the scan lost
+#   the hairlines over and under the bold sides of a whole note, and the two sides are left as two short bold strokes
+#   that face each other, with paper between them and no head read there. Such a pair is a whole note by its whole
+#   shape: together this wide (the first two numbers, in staff spaces of its staff, without the rows of a ledger
+#   line), this much paper between the strokes (the next two), each stroke at least this thick in its usual row (the
+#   next number), and its middle within the last number of a half staff space of a place of the staff. A rule for one
+#   print, and for a whole note of another whose hairlines lie on the staff lines: of the pairs of short strokes that
+#   face each other on LitChoir's scan pages, the last chord of both scans of one hymn and one whole note of another
+#   pass, and none else (letters and the brackets around them, letters that a hand wrote on a staff, the bold C of
+#   common time, a breve between its bars, a short double bar between two whole notes, words struck out with a line,
+#   the strokes of a noisy picture). None: off
+ARC_PAIR_HIGH = (0.85, 1.2, 0.25, 2.5, 0.85, 1.0)   # the pair is this high in staff spaces of its staff (one whole
+#   note), or one staff space more (two whole notes a third apart), and the tops and the bottoms of its two strokes are
+#   at most the third number of staff spaces apart. In the staff the middle gives the place; out of it a ledger line
+#   runs through the middle and the note stands on the first ledger line (a print can set that line closer to the staff
+#   than a staff space), and the ledger line is at most the fourth number of staff spaces long (a longer line strikes
+#   out words). Each stroke is one run of ink in at least this share of its rows (an A is two strokes) and stands
+#   upright, its two ends at most the last number of staff spaces apart in their columns. It stands after a head of its
+#   staff, with no ink between its strokes, and alone in paper (ARC_ALONE)
+ARC_SEEN = None   # a list: every pair that is asked, with its measures (a census at the reader's own step)
+
+
+def _arc_morph(mask: np.ndarray, wide: int, high: int, close: bool) -> np.ndarray:
+    """An exact opening or closing of a mask with a kernel of an odd size, with paper around the mask."""
+    wide, high = max(1, wide | 1), max(1, high | 1)
+    pad = max(wide, high)
+    padded = np.pad(mask.astype(np.uint8), pad)
+    done = cv2.morphologyEx(padded, cv2.MORPH_CLOSE if close else cv2.MORPH_OPEN,
+                            cv2.getStructuringElement(cv2.MORPH_RECT, (wide, high)))
+    return done[pad:-pad, pad:-pad] > 0
+
+
+def arc_pairs(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]:
+    """The whole notes in the staff or on a ledger line that were left as two short bold strokes that face each other
+    (ARC_PAIR): hollow heads with no stem. No head was read where they stand."""
+    if not ARC_PAIR:
+        return []
+    space = layers['space']
+    bare = layers['bare'] > 0
+    level = _arc_morph(bare, int(round(space)), 1, False)
+    ledger = level & ~_arc_morph(level, 1, int(round(0.3 * space)), False)
+    strokes = bare & ~ledger
+    joined = strokes | (ledger & _arc_morph(strokes, 1, int(round(0.35 * space)), True))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(joined.astype(np.uint8), connectivity=8)
+    parts = []
+    for index in range(1, count):
+        x, y, wide, high, _area = (int(value) for value in stats[index])
+        if ARC_PAIR_HIGH[0] * space <= high <= (ARC_PAIR_HIGH[1] + 1) * space and wide <= 1.3 * space:
+            parts.append((x, y, wide, high, index))
+    parts.sort()
+    out = []
+    for first, left in enumerate(parts):
+        for right in parts[first + 1:]:
+            gap = right[0] - (left[0] + left[2])
+            if gap > 1.3 * space:
+                break
+            if gap <= 0 or abs(left[1] - right[1]) > ARC_PAIR_HIGH[2] * space \
+                    or abs(left[1] + left[3] - right[1] - right[3]) > ARC_PAIR_HIGH[2] * space:
+                continue
+            x0, x1 = left[0], right[0] + right[2] - 1
+            y0, y1 = min(left[1], right[1]), max(left[1] + left[3], right[1] + right[3]) - 1
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            staff = _staff_of(layers, cx, cy)
+            if staff is None:
+                continue
+            lines = layers['staves'][staff]
+            own, rows = lines['space'], lines['rows']
+            top, bottom = (rows[2] - y0 + 0.5) / (own / 2), (rows[2] - y1 - 0.5) / (own / 2)
+            high = (y1 - y0 + 1) / own
+            notes = 1 if ARC_PAIR_HIGH[0] <= high <= ARC_PAIR_HIGH[1] else \
+                2 if ARC_PAIR_HIGH[0] + 1 <= high <= ARC_PAIR_HIGH[1] + 1 else 0
+            mid = (top + bottom) / 2
+            # The rows of the pair without a ledger line and the row at each side of it.
+            band = ledger[y0:y1 + 1, max(0, x0 - int(space)):x1 + int(space) + 1].any(axis=1)
+            band = band | np.r_[False, band[:-1]] | np.r_[band[1:], False]
+            one, two = (labels[y0:y1 + 1, x0:x1 + 1] == part[4] for part in (left, right))
+            free = [row for row in range(y1 - y0 + 1) if not band[row] and one[row].any() and two[row].any()]
+            if not free:
+                continue
+            outer = (max(int(np.nonzero(two[row])[0][-1]) for row in free)
+                     - min(int(np.nonzero(one[row])[0][0]) for row in free) + 1) / own
+            paper = min(int(np.nonzero(two[row])[0][0]) - int(np.nonzero(one[row])[0][-1]) - 1 for row in free) / own
+            usual = [float(np.median([part[row].sum() for row in free])) / own for part in (one, two)]
+            # Each part is one stroke: one run of ink in its rows.
+            single = min(float(np.mean([np.count_nonzero(np.diff(np.r_[0, part[row].astype(np.int8), 0]) == 1) == 1
+                                         for row in free])) for part in (one, two))
+            # Each stroke stands upright: its two ends in one column (the stroke of a Z leans).
+            lean = 0.0
+            for part in (one, two):
+                rows_of = [row for row in free if part[row].any()]
+                fifth = max(1, len(rows_of) // 5)
+                ends_at = [float(np.mean([np.nonzero(part[row])[0].mean() for row in chosen]))
+                           for chosen in (rows_of[:fifth], rows_of[-fifth:])]
+                lean = max(lean, abs(ends_at[0] - ends_at[1]) / own)
+            between = strokes[y0:y1 + 1, left[0] + left[2]:right[0]]
+            middle = int(round(cy))
+            crossed = False
+            low = max(0, middle - int(0.25 * own))
+            across = ledger[low:middle + int(0.25 * own) + 1, x0:x1 + 1]
+            if across.any():
+                # A ledger line belongs to its note and is short; a line that runs on past it strikes out words.
+                at = low + int(np.argmax(across.sum(axis=1)))
+                row = ledger[at]
+                start = x0 + int(np.argmax(row[x0:x1 + 1]))
+                left_end, right_end = start, start
+                while left_end > 0 and row[left_end - 1]:
+                    left_end -= 1
+                while right_end + 1 < len(row) and row[right_end + 1]:
+                    right_end += 1
+                if right_end - left_end + 1 <= ARC_PAIR_HIGH[3] * own:
+                    crossed = True
+                    mid = (rows[2] - at) / (own / 2)
+            # A ledger line through the middle is the first one past the staff (a print can set it closer to the
+            # staff than a staff space): the note stands on it.
+            place = (6 if mid > 0 else -6) if crossed and 5 <= abs(mid) <= 7 else round(mid)
+            inside = abs(place) + notes - 1 <= 4
+            after = any(head['staff'] == staff and head['cx'] < x0 for head in heads)
+            side = int(round(ARC_ALONE[0] * own))
+            beside = max(int(strokes[y0:y1 + 1, max(0, x0 - side):max(0, x0 - 1)].sum()),
+                         int(strokes[y0:y1 + 1, x1 + 2:x1 + 1 + side].sum()))
+            m = 0.2 * space
+            covered = any(other['x0'] <= x1 + m and other['x1'] >= x0 - m and other['y0'] <= y1 + m
+                          and other['y1'] >= y0 - m for other in heads)
+            ok = (ARC_PAIR[0] <= outer <= ARC_PAIR[1] and ARC_PAIR[2] <= paper <= ARC_PAIR[3]
+                  and min(usual) >= ARC_PAIR[4] and single >= ARC_PAIR_HIGH[4] and lean <= ARC_PAIR_HIGH[5]
+                  and notes and (abs(mid - place) <= ARC_PAIR[5] and inside
+                                 or crossed and notes == 1 and abs(place) == 6)
+                  and between.sum() <= ARC_ALONE[1] * own * own and after and cx > ends[staff] + 0.3 * space
+                  and beside <= ARC_ALONE[1] * own * own and not covered)
+            if ARC_SEEN is not None:
+                ARC_SEEN.append({'box': [x0, y0, x1, y1], 'staff': staff, 'top': top, 'bottom': bottom,
+                                 'outer': outer, 'paper': paper, 'usual': usual, 'high': high, 'mid': mid,
+                                 'notes': notes, 'single': single, 'lean': lean, 'between': int(between.sum()),
+                                 'crossed': crossed, 'inside': inside, 'after': after, 'beside': beside / own / own,
+                                 'covered': covered, 'ok': bool(ok)})
+            if not ok:
+                continue
+            for at_place in ([place] if notes == 1 else [place + 1, place - 1]):
+                y = rows[2] - at_place * own / 2
+                out.append({'x0': x0, 'y0': int(round(y - own / 2)), 'x1': x1, 'y1': int(round(y + own / 2)),
+                            'cx': cx, 'cy': y, 'staff': staff, 'place': float(at_place), 'hollow': True,
+                            'hole': 0.0, 'stems': [], 'mark': None, 'from_hole': True, 'core': None, 'alt': None,
+                            'ledgers': [], 'arcs': True})
+    return out
+
+
+# ----------------------------------------------------------------------------------------------------------------
 # Lengths: flags, beams and dots
 
 TAIL_ZONE = 1.3      # flags and beams stand in this many staff spaces from the far end of a stem
