@@ -19,16 +19,16 @@ the page prints it (since 15 November 2026, see below; 141 notes so far, 105 of 
 | Kind of score | Scores | Notes right | At 99 % or more | At 90 % or more | Under 50 % |
 |---|---:|---:|---:|---:|---:|
 | PDFs that notation software wrote (read from their drawing) | 70 | 99.3 % (20,016 of 20,163) | 53 | 70 | 0 |
-| Scans | 294 | 84.4 % (58,826 of 69,706) | 46 | 119 | 17 |
-| All | 364 | 87.7 % (78,842 of 89,869) | 99 | 189 | 17 |
+| Scans | 294 | 84.4 % (58,826 of 69,705) | 46 | 119 | 17 |
+| All | 364 | 87.7 % (78,842 of 89,868) | 99 | 189 | 17 |
 
 The first milestone was 99 % on clean copies until 17 November 2026; since then it is clean copies that are read
 whole, every note and every syllable of each score, with no note that is not there (the owner: "the clean copies
-should be consistently perfect"). The copies by hand keep 99 %. After rounds 92 to 96, 41 of the 78 counted clean scores
+should be consistently perfect"). The copies by hand keep 99 %. After rounds 92 to 97, 41 of the 78 counted clean scores
 read every printed note, 47 every syllable, 37 every note and syllable, 44 have no note that is not there, and 36 are whole
 in all three (40, 47, 36, 43 and 35 after rounds 89 to 91; 40, 47, 36, 42 and 35 after round 88; 40, 47, 36, 41 and 35 after round 87; 39, 46, 35, 41 and 34 after round 86; 39, 44, 33, 41 and 33 after round 85; 38, 44, 33, 40 and 33 after round 84; 37, 43, 31, 39 and 31 after round 83; 37, 39, 29, 39 and 29 after round 82; 36, 38, 28, 37 and 28 after round 81; 34, 38, 27, 35 and 26 after round 80; 31, 38, 25, 35 and 24 after rounds 78 and 79). Since round 78 a printed head that the count had given to two parts counts once among the notes that
 are not there: by that count the reading of round 77 has 34 and 24, and by the count of its time 30 and 23
-(31, 38, 25, 30 and 23 after round 77; 30, 38, 24, 27 and 21 after round 76; 30, 36, 23, 27 and 20 after rounds 71 to 75; 29, 36, 23, 27 and 20 after round 70; 27, 35, 21, 23 and 17 after round 69; 26, 35, 20, 23 and 16 after round 68; 26, 36, 20, 22 and 15 after round 67; 26, 35, 19, 22 and 14 after rounds 63 to 66; 26, 35, 19, 21 and 13 after rounds 61 and 62; 25, 35, 18, 21 and 13 after rounds 57 to 60; 24, 35, 18, 21 and 13 after round 56; 24, 35, 18, 19 and 13 after round 55; 24, 35, 18, 18 and 13 after round 54; 23, 35, 17, 18 and 12 after round 53; 22, 35, 16, 18 and 12 after round 52; 21, 35, 15, 16 and 11 after round 51; 20, 32, 12, 16 and 10 after round 50; 19, 31, 10, 15 and 8 after round 49; 17, 31, 9, 13 and 5 after rounds 47 and 48; 15, 30, 9, 10 and 3 after round 46). 516 printed notes and 146 syllables are lacking, and 201 notes are read that are not there, with the places that a hand changed counted apart (525, 146 and 200 after round 95; 530, 146 and 202 after round 94; 536, 146 and 201 after round 93; 541, 146 and 201 after round 92; 545, 146 and 203 after round 91, and 541 and 202 with the lists of round 92; 545, 162 and 203 after round 90; 545, 165 and 203 after round 89; 545, 165 and 211 after round 88, and 207 not there with the list of the notes by the page of round 89; 548, 165 and 212 after round 87, and 546 lacking with the list of the notes by the page of round 88; 552, 168 and 212 after round 86; 552, 170 and 213 after round 85; 554, 171 and 216 after round 84; 556, 174 and 217 after round 83; 556, 185 and 217 after round 82; 559, 187 and 222 after round 81; 565, 187 and 225 after round 80, and 563 lacking with the lists of round 81; 571, 187 and 228 after round 79; 585, 187 and 446 after round 76, when a head that the count gave to two parts still counted twice; 588, 192 and 448 after round 75; 582, 193 and 535 after round 74, before the refrain that one page prints once more came into the count; 588, 193 and 574 after round 73, and 585 lacking with the lists of round 74; 590, 193 and 583 after round 72; 619, 193 and 586 after round 71, and 616 and 588 of them with the lists of round 72; the line said 638 and 588 here before, which were the figures of round 70; 642, 195 and 592 after round 69; 645, 195 and 592 after round 68; 647, 194 and 595 after round 67; 647, 195 and 595 after round 66; 647, 195 and 603 after round 65; 647, 195 and 640 after round 64; 647, 195 and 651 after round 63; 654, 195 and 652 after round 62; 659, 195 and 653 after round 61 by the count of round 62, which counts a stretch of one score that round 37 had left out and sets a page that a hand wrote whole apart; 659, 195 and 672 by the count of round 61; 668, 195 and 682 after round 60, 665 lacking by the list of the notes by the page of round 61; 671, 195 and 686 after round 59; 675, 195 and 689 after round 58; 679, 195 and 690 after round 57; 681, 195 and 692 after round 56, by the list of the notes by the page of its time; 681, 195 and 726 after round 55; 697, 195 and 736 after round 54; 699, 195 and 738 after round 53; 706, 196 and 742 after round 52; 709, 197 and 769 after round 51; 712, 206 and 783 after round 50; 713, 209 and 784 after round 49; 719, 209 and 794 after round 48; 707, 209 and 837 after round 47, by a count that hid 15 lost notes: see round 48). The clean copies are the scan scores with printed notes and words and crisp ink. 81 were
+(31, 38, 25, 30 and 23 after round 77; 30, 38, 24, 27 and 21 after round 76; 30, 36, 23, 27 and 20 after rounds 71 to 75; 29, 36, 23, 27 and 20 after round 70; 27, 35, 21, 23 and 17 after round 69; 26, 35, 20, 23 and 16 after round 68; 26, 36, 20, 22 and 15 after round 67; 26, 35, 19, 22 and 14 after rounds 63 to 66; 26, 35, 19, 21 and 13 after rounds 61 and 62; 25, 35, 18, 21 and 13 after rounds 57 to 60; 24, 35, 18, 21 and 13 after round 56; 24, 35, 18, 19 and 13 after round 55; 24, 35, 18, 18 and 13 after round 54; 23, 35, 17, 18 and 12 after round 53; 22, 35, 16, 18 and 12 after round 52; 21, 35, 15, 16 and 11 after round 51; 20, 32, 12, 16 and 10 after round 50; 19, 31, 10, 15 and 8 after round 49; 17, 31, 9, 13 and 5 after rounds 47 and 48; 15, 30, 9, 10 and 3 after round 46). 516 printed notes and 146 syllables are lacking, and 198 notes are read that are not there, with the places that a hand changed counted apart (516, 146 and 201 after round 96; 525, 146 and 200 after round 95; 530, 146 and 202 after round 94; 536, 146 and 201 after round 93; 541, 146 and 201 after round 92; 545, 146 and 203 after round 91, and 541 and 202 with the lists of round 92; 545, 162 and 203 after round 90; 545, 165 and 203 after round 89; 545, 165 and 211 after round 88, and 207 not there with the list of the notes by the page of round 89; 548, 165 and 212 after round 87, and 546 lacking with the list of the notes by the page of round 88; 552, 168 and 212 after round 86; 552, 170 and 213 after round 85; 554, 171 and 216 after round 84; 556, 174 and 217 after round 83; 556, 185 and 217 after round 82; 559, 187 and 222 after round 81; 565, 187 and 225 after round 80, and 563 lacking with the lists of round 81; 571, 187 and 228 after round 79; 585, 187 and 446 after round 76, when a head that the count gave to two parts still counted twice; 588, 192 and 448 after round 75; 582, 193 and 535 after round 74, before the refrain that one page prints once more came into the count; 588, 193 and 574 after round 73, and 585 lacking with the lists of round 74; 590, 193 and 583 after round 72; 619, 193 and 586 after round 71, and 616 and 588 of them with the lists of round 72; the line said 638 and 588 here before, which were the figures of round 70; 642, 195 and 592 after round 69; 645, 195 and 592 after round 68; 647, 194 and 595 after round 67; 647, 195 and 595 after round 66; 647, 195 and 603 after round 65; 647, 195 and 640 after round 64; 647, 195 and 651 after round 63; 654, 195 and 652 after round 62; 659, 195 and 653 after round 61 by the count of round 62, which counts a stretch of one score that round 37 had left out and sets a page that a hand wrote whole apart; 659, 195 and 672 by the count of round 61; 668, 195 and 682 after round 60, 665 lacking by the list of the notes by the page of round 61; 671, 195 and 686 after round 59; 675, 195 and 689 after round 58; 679, 195 and 690 after round 57; 681, 195 and 692 after round 56, by the list of the notes by the page of its time; 681, 195 and 726 after round 55; 697, 195 and 736 after round 54; 699, 195 and 738 after round 53; 706, 196 and 742 after round 52; 709, 197 and 769 after round 51; 712, 206 and 783 after round 50; 713, 209 and 784 after round 49; 719, 209 and 794 after round 48; 707, 209 and 837 after round 47, by a count that hid 15 lost notes: see round 48). The clean copies are the scan scores with printed notes and words and crisp ink. 81 were
 sorted as clean and 78 are counted: one has words lettered by hand, was sorted wrongly and counts with the copies
 by hand now, and the page of two holds another version than the typed hymn. The other scans come after the
 milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or words by hand.
@@ -37,7 +37,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Clean print | 78 | 97.7 % (22,134 of 22,655) | 45 | 75 | 49.9 % (3,286 of 6,584) | 97.7 % (6,109 of 6,255) | 95.7 % (4,332 of 4,528) |
 | Thick or grey print | 26 | 83.5 % (7,125 of 8,532) | 0 | 11 | 32.9 % (658 of 2,000) | 89.5 % (1,773 of 1,980) | 88.1 % (1,208 of 1,371) |
-| By hand | 190 | 76.8 % (29,567 of 38,519) | 1 | 33 | 37.7 % (5,401 of 14,345) | 84.4 % (12,114 of 14,356) | 81.9 % (8,470 of 10,343) |
+| By hand | 190 | 76.8 % (29,567 of 38,518) | 1 | 33 | 37.7 % (5,401 of 14,345) | 84.4 % (12,114 of 14,356) | 81.9 % (8,470 of 10,343) |
 
 - A round is one pull request of rules, and it has the number of its pull request. The figures count every typed note of a part since round 18, the notes of a chord too; until
   then one note of a chord was counted for each part of a staff. The rounds below it give their figures by the
@@ -106,10 +106,11 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   and round 93 brought 5: half notes in the first space beside the staff, one of two touching half notes a third apart, which the step for hollow heads refused for want of a ledger line;
   and round 94 brought 6: the lower of two touching eighths, read as a sharp;
   and round 95 brought 7: two touching heads that the layer of the stems held with the flag of an eighth (5), and 2 by the list of the notes by the page;
-  and round 96 brought 9: whole notes in the staff and on a ledger line that the scan left as two short bold strokes.
-  The reader also writes 208 notes on the clean copies that are not there (2,479 on
-  all scores; 201 with the places that a hand changed counted apart). Until round 77 a head that the count gave to
-  two parts of a staff counted twice there: by that count they are 395, 4,540 and 382 (395, 4,540 and 382 after round 95; 396, 4,540 and 383 after round 93; 396, 4,544 and 383 after round 92; 398, 4,546 and 387 after round 91; 409, 4,577 and 398 after round 88, and 405, 4,573 and 394 with the list of the notes by the page of round 89; 412, 4,585 and 401 after round 87; 411, 4,584 and 401 after round 86; 412, 4,588 and 402 after round 85; 417, 4,602 and 407 after round 84; 419, 4,604 and 409 after rounds 82 and 83; 426, 4,625 and 416 after
+  and round 96 brought 9: whole notes in the staff and on a ledger line that the scan left as two short bold strokes;
+  and round 97 brought none and took 3 notes that are not there: the numbers of a heavy time signature that the lines of the staff joined to the key.
+  The reader also writes 205 notes on the clean copies that are not there (2,460 on
+  all scores; 198 with the places that a hand changed counted apart). Until round 77 a head that the count gave to
+  two parts of a staff counted twice there: by that count they are 391, 4,511 and 378 (395, 4,540 and 382 after rounds 95 and 96; 396, 4,540 and 383 after round 93; 396, 4,544 and 383 after round 92; 398, 4,546 and 387 after round 91; 409, 4,577 and 398 after round 88, and 405, 4,573 and 394 with the list of the notes by the page of round 89; 412, 4,585 and 401 after round 87; 411, 4,584 and 401 after round 86; 412, 4,588 and 402 after round 85; 417, 4,602 and 407 after round 84; 419, 4,604 and 409 after rounds 82 and 83; 426, 4,625 and 416 after
   round 81; 430, 4,629 and 420 after
   round 80; 433, 4,633 and 423 after
   round 79; 442, 4,643 and 432 after round 78; 447, 4,699 and 437 after round 77). Round 87 shows 1 that the count had hidden: a ring that a hand drew in pen
@@ -188,6 +189,56 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 97 (23 November 2026): a heavy time signature set close after the key, read as whole notes.
+
+  - **Looked at.** Of the clean scores that lack one to three notes, pascha-exapostilarion also reads 5 notes that are
+    not there, and 3 of them are the numbers of its first time signature (pg0540, a 4/4 in both staves of the first
+    system): a heavy, narrow print whose two 4s have one long stem, set close after the sharp of the key. No time
+    signature was read, the start of the notes stood before the numbers, and the numbers were read as whole notes.
+    pascha-christ-is-risen-romanian (pg0584) is the same print.
+  - **The cause** is the layer of the staff lines. It keeps a line where closed paper touches it, because the inside of
+    a head is ink there (`layers.staff_lines` takes the lines from the ink with its holes filled). Between the sharp,
+    the first 4 and two staff lines the paper is closed, so the two lines stay in the ink there and join the numbers to
+    the sharp: the time finder sees one piece 3.1 staff spaces wide and 5.3 high, and refuses it.
+  - **A second look for the numbers** (`meter.TIME_LINES`). The numbers are also looked for in the ink without the staff
+    lines that the ink alone shows (its holes not filled), with all the checks of the finder as they are, where no other
+    sign stands. That ink is a second look only: in it, numbers that touch each other along the middle line fall apart
+    (the 3 and the 4 of a 3/4 on non-liturgical-o-pure-virgin--s2, pg0642, which the first look reads), and taken in the
+    place of the first look it lost that signature.
+  - The rule on every page: the time signatures of every staff of the two runs were set beside each other, with the
+    start of the notes, and each changed signature was looked at on a tile centred on it. LitChoir's pages gain 21
+    signatures on 12 pages, 20 of them true: at the start of 6 staves (pascha-exapostilarion 2,
+    pascha-christ-is-risen-romanian 1, and the copies by hand of triodion-prodigal, its second scan and
+    theophany-megalynarion--s2) and 14 after a bar line (4/4, 3/4, 3/2 and 2/4, in print and by hand, one in a pencil
+    ring). On nativity-god-is-with-us (pg0018) the two signatures of the first system, which the look in the middle of a
+    staff read before, are read at the start now, and the notes begin after them. The one that is no time signature is a
+    tall flat of the key on trisagion-soroka-p1 (pg0126, the bass of the last system): the reader reads no key on that
+    page, so the flat stands in no key signature, and it passes the wider limit of `TIME_LOOSE`. It takes no note. The
+    fresh set reads no new signature, and each of its written files is the same byte for byte.
+  - 23 marks that were read as notes go, each a number of a new signature, on 9 pages (no note gained, none lost; 19
+    notes that are not there fewer on all scores, 3 on the clean copies: pascha-exapostilarion 5 to 2). Staff by staff 2
+    notes are gained, on nativity-forefeast-kontakion. On that score the number 4 had been lined up with a printed G4
+    that the reader does not read, two touching heads a second apart (pg0001 x1880): with the number gone the count sets
+    that typed note apart as a recited one, and the count of the drawn notes falls by 1. theophany-megalynarion--s2 is
+    counted in a window that is 2 beats shorter now, with the same notes right.
+  - **Left.** pascha-exapostilarion still lacks 2 notes and reads 2 that are not there: the flag of an eighth with its
+    stem down that is drawn as a small curl at the end of the stem, read as a head (x483); the dot of the lower of two
+    dotted quarter notes a third apart on lines, under the dot of the upper one (x837); and a head in a grey streak,
+    read with a speck of the streak as its dot, beside the end of its stem read as a note (x1388 and x1405). The time
+    signature of the bass of pascha-christ-is-risen-romanian is joined to a long stroke by pen, and its numbers are
+    still read as notes.
+
+    Clean copies 22,134 of 22,655 notes (97.7 %; 45 at 99 %; 21,990 of 22,605 as typed), 6,109 of 6,255 syllables
+    (97.7 %; 6,044 of 6,260 as typed) and 4,332 of 4,528 whole words, as before. The reading before the round, scored as
+    typed, gives the figures of round 96 exactly. 41 clean scores read every printed note (516 lacking), 47 every
+    syllable (146), 37 both, 44 have no note that is not there (198, 201 before) and 36 are whole in all three; 6 scores
+    lack one to three notes, and 404 notes are needed for 99 % of each. All scores 78,842 of 89,868 notes (87.7 %; 99 at
+    99 %), none gained and none lost, and 2,460 that are not there (2,479 before; 4,511 by the count before round 78);
+    syllables 25,649 of 28,696 and whole words 16,939 of 20,591, as before. Scans 58,826 of 69,705 notes (84.4 %; 46 at
+    99 %), thick copies 7,125 and copies by hand 29,567. Staff by staff 76,197 of 92,684 notes (2 gained), the clean
+    copies 21,218 of 23,096. The kit 6,242 of 6,901 by parts and 5,808 of 6,419 staff by staff, as before. The fresh set
+    39,967 of 41,761 notes, 618 that are not there, 8,344 of 11,341 syllables and 5,917 of 6,647 whole words, as before.
+
 - Round 96 (23 November 2026): a whole note in the staff or on a ledger line that the scan left as two short bold
   strokes.
 
@@ -7365,7 +7416,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 87 (a whole note that a scan left as two bold arcs, a flat whose long stroke is faint and a short word that every reading of its row holds: no page differs in its notes or in its words, and each written file is the same byte for byte) | 214 | 95.7 % (39,957 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | After round 88 (the end of a stem that the step for flags read as a note, and a half note whose inside a faint line parts into two staggered halves: no page differs in its notes or in its words, and each written file is the same byte for byte) | 214 | 95.7 % (39,957 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | After round 89 (a low mark at the far end of another note's stem that took that stem as its own: 4 pages differ in their notes, 10 notes gained and none lost on one piece, 9 notes that are not there fewer, the short partial beam of a dotted rhythm; no word moves) | 214 | 95.7 % (39,967 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
-| After rounds 93 to 96 (a half note in the first space beside the staff, which the step for hollow heads refused for want of a ledger line; the lower of two touching eighths, read as a sharp; heads that the layer of the stems holds; a whole note in the staff that the scan left as two short bold strokes: no page differs in its notes or in its words, and each written file is the same byte for byte) | 214 | 95.7 % (39,967 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
+| After rounds 93 to 97 (a half note in the first space beside the staff, which the step for hollow heads refused for want of a ledger line; the lower of two touching eighths, read as a sharp; heads that the layer of the stems holds; a whole note in the staff that the scan left as two short bold strokes; a heavy time signature that the staff lines join to the key: no page differs in its notes or in its words, and each written file is the same byte for byte) | 214 | 95.7 % (39,967 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | of these, last counted after round 47: English (Orthodox Liturgics) | 109 | 95.6 % (13,779 of 14,415) | 49 | 87 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.7 % (17,144 of 18,288) | 37 | 77 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -7620,6 +7671,7 @@ typed hymns, of all typed notes.
 - Over all hymns the own rules read more notes right than the network they replaced: 90.5 % against 81 %.
 - They are behind the network on two kinds: old copies (87 % against 88 %) and the two poor pages (83 % against 95 %).
 - 12 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 5 are under 80 %.
+- Round 97 brings the kit no note and no syllable (6242 and 5808).
 - Round 96 brings the kit no note and no syllable (6242 and 5808).
 - Round 95 brings the kit no note and no syllable (6242 and 5808).
 - Round 94 brings the kit 3 notes by parts and 2 staff by staff (6242 and 5808): two pairs of touching eighths on the
