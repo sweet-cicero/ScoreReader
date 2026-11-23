@@ -24,7 +24,7 @@ the page prints it (since 15 November 2026, see below; 141 notes so far, 105 of 
 
 The first milestone was 99 % on clean copies until 17 November 2026; since then it is clean copies that are read
 whole, every note and every syllable of each score, with no note that is not there (the owner: "the clean copies
-should be consistently perfect"). The copies by hand keep 99 %. After rounds 100 to 104, 43 of the 78 counted clean scores
+should be consistently perfect"). The copies by hand keep 99 %. After rounds 100 to 105, 43 of the 78 counted clean scores
 read every printed note, 47 every syllable, 39 every note and syllable, 45 have no note that is not there, and 38 are whole
 in all three (42, 47, 38, 45 and 37 after round 99; 41, 47, 37, 44 and 36 after rounds 92 to 98; 40, 47, 36, 43 and 35 after rounds 89 to 91; 40, 47, 36, 42 and 35 after round 88; 40, 47, 36, 41 and 35 after round 87; 39, 46, 35, 41 and 34 after round 86; 39, 44, 33, 41 and 33 after round 85; 38, 44, 33, 40 and 33 after round 84; 37, 43, 31, 39 and 31 after round 83; 37, 39, 29, 39 and 29 after round 82; 36, 38, 28, 37 and 28 after round 81; 34, 38, 27, 35 and 26 after round 80; 31, 38, 25, 35 and 24 after rounds 78 and 79). Since round 78 a printed head that the count had given to two parts counts once among the notes that
 are not there: by that count the reading of round 77 has 34 and 24, and by the count of its time 30 and 23
@@ -194,7 +194,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
-- Round 104 (23 November 2026): a printed whole note whose thin rim broke.
+- Round 105 (23 November 2026): a printed whole note whose thin rim broke.
 
   - **Looked at.** The owner asked to stay on the clean copies. Of 15 typed whole notes of the clean copies that are
     missed beside a read note of the same moment, 8 are printed whole notes whose rim broke: one print draws a whole
@@ -7783,7 +7783,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 100 (a printed dot that other ink joins, read by the dot of the other voice in its column: no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | After round 101 (grace notes of one print, written as grace notes: no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | After round 102 (the numbers of a time signature that another staff shows: no head of the fresh set stands in such columns, no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
-| After rounds 103 and 104 (two voices a second apart read as one head, and a whole note whose thin rim broke: no head of the fresh set stands so, no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
+| After rounds 103 and 105 (two voices a second apart read as one head, and a whole note whose thin rim broke: no head of the fresh set stands so, no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | of these, last counted after round 47: English (Orthodox Liturgics) | 109 | 95.6 % (13,779 of 14,415) | 49 | 87 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.7 % (17,144 of 18,288) | 37 | 77 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -8038,7 +8038,7 @@ typed hymns, of all typed notes.
 - Over all hymns the own rules read more notes right than the network they replaced: 90.5 % against 81 %.
 - They are behind the network on two kinds: old copies (87 % against 88 %) and the two poor pages (83 % against 95 %).
 - 12 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 5 are under 80 %.
-- Round 104 brings the kit 1 note by parts and 1 staff by staff, and no syllable (6243 and 5809).
+- Round 105 brings the kit 1 note by parts and 1 staff by staff, and no syllable (6243 and 5809).
 - Round 103 brings the kit no note and no syllable (6242 and 5808).
 - Round 102 brings the kit no note and no syllable (6242 and 5808).
 - Round 101 brings the kit no note and no syllable (6242 and 5808).
