@@ -5021,6 +5021,210 @@ def arc_pairs(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]:
     return out
 
 
+OPEN_WHOLE = (0.8, 0.9, 0.6, 1.2, 15, 0.8, 1.2, 0.5, 1.2)   # a whole note whose thin rim broke (see open_wholes): its
+#   inside holds at least this share of the page's usual hole and is at most this many staff spaces wide, its width is
+#   from this to this share of its height, ink closes it in at least this many of 16 ways, its ring of ink without the
+#   staff lines is from this to this many staff spaces high, a hollow head of its system stands within this many staff
+#   spaces of its column, and its ring is at least this many times as wide as the page's heads
+OPEN_WHOLE_SEEN = None   # a list: every inside that open_wholes asks, with its measures (a census at the reader's own step)
+OPEN_SIDE = (2.0, 0.5, 1.2)   # the side of such a whole note that the hollow head a third over or under it took for its
+#   stem (the two heads stand as an 8): a stem shorter than this many staff spaces that ends in the whole note's box,
+#   of a hollow head at most this many staff spaces beside its column and this many over or under its middle (None: off)
+OPEN_SIDE_SEEN = None    # a list: every stem that OPEN_SIDE takes
+
+
+def _ring_ink(layers: dict, heads: list[dict], x: int, y: int, wide: int, high: int, inside: np.ndarray,
+              space: float) -> tuple[float, float]:
+    """How high the ink around an inside is, without the staff lines and without the heads that were read near it:
+    in the columns of the inside, and over the whole piece of ink."""
+    ink, lines = layers['ink'], layers['lines']
+    pad = int(2.5 * space)
+    x0, y0 = max(0, x - pad), max(0, y - pad)
+    x1, y1 = min(ink.shape[1], x + wide + pad), min(ink.shape[0], y + high + pad)
+    free = (ink[y0:y1, x0:x1] > 0) & ~(lines[y0:y1, x0:x1] > 0)
+    for head in heads:
+        if head['x1'] >= x0 and head['x0'] < x1 and head['y1'] >= y0 and head['y0'] < y1:
+            free[max(0, head['y0'] - y0):max(0, head['y1'] - y0 + 1), max(0, head['x0'] - x0):max(0, head['x1'] - x0 + 1)] = False
+    own = np.zeros(free.shape, np.uint8)
+    own[y - y0:y - y0 + high, x - x0:x - x0 + wide] = inside
+    ring = cv2.dilate(own, np.ones((3, 3), np.uint8)) > 0
+    count, labels = cv2.connectedComponents(free.astype(np.uint8), connectivity=8)
+    near = set(np.unique(labels[ring & free])) - {0}
+    if not near:
+        return 0.0, 0.0
+    piece = np.isin(labels, list(near))
+    rows = np.nonzero(piece.any(axis=1))[0]
+    columns = np.nonzero(piece[:, x - x0:x - x0 + wide].any(axis=1))[0]
+    return ((columns[-1] - columns[0] + 1) / space if len(columns) else 0.0), (rows[-1] - rows[0] + 1) / space
+
+
+def _level_free(layers: dict, space: float) -> np.ndarray:
+    """The ink without the staff lines and without the ledger lines (level, thin and a staff space long or more)."""
+    bare = layers['bare'] > 0
+    level = _arc_morph(bare, int(round(space)), 1, False)
+    return bare & ~(level & ~_arc_morph(level, 1, int(round(0.3 * space)), False))
+
+
+def _ring_wide(strokes: np.ndarray, x: int, y: int, wide: int, high: int, inside: np.ndarray, rim: int,
+               space: float) -> int:
+    """How wide the ink around an inside is in the rows of the head, without the staff lines and the ledger lines."""
+    y0, y1 = max(0, y - rim), min(strokes.shape[0], y + high + rim)
+    x0, x1 = max(0, x - int(1.5 * space)), min(strokes.shape[1], x + wide + int(1.5 * space))
+    window = strokes[y0:y1, x0:x1].astype(np.uint8)
+    own = np.zeros_like(window)
+    own[y - y0:y - y0 + high, x - x0:x - x0 + wide] = inside
+    ring = cv2.dilate(own, np.ones((5, 5), np.uint8)) > 0
+    count, labels = cv2.connectedComponents(window, connectivity=8)
+    near = set(np.unique(labels[ring & (window > 0)])) - {0}
+    if not near:
+        return 0
+    columns = np.nonzero(np.isin(labels, list(near)).any(axis=0))[0]
+    return int(columns[-1] - columns[0] + 1)
+
+
+def _closed_round(ink: np.ndarray, cx: float, cy: float, reach: float) -> int:
+    """In how many of 16 ways from a middle ink stands within reach."""
+    count = 0
+    for way in range(16):
+        dx, dy = np.cos(way * np.pi / 8), np.sin(way * np.pi / 8)
+        for step in np.arange(0.5, reach, 0.5):
+            px, py = int(round(cx + step * dx)), int(round(cy + step * dy))
+            if not (0 <= px < ink.shape[1] and 0 <= py < ink.shape[0]):
+                break
+            if ink[py, px]:
+                count += 1
+                break
+    return count
+
+
+def open_wholes(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]:
+    """The whole notes whose thin rim broke (OPEN_WHOLE): hollow heads with no stem, read from their inside where no
+    head was read. A print draws a whole note with bold sides and a hairline over and under its inside, and a copy
+    breaks the hairline: the inside is open paper then (layers['open_holes']), and a ledger line or a staff line
+    through the head cuts it into two halves, which the line's own ink joins again. hole_heads() reads such an inside
+    only with a stem, and only as wide as a half note's lies on its side.
+
+    A census of every such inside of the clean pages, each looked at, gave the shape. A whole note's inside is round
+    or stands a little upright, and is no wider than a head's inside: the paper under a fermata, the C of common time
+    and the cells of beams and slurs are wider. The ink closes it in nearly every way, and the ring of ink around it
+    without the staff lines is as high as a head: the cell between a flag and its stem goes on along the stem. Past
+    the staff the head stands on the ledger lines that lead to it, and never in a row of words: the bowls of the
+    letters over and under a staff have the same shape, and a beam or the strokes of the letters can pass for a
+    ledger line.
+
+    A rule for the print. In its first form the shape alone read 36 heads on 25 pages of LitChoir and one of the fresh
+    set (21 notes gained and 20 lost): the bowls and cells of letters, printed and by hand (KONTAKION, a C of a title,
+    an R), the cell of a bold head or of a dark dot on a thick copy, a pencil ring, and half notes whose stem it did
+    not see. A printed whole note is wider than the page's heads (its ring without the staff lines and the ledger
+    lines), and it holds with the other voices: a hollow head of its system stands in its column. That leaves lone
+    whole notes that the first form read rightly on copies that are not clean, and it reads 16 heads on 13 pages and
+    none of the fresh set.
+
+    Where two whole notes stand as an 8, the head over or under the broken one had taken the broken one's side for a
+    short stem that ends in its box (OPEN_SIDE). With the new head beside it, that stem made it a half note and
+    crossed the two voices, so the stem goes (3 heads, each looked at)."""
+    if not OPEN_WHOLE or layers.get('open_holes') is None:
+        return []
+    space = layers['space']
+    holes, ink, open_holes = layers['holes'], layers['ink'], layers['open_holes']
+    own = [float((holes[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0).sum()) for head in heads
+           if head['hollow'] and not head.get('thin') and not head.get('from_hole')]
+    if len(own) < 3:
+        return []
+    usual = float(np.median(own))
+    rim = max(2, int(round(HOLE_RIM * space)))
+    # The halves of an inside that a line cuts: the line's ink between two pieces of paper, one right over the
+    # other, where one of them at least is open.
+    paper = ((holes > 0) | (open_holes > 0)).astype(np.uint8)
+    near = int(round(max(staff['thick'] for staff in layers['staves']) + 1))
+    over, under = np.zeros_like(paper), np.zeros_like(paper)
+    for step in range(1, near + 1):
+        over[step:] |= paper[:-step]
+        under[:-step] |= paper[step:]
+    through = ink & over & under
+    out = []
+    strokes = None
+    for joined in (False, True):
+        found = (paper | through) if joined else (open_holes > 0).astype(np.uint8)
+        count, labels, stats, centres = cv2.connectedComponentsWithStats(found, connectivity=4)
+        for index in range(1, count):
+            x, y, wide, high, area = (int(value) for value in stats[index])
+            if not OPEN_WHOLE[0] * usual <= area <= OPEN_HEADS * space * space or wide > OPEN_WHOLE[1] * space \
+                    or not OPEN_WHOLE[2] * high <= wide <= OPEN_WHOLE[3] * high:
+                continue
+            inside = (labels[y:y + high, x:x + wide] == index).astype(np.uint8)
+            if joined and not (through[y:y + high, x:x + wide][inside > 0].any() and open_holes[y:y + high, x:x + wide][inside > 0].any()):
+                continue      # a hole that no line cuts, or two closed halves (hole_heads asked them)
+            cx, cy = float(centres[index][0]), float(centres[index][1])
+            if any(head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2 for head in heads + out):
+                continue
+            staff = _staff_of(layers, cx, cy)
+            if staff is None or cx < ends[staff] + 0.3 * space:
+                continue
+            lines = layers['staves'][staff]
+            place = pitch_place(lines, cy)
+            mark = {'x0': max(0, x - rim), 'x1': min(ink.shape[1] - 1, x + wide - 1 + rim), 'y0': max(0, y - rim),
+                    'y1': min(ink.shape[0] - 1, y + high - 1 + rim), 'cx': cx, 'cy': cy}
+            ways = _closed_round(ink, cx, cy, 1.6 * lines['space'])
+            column, piece = _ring_ink(layers, heads, x, y, wide, high, inside, lines['space'])
+            stems = [way for way in (_way(layers, mark, True, True), _way(layers, mark, False, False)) if is_stem(way, space)]
+            head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
+                    'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
+                    'stems': [], 'mark': None, 'from_hole': True, 'core': None, 'alt': None, 'open': True,
+                    'open_whole': True, 'ledgers': []}
+            words = any(band['x0'] <= cx <= band['x1'] and band['top'] - 0.3 * space <= cy <= band['bottom'] + 0.3 * space
+                        for band in layers.get('words') or [])
+            found_place = place
+            if abs(place) > 4.6:
+                head['ledgers'] = ledger_lines(layers, lines, head)
+                found_place = ledger_place(layers, lines, head)
+            system = lines['system']
+            partner = any(other['hollow'] and layers['staves'][other['staff']]['system'] == system
+                          and abs(other['cx'] - cx) <= OPEN_WHOLE[7] * space for other in heads)
+            ok = (not stems and ways >= OPEN_WHOLE[4] and OPEN_WHOLE[5] <= column <= OPEN_WHOLE[6]
+                  and piece <= OPEN_WHOLE[6] and partner)
+            outer = 0.0
+            if ok:
+                if strokes is None:
+                    strokes = _level_free(layers, space)
+                outer = _ring_wide(strokes, x, y, wide, high, inside, rim, space) / (layers.get('head') or (space, space))[0]
+                ok = outer >= OPEN_WHOLE[8]
+            if abs(place) > 4.6:
+                ok = ok and not words and found_place is not None
+            if abs(place) > 5.5:
+                # The ledger lines lead to the head: one for a head on the first line past the staff or in the space
+                # past it, two for the next line and space.
+                ok = ok and found_place is not None and len(head['ledgers']) >= np.ceil((abs(found_place) - 5.5) / 2)
+            if OPEN_WHOLE_SEEN is not None:
+                OPEN_WHOLE_SEEN.append({'x': cx, 'y': cy, 'staff': staff, 'place': place, 'found': found_place,
+                                        'joined': joined, 'wide': wide / space, 'high': high / space, 'area': area / usual,
+                                        'ways': ways, 'column': column, 'piece': piece, 'stems': len(stems),
+                                        'words': words, 'ledgers': len(head['ledgers']), 'partner': partner,
+                                        'outer': outer, 'ok': bool(ok)})
+            if not ok:
+                continue
+            head['place'] = float(found_place)
+            # The pieces of the broken rim that were read as small heads with no stem.
+            head['replaces'] = [other for other in heads if not other['hollow'] and not other['stems']
+                                and mark['x0'] <= other['cx'] <= mark['x1'] and mark['y0'] <= other['cy'] <= mark['y1']
+                                and other['y1'] - other['y0'] + 1 < OPEN_PIECE * (layers.get('head') or (space, space))[1]]
+            out.append(head)
+            if OPEN_SIDE is None:
+                continue
+            for other in heads:
+                if not other['hollow'] or abs(other['cx'] - cx) > OPEN_SIDE[1] * space \
+                        or abs(other['cy'] - cy) > OPEN_SIDE[2] * space:
+                    continue
+                side = [stem for stem in other['stems'] if stem['length'] < OPEN_SIDE[0] * space
+                        and mark['x0'] - 2 <= stem['x'] <= mark['x1'] + 2 and mark['y0'] - 2 <= stem['end'] <= mark['y1'] + 2]
+                if side:
+                    other['stems'] = [stem for stem in other['stems'] if all(stem is not one for one in side)]
+                    if OPEN_SIDE_SEEN is not None:
+                        OPEN_SIDE_SEEN.append({'x': other['cx'], 'y': other['cy'], 'whole': (cx, cy),
+                                               'stems': [(stem['direction'], stem['length'] / space) for stem in side]})
+    return out
+
+
 # ----------------------------------------------------------------------------------------------------------------
 # Lengths: flags, beams and dots
 

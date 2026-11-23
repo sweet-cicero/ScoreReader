@@ -22,7 +22,7 @@ from . import music as _music
 from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import arc_pairs, arc_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
+from .symbols import arc_pairs, arc_wholes, open_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
     ring_heads, slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_strokes, without_flag_trails, without_flat_cells, without_clip_cells, without_grey_marks, without_f_marks, without_line_marks, without_p_bowls, without_beam_pieces, without_bow_middles, without_stem_end_marks, without_far_marks, without_stem_meets, without_dot_columns, without_stem_spans, without_joints, without_upright_holes, chord_wholes, dotless_wholes, grace_notes
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -319,6 +319,10 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads += arc_wholes(layers, heads, ends)
     # A whole note in the staff or on a ledger line that was left as two short bold strokes.
     heads += arc_pairs(layers, heads, ends)
+    # A whole note whose thin rim broke, read from its open inside.
+    broken = open_wholes(layers, heads, ends)
+    gone = {id(other) for head in broken for other in head.get('replaces', [])}
+    heads = [head for head in heads if id(head) not in gone] + broken
     # The numbers of a new time signature are no notes.
     times = mid_signs(layers, ends, bars) if TIMES else {}
     if TIMES:

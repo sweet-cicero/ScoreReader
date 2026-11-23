@@ -25,13 +25,12 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,139 of 22,655, counted by the page;
-21,995 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
-syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 511 printed notes and 146 syllables
-are lacking and 182 notes are read that are not there, each printed head counted once since round 78: 359 by the
-count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,150 of 22,655, counted by the page;
+22,006 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
+syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 500 printed notes and 146 syllables
+are lacking and 183 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6243 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,968 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1537,6 +1536,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   acted at five marks of LitChoir, each looked at, and at none of the fresh set: four were the pair, and the fifth a
   piece of a word that is read as no note before or after. A cut that fires but changes no note shows in no diff of
   the notes: the census of every firing (`SIDE_SEEN`, `DIAG_SEEN`) names it, and it too is looked at on the page.
+- One print draws a whole note with bold sides and a hairline over and under its inside, and a copy breaks the
+  hairline: the inside is open paper, and `symbols.hole_heads` reads an open inside only with a stem
+  (`symbols.open_wholes`, `OPEN_WHOLE`). The shape of the inside alone (round or a little upright, no wider than a
+  head's inside, ink around it in nearly every way, a ring as high as a head) read the cells of letters, printed and by
+  hand, the cell of a bold head or of a dark dot on a thick copy, a pencil ring and half notes whose stem it did not
+  see: 21 notes gained and 20 lost on all scores. A printed whole note is wider than the page's heads and holds with
+  another voice (a hollow head of its system in its column): a rule for the print, and it leaves lone whole notes
+  that the first form read rightly on copies that are not clean. A new head changes what its neighbour was: where two
+  whole notes stand as an 8, the head over the broken one had taken the broken one's side for a short stem, and with
+  the new head beside it that stem crossed the voices (the count by parts lost 2 notes where the staff count held).
+  Such a stem ends in the new head's box and goes (`OPEN_SIDE`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
