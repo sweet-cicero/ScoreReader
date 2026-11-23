@@ -51,6 +51,11 @@ WHOLE_TWIN = (1.9, 0.3)   # two whole notes side by side, on one pitch or a seco
 #                    together: their middles at most the first number of staff spaces apart, and at most the second
 #                    number of paper between their heads (or they touch). A print sets the whole notes of two voices in
 #                    unison so, and one voice cannot hold two whole notes in one bar. (None: off)
+ISON_LAST = True     # an ison mark past the last note of a staff that stands over the columns of that note's head is the
+#                    mark of that note: a print sets the letter of the hymn's last note over its fermata, a little to
+#                    the right. Elsewhere a mark past the last note holds from the next staff on. (A census of every
+#                    mark that held() finds no later note for, on LitChoir's chant pages: one, pascha-hypakoe's last E,
+#                    1.02 staff spaces right of its note. A rule for one case. False: off)
 UNISON_LINE = True   # an ison in unison ("Un.") sings every note of the melody's line, also the notes with a stem down,
 #                      which the staff reads as a second voice (False: only the notes of the first voice)
 STACKED = 0.6        # two notes of one voice on two stems begin together when their heads are at most this many staff
@@ -179,6 +184,8 @@ def held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, s
         cuts = []
         for event in sorted(found, key=lambda event: event['x']):
             later = [note['onset'] for note in notes if note['x'] >= event['x'] - 0.6 * gap]
+            if not later and ISON_LAST and notes is melody[-1] and event.get('head'):
+                later = [note['onset'] for note in notes if note.get('head') and note['head']['x1'] >= event['head']['x0']]
             cuts.append((min(later) if later else length, event))
         bar, at = [], Fraction(0)
         for onset, event in cuts + [(length, None)]:

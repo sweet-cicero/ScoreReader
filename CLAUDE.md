@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,151 of 22,655, counted by the page;
-22,007 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
-syllable, 39 both, 46 have no note that is not there, 39 are whole in all three; 499 printed notes and 146 syllables
-are lacking and 175 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+scans; 101 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,153 of 22,655, counted by the page;
+22,009 of 22,605 as typed; 47 of the 78 counted scores at 99 %; 44 scores read every printed note, 47 every
+syllable, 40 both, 47 have no note that is not there, 40 are whole in all three; 497 printed notes and 146 syllables
+are lacking and 174 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6245 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,980 of 41,761; 102 of 214 pieces at 99 %),
@@ -1571,6 +1571,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   and from 0.35 to 0.6 stood the natural, a bracket by hand and a rest by hand: the limit is 0.35. A mark that is no
   sign and is read as a natural in the place of a flat makes its note right where the key gives the pitch: a gain by
   chance, which the worklog names.
+- A mark that a later step takes away was read by the steps before it. The ison's breve under the staff is taken from
+  the notes (`drone.without_breves`), and its oval had stood at the side of the stem of the melody's note over it as that
+  note's flag: a stem that ends in the box of a breve that was taken has no flag there (`drone.BREVE_TAIL`). A breve
+  that a print sets close under the staff has bars 1.09 staff spaces long; of the 28 hollow heads that the breve test is
+  asked about on LitChoir's chant pages, the other breves have 1.2 or more and a head that fails at one side only 0.82
+  at most, so the limit moved into that gap. The letter of a hymn's last note stands over its fermata, past the note
+  (`music.ISON_LAST`). Rules for one case: say so.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
