@@ -211,7 +211,7 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   - The rule acts at those four strokes on all of LitChoir's 657 pages and at none of the fresh set's 258 pages (a
     census at the reader's own step). Only the four pages differ from the reading before: 5 notes gained and none lost,
     all on the clean copies (cherubic-lvovsky 3, liturgy-one-is-holy--s2 1, extra-rejoice-o-virgin-rachmaninov 1), each
-    an eighth with its length right, and staff by staff 5 and none. A rule for two prints.
+    an eighth with its length right, and staff by staff 5 and none. A rule for the prints of three scores.
   - **The list of the notes by the page.** Two chords of cherubic-lvovsky print a third head on the altos' stem down
     (F4 and G4 under their B flat 4) that the typed hymn leaves out; round 94 counted the G4 as a note that is not
     there. Both went on the list as `add` after they were looked at four times the size (141 notes on the list now, 105

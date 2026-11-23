@@ -37,15 +37,16 @@ STEM_BESIDE = (0.5, 0.25, 0.2, 6.0)   # a slim stroke that is much wider than th
 #                      for STEM_OWN, is still a stem with heads at one end where its thin rows are one run at its other
 #                      end at least this many staff spaces long, with at most this many staff spaces of thin rows
 #                      elsewhere, where the middle of its wide rows stands this many staff spaces or more beside the column
-#                      of that run, and where it is at most this many staff spaces high: two prints draw the flag of an
-#                      eighth with its stem down back up to its head, and the head, the closed flag and the head of the
-#                      other voice that touches it are one wide piece over a short stem. The wide rows of a sharp, of a
-#                      clef or of a time signature stand around their stroke (0.19 at most on LitChoir's pages, the four
-#                      true strokes 0.23 to 0.36), and the lines of a brace are as high as a system. Only the rows of
-#                      the heads leave the stroke: from its far end up to the closed paper of the flag. Released whole,
-#                      the flag went to the marks with its head, and where a staff line crosses the flag the cut of the
-#                      piece parted its closed paper into two insides, read as a half note. The rule acts at four
-#                      strokes of LitChoir's pages and at none of the fresh set's: a rule for two prints. None: off
+#                      of that run, and where it is at most this many staff spaces high: the prints of three scores
+#                      draw the flag of an eighth with its stem down back up to its head, and the head, the closed flag
+#                      and the head of the other voice that touches it are one wide piece over a short stem. The wide
+#                      rows of a sharp, of a clef or of a time signature stand around their stroke (0.19 at most on
+#                      LitChoir's pages, the four true strokes 0.23 to 0.36), and the lines of a brace are as high as a
+#                      system. Only the rows of the heads leave the stroke: from its far end up to the closed paper of
+#                      the flag. Released whole, the flag went to the marks with its head, and where a staff line
+#                      crosses the flag the cut of the piece parted its closed paper into two insides, read as a half
+#                      note. The rule acts at four strokes of LitChoir's pages and at none of the fresh set's: a rule
+#                      for those prints. None: off
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
 HOLE_SIDE = (1.1, 0.7, 2.0, 4.5)   # closed paper this many staff spaces wide or more is a cell of the staff, and no
