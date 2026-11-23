@@ -7995,9 +7995,41 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
         over = column[max(0, int(mark['y0']) - reach):int(mark['y0'])]
         under = column[int(mark['y1']) + 1:int(mark['y1']) + 1 + reach]
         if not len(over) or not len(under) or min(over.mean(), under.mean()) < BAR_MARK[3]:
-            continue
+            if not (BAR_END and _bar_end(layers, mark, column, staff, top, bottom, reach)):
+                continue
         out.append(mark)
     return out
+
+
+BAR_END = (2, 0.2)   # and such a mark is no head either at an end of a bar line, where a slur that crosses the line meets
+#   the staff's outer line: the mark touches that line (its edge within half the line's thickness and the first number of
+#   px), the column of its stem has no ink beyond that line (at most the second share of the rows over half a staff space
+#   past it), fills the staff from the mark to the other outer line (BAR_MARK's second share) and ends there as the
+#   staff does (within the same px, and at most the second share past it). A stem ends at its head, not at a staff
+#   line: a head in the first space with a stem of three and a half staff spaces reaches the far line too, but it is as
+#   high as a head (BAR_MARK's first share). A census of every low hollow mark whose stem fills the staff and that
+#   BAR_MARK leaves because the line stops at one side (12 on LitChoir's scan pages and 3 on the fresh set, each looked
+#   at): the true notes (the upper or lower head of a chord, a half note on the bottom line) stand off the outer line or
+#   their stem leaves the staff, and the rule takes the slur at a bar line of two scans of one hymn and, on the fresh
+#   set, a slur that meets a bar line at the bottom line. (None: off)
+
+
+def _bar_end(layers: dict, mark: dict, column: np.ndarray, staff: dict, top: int, bottom: int, reach: int) -> bool:
+    """Whether a low hollow mark with one stem sits at an end of a bar line (BAR_END): at the top line with the line
+    going down to the bottom line and ending there, or the other way round."""
+    half = staff['thick'] / 2 + BAR_END[0]
+    def share(lo: float, hi: float) -> float:
+        part = column[max(0, int(round(lo))):max(0, int(round(hi)))]
+        return float(part.mean()) if len(part) else 0.0
+    if mark['y0'] <= top + half:            # at the top line, the line going down
+        return share(top - half - reach, top - half) <= BAR_END[1] \
+            and share(mark['y1'] + 1, bottom + 1) >= BAR_MARK[1] \
+            and share(bottom + half + 1, bottom + half + 1 + reach) <= BAR_END[1]
+    if mark['y1'] >= bottom - half:         # at the bottom line, the line going up
+        return share(bottom + half + 1, bottom + half + 1 + reach) <= BAR_END[1] \
+            and share(top, mark['y0']) >= BAR_MARK[1] \
+            and share(top - half - reach, top - half) <= BAR_END[1]
+    return False
 
 
 BAR_FAINT = (0.38, 0.55, 0.02, 0.6, 0.3)   # a bar line of a faint print, broken into dashes: an upright line with ink

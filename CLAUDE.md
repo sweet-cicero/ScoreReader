@@ -27,8 +27,8 @@ must catch up with it. The notes are read by rules alone, with no model.
 Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
 scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,150 of 22,655, counted by the page;
 22,006 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
-syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 500 printed notes and 146 syllables
-are lacking and 183 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+syllable, 39 both, 46 have no note that is not there, 39 are whole in all three; 500 printed notes and 146 syllables
+are lacking and 182 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6243 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,968 of 41,761; 101 of 214 pieces at 99 %),
@@ -1547,6 +1547,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   whole notes stand as an 8, the head over the broken one had taken the broken one's side for a short stem, and with
   the new head beside it that stem crossed the voices (the count by parts lost 2 notes where the staff count held).
   Such a stem ends in the new head's box and goes (`OPEN_SIDE`).
+- A mark that a rule takes by the line that goes on at both sides of it (`symbols.BAR_MARK`: the paper that a tie
+  closes where it crosses a bar line) is missed at an end of the line. A bar line begins and ends at the staff's
+  outer lines, and a slur that meets an outer line at a bar line closes its paper there, with the bar line as the
+  stem of a half note. The end of the line tells (`symbols.BAR_END`): the mark touches the outer line, nothing goes on
+  past it, and the line fills the staff to the other outer line and ends there; a stem ends at its head. A clean score
+  that reads every note and syllable and has one note that is not there is the nearest whole score: count such scores
+  (`wholecount`) beside the scores that lack one to three notes.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
