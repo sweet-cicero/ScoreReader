@@ -3690,6 +3690,7 @@ THIN_LEDGER = 0.3          # a ledger line is at most this thick, in staff space
 LINE_REST = 0.6            # a piece no higher than a staff line is a rest of the line when less than this share is its own ink (0: off)
 ONE_ALONG = 1.0            # on the one stem of a thick head too, when it lies this many staff spaces from that head (0: off)
 ALONG_HIGH = 0.4           # such a thin head is at least this high, in staff spaces: the rest of a staff line is flat
+ALONG_HOOK = True          # a hairline flag at the stem's end (a hook, see count_tails) keeps such a head off that stem too
 OPEN_RIM = 0.5             # an open hole has the head's own ink at this share of its rim (0: off)
 THIN_RING = (0.05, 0.2, 0.6, 1.2, 0.85, 0.85, 0.8, 1.25)   # a head that is read from its stem and whose ink shows no inside: a
 #                            pale print leaves the ring of a half note open in two places, and the piece at the stem's end
@@ -4428,6 +4429,13 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
             hung = tail_marks(layers, dict(owner, staff_ref=staves[owner['staff']]), stem)
             flags[id(stem)] = any(piece['right'] and piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6
                                   and piece['from_end'] <= FLAG_END for piece in hung)
+            if ALONG_HOOK and not flags[id(stem)]:
+                # A hairline flag is a hook at the very end of the stem, as count_tails reads it: one print curls it
+                # back up to its head, and where it meets the stem again it closes paper that was read as a head.
+                thin = [piece for piece in hung if not (piece['thick'] >= TAIL_THICK and piece['far'] >= 0.6)]
+                left = [piece['row'] for piece in thin if not piece['right']]
+                flags[id(stem)] = any(piece['right'] and piece['from_end'] <= TAIL_START and piece['back'] >= 0.12
+                                      and all(abs(piece['row'] - row) > 0.25 * space for row in left) for piece in thin)
         return flags[id(stem)]
 
     def make_head(piece: dict, direction: str, x: float, end: float, staff: int, arc: bool = True) -> dict | None:
@@ -4999,6 +5007,15 @@ DOT_TIP = (0.5, 5.0, 0.5, 2.0, 0.6)   # the tip of a tie's bow is no dot (None: 
 #                      third to the fourth number of staff spaces right of the mark's left edge, and whose first staff
 #                      space lies within the last number of staff spaces of the line and is at most as thick. The first
 #                      half alone is true of the dots of a hand, which stand on the staff lines.
+DOT_LINE = (0.5, 0.067)   # a dot that sits on a staff line keeps a hair of the line under or over it, where the line was
+#                    taken away around it, and is no dot by its shape. Measured without the rows of the line (where the
+#                    line runs on at its left or its right) it is one: its other ink is one run at one side of the line,
+#                    its ink in the rows of the line is at most [0] of its width, and it holds at least [1] staff spaces
+#                    squared of ink, as the printed dots of DOT_SURE's census do. A stroke across a line (a bar line, the
+#                    bar of an ison's breve, a stem, the tick of a hand) has ink at both sides of the line; the end of a
+#                    flag that runs into a line, a speck of the scan and a short stroke that stands on a line are smaller
+#                    (None: off)
+DOT_LINE_SEEN = None # a census: a list of the heads that take such a dot (None: none)
 DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger line is this many times as wide as the
 #                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
 #                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
@@ -7087,24 +7104,60 @@ def _bow_tip(layers: dict, x: int, y: int, wide: int, high: int, labels: np.ndar
     return False
 
 
+def _dot_on_line(layers: dict, labels: np.ndarray, index: int, x: int, y: int, wide: int, high: int):
+    """A dot that sits on a staff line, with a hair of the line under or over it (DOT_LINE): the box, the ink and the
+    middle of the piece without the rows of the line, or None where the piece is no such dot."""
+    lines = layers['lines']
+    piece = labels[y:y + high, x:x + wide] == index
+    inked = piece.any(axis=1)
+    # The rows of the line: the line runs on at the left or at the right of the piece.
+    line = (lines[y:y + high, max(0, x - 3):x].any(axis=1) | lines[y:y + high, x + wide:x + wide + 3].any(axis=1)) & inked
+    rows = np.nonzero(inked & ~line)[0]
+    if not line.any() or not len(rows) or rows[-1] - rows[0] + 1 != len(rows):
+        return None                     # no line, or ink of the piece at both sides of it: a stroke across the line
+    if np.nonzero(line)[0][0] < rows[0] and np.nonzero(line)[0][-1] > rows[-1]:
+        return None                     # a line over the piece and a line under it
+    part = piece[rows[0]:rows[-1] + 1]
+    columns = np.nonzero(part.any(axis=0))[0]
+    width = int(columns[-1] - columns[0] + 1)
+    if max(int(piece[row].sum()) for row in np.nonzero(line)[0]) > DOT_LINE[0] * width:
+        return None                     # the ink in the line is as wide as the mark: no hair
+    if part.sum() < DOT_LINE[1] * layers['space'] ** 2:
+        return None                     # smaller than a printed dot
+    ys, xs = np.nonzero(part)
+    return (x + int(columns[0]), y + int(rows[0]), width, len(rows), int(part.sum()),
+            (float(x + xs.mean()), float(y + rows[0] + ys.mean())))
+
+
 def dots(layers: dict, heads: list[dict]) -> None:
     """Sets head['dot'] to True where a dot stands at the right of a head: a small round mark in the space beside it."""
     space = layers['space']
     # The dots of two voices stand one over the other, and the joining of dashes makes one upright stroke of them:
     # so the dots are looked for in the ink itself, not in the marks that are left without the strokes.
     count, labels, stats, centres = cv2.connectedComponentsWithStats(layers['bare'], connectivity=8)
+    haired = set()
     found, full, sizes = [], [], []
     for index in range(1, count):
         x, y, wide, high, area = stats[index]
-        if not (DOT_SMALL * space <= wide <= 0.6 * space and DOT_SMALL * space <= high <= DOT_HIGH * space):
+        box, centre, hair = (int(x), int(y), int(wide), int(high)), (float(centres[index][0]), float(centres[index][1])), False
+        if not (DOT_SMALL * space <= wide <= 0.6 * space and DOT_SMALL * space <= high <= DOT_HIGH * space) \
+                or area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
+            # (see DOT_LINE: a dot that keeps a hair of the staff line that it sits on)
+            dot = _dot_on_line(layers, labels, index, *box) if DOT_LINE else None
+            if dot is None:
+                continue
+            x, y, wide, high, area, centre = dot
+            if not (DOT_SMALL * space <= wide <= 0.6 * space and DOT_SMALL * space <= high <= DOT_HIGH * space) \
+                    or area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
+                continue
+            hair = True
+        if DOT_TIP and _bow_tip(layers, *box, labels, stats):
             continue
-        if area < DOT_FILL * wide * high or not DOT_SLIM <= wide / high <= DOT_FLAT:
-            continue
-        if DOT_TIP and _bow_tip(layers, int(x), int(y), int(wide), int(high), labels, stats):
-            continue
-        found.append((float(centres[index][0]), float(centres[index][1])))
+        if hair:
+            haired.add(len(found))
+        found.append(centre)
         sizes.append((int(x), int(wide), int(high), int(area)))
-        full.append(bool(DOT_CLOSE) and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
+        full.append(bool(DOT_CLOSE) and not hair and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
     specks = []
     for index in range(1, count if DOT_SPECK else 1):
         # (see DOT_SPECK: the shape of a dot, a little smaller)
@@ -7152,6 +7205,8 @@ def dots(layers: dict, heads: list[dict]) -> None:
                         and min(abs(y - row) for row in layers['staves'][head['staff']]['rows']) >= DOT_SURE[3] * space:
                     head['dot_sure'] = True
                 taken.add(number)
+                if number in haired and DOT_LINE_SEEN is not None:
+                    DOT_LINE_SEEN.append({'head': (head['cx'], head['cy'], head['x1'], head['staff']), 'dot': found[number], 'size': sizes[number]})
                 takers.setdefault(number, []).append(head)
                 took.setdefault(id(head), []).append(number)
                 if id(head) not in first or x < found[first[id(head)]][0]:
@@ -7212,8 +7267,8 @@ def dots(layers: dict, heads: list[dict]) -> None:
         one = first[id(head)]
         x, y = found[one]
         for number, (other, row) in enumerate(found):
-            if not (near * space <= other - x <= far * space and abs(row - y) <= level * space):
-                continue
+            if number in haired or not (near * space <= other - x <= far * space and abs(row - y) <= level * space):
+                continue        # (a dot that keeps a hair of a line is only the first dot of its head: DOT_LINE)
             if min(sizes[one][3], sizes[number][3]) < alike * max(sizes[one][3], sizes[number][3]) \
                     or not all(slim <= sizes[index][1] / sizes[index][2] <= flat for index in (one, number)):
                 continue
@@ -7237,8 +7292,8 @@ def dots(layers: dict, heads: list[dict]) -> None:
             # past its end.
             end, blob = _ledger_end(layers, head)
             if end >= head['x1'] + LEDGER_DOT[2] * space:
-                head['dot'] = blob or any(0.1 * space <= x - end <= LEDGER_DOT[1] * space
-                                          and abs(y - head['cy']) <= 0.7 * space for x, y in found)
+                head['dot'] = blob or any(0.1 * space <= x - end <= LEDGER_DOT[1] * space and number not in haired
+                                          and abs(y - head['cy']) <= 0.7 * space for number, (x, y) in enumerate(found))
 
 
 def _ledger_end(layers: dict, head: dict) -> tuple[int, bool]:

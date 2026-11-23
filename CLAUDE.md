@@ -24,15 +24,15 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
-scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,134 of 22,655, counted by the page;
-21,990 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
-syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 516 printed notes and 146 syllables
-are lacking and 198 notes are read that are not there, each printed head counted once since round 78: 378 by the
+Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
+scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,135 of 22,655, counted by the page;
+21,991 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
+syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 515 printed notes and 146 syllables
+are lacking and 197 notes are read that are not there, each printed head counted once since round 78: 377 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
-On the fresh test set, which no rule was set on: 95.7 % of the notes (39,967 of 41,761; 101 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.7 % of the notes (39,968 of 41,761; 101 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
@@ -1485,6 +1485,18 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   line too: it is a second look where the first finds nothing (`meter.TIME_LINES`). A rule for the time signatures is
   judged by the signatures and the starts of every staff of two runs, each change on a tile centred on it: a new
   signature that takes no note shows in no count (the flat of a key that a page's reading misses passed as one).
+- A guard that asks for a mark in its own way misses the form of it that another step reads. A thin head is kept off a
+  stem that carries a flag (`thin_heads`), and the guard asked only for a flag as thick as a beam: one print draws the
+  flag of an eighth with its stem down as a hairline that curls back up to the head, and where it meets the stem again
+  it closes paper that was read as a head of the other voice. `count_tails` had counted that hook as the flag; the
+  guard asks for the hook as `count_tails` reads it (`symbols.ALONG_HOOK`).
+- A dot that sits on a staff line keeps a hair of the line where the line was taken away around it, and is no dot by
+  its shape. Measured without the rows of a line that runs on at its left or its right it is one (`symbols.DOT_LINE`),
+  and so is a short stroke across a line: the first form changed 175 heads of LitChoir's pages (dots gained at 43, lost
+  at 41) by a dashed bar line, the bars of an ison's breve, the tick of a hand and stems. A dot on a line has its other
+  ink at one side of the line only, its ink in the line's rows is a hair, and it holds as much ink as the printed dots
+  of `DOT_SURE`'s census. A dot that is found so is kept to that one step: let into the steps for a dot close to
+  another head (`DOT_CLOSE`, `DOT_TWO`, a dot at a ledger line) it gave a head near it a false dot.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
