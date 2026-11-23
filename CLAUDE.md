@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
-scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,135 of 22,655, counted by the page;
-21,991 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
-syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 515 printed notes and 146 syllables
-are lacking and 197 notes are read that are not there, each printed head counted once since round 78: 377 by the
+scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,138 of 22,655, counted by the page;
+21,994 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 42 scores read every printed note, 47 every
+syllable, 38 both, 45 have no note that is not there, 37 are whole in all three; 512 printed notes and 146 syllables
+are lacking and 196 notes are read that are not there, each printed head counted once since round 78: 375 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
@@ -1497,6 +1497,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   ink at one side of the line only, its ink in the line's rows is a hair, and it holds as much ink as the printed dots
   of `DOT_SURE`'s census. A dot that is found so is kept to that one step: let into the steps for a dot close to
   another head (`DOT_CLOSE`, `DOT_TWO`, a dot at a ledger line) it gave a head near it a false dot.
+- A rule that asks how black a mark is asks the page's own print of that mark. A grey speck is no dot of a black head
+  (`symbols.DOT_GREY`), and the first form, which asked the head alone, took the true dot of a pale print whose dots
+  are all grey, beside a head that is black by chance: the measure of black is the page's own. The count called it a
+  gain, by a line-up with the place where the hymn sings the same words in quarter notes. The page's other dots tell
+  (`DOT_GREY_PAGE`). A dot that goes is a gain only where the page prints none: look at each gain on the page too.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

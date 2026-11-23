@@ -5016,6 +5016,23 @@ DOT_LINE = (0.5, 0.067)   # a dot that sits on a staff line keeps a hair of the 
 #                    flag that runs into a line, a speck of the scan and a short stroke that stands on a line are smaller
 #                    (None: off)
 DOT_LINE_SEEN = None # a census: a list of the heads that take such a dot (None: none)
+DOT_GREY = (0.1, 0.25, 0.6)   # a speck of a grey streak, a pencil mark or a smudge is no dot of a black head: the ink of the
+#                    piece off the rows of the staff lines is at least [1] of its ink and at most [0] of it is black
+#                    (layers.BLACK), and the ink in the head's box is at least [2] black. A printed dot is as black as its
+#                    head; a dot that sits on a staff line has most of its ink in the line's rows, and its rim off the
+#                    line is grey. (A census at this step on every scan page of LitChoir: of the 2,861 dots that heads
+#                    take, the ones whose ink off the lines holds at most 0.1 black and that stand beside a head at least
+#                    0.6 black were looked at, each: grey streaks, the tails of pencil lines, the textured paper of one
+#                    copy, the curl at the tip of a heavy head, and one true dot of a pale print beside a head that is
+#                    black by chance, which DOT_GREY_PAGE keeps. The true dots of black heads on the other pages hold
+#                    0.21 black or more off the lines.) None: off
+DOT_GREY_PAGE = 0.3  # ... and only where the page's other dots are black: of the pieces of a dot's shape that stand where
+#                    a head's dot stands (DOT_REACH, DOT_UNDER) and that are not that grey, half or more hold this share
+#                    of black off the lines or more. One pale print prints its dots grey beside heads that are black at
+#                    places, and the measure of black is the page's own: on its two pages every such piece is that grey
+#                    (none on the other pages that the rule changes; on every page of LitChoir 384 of the 423 pages with
+#                    such pieces have them all black, and the pale print's pages none).
+DOT_GREY_SEEN = None # a census: the pieces that DOT_GREY_PAGE measures on each page, and its verdict (None: none)
 DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger line is this many times as wide as the
 #                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
 #                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
@@ -6213,14 +6230,48 @@ def _black_around(layers: dict, head: dict) -> tuple[float, float, int, float]:
     return mine / count, shares[0][0], shares[0][1], shares[1][0]
 
 
+GREY_STEM = (0.2, 0.1)   # a head that was read from a stem (`thin`) is no head where the stem is grey: of the stem's
+#   ink (its column and one px at each side, from the head to its end) at most the first share is black, of the head's
+#   own ink off the rows of the staff lines at most the second share, and the print around is black as GREY_MARK asks
+#   (its third and fourth numbers). The end of a grey streak across a staff was read so, with the streak as its stem;
+#   GREY_MARK's test of the ink close around the mark does not hold there, because the head lies on a black staff line.
+#   (A census at the step of the dots on every scan page of LitChoir: of 3,147 heads read from a stem, 27 have stems
+#   that hold at most 0.2 black, 8 of them stand in black print, and one of those holds no black of its own off the
+#   lines: the end of the streak on pascha-exapostilarion's page. The others are heads in pencil or on grey copies,
+#   with black ink of their own. A rule for one case.) None: off
+
+
+def _grey_stem(layers: dict, head: dict, around: float, stand: int) -> bool:
+    """Whether a head read from a stem is the end of a grey stroke (GREY_STEM)."""
+    if not GREY_STEM or not head.get('thin') or not head.get('stems') or stand < GREY_MARK[2] or around < GREY_MARK[3]:
+        return False
+    ink, black = layers['ink'], layers['black']
+    y0, y1, x0, x1 = max(0, int(head['y0'])), int(head['y1']) + 1, max(0, int(head['x0'])), int(head['x1']) + 1
+    rows = ~layers['lines'][y0:y1, max(0, x0 - 3):x1 + 3].any(axis=1)
+    part = ink[y0:y1, x0:x1] & rows[:, None]
+    count = int(part.sum())
+    if not count or int((black[y0:y1, x0:x1] & part).sum()) > GREY_STEM[1] * count:
+        return False
+    for stem in head['stems']:
+        x = int(round(stem['x']))
+        lo, hi = (int(head['y1']) + 1, int(stem['end']) + 1) if stem['direction'] == 'down' else (int(stem['end']), int(head['y0']))
+        cut = ink[max(0, lo):hi, max(0, x - 1):x + 2]
+        if not cut.any() or int((black[max(0, lo):hi, max(0, x - 1):x + 2] & cut).sum()) > GREY_STEM[0] * int(cut.sum()):
+            return False
+    return True
+
+
 def without_grey_marks(layers: dict, heads: list[dict]) -> list[dict]:
-    """The heads without the marks that hold no black ink where the print around them is black (GREY_MARK)."""
+    """The heads without the marks that hold no black ink where the print around them is black (GREY_MARK), and
+    without the heads read from a grey stem (GREY_STEM)."""
     if not GREY_MARK or not heads or not layers['black'].any():
         return heads
     out = []
     for head in heads:
         own, around, stand, close = _black_around(layers, head)
         if own < GREY_MARK[0] and stand >= GREY_MARK[2] and around >= GREY_MARK[3] and close < GREY_MARK[5]:
+            continue
+        if _grey_stem(layers, head, around, stand):
             continue
         out.append(head)
     return out
@@ -7104,6 +7155,26 @@ def _bow_tip(layers: dict, x: int, y: int, wide: int, high: int, labels: np.ndar
     return False
 
 
+def _dot_shade(layers: dict, labels: np.ndarray, index: int, stat):
+    """The share of black (layers.BLACK) in the ink of a piece that passes as a dot, in the rows where no staff line
+    runs on at its left or its right (DOT_GREY); None where that ink is under DOT_GREY[1] of the piece's ink."""
+    x, y, wide, high = int(stat[0]), int(stat[1]), int(stat[2]), int(stat[3])
+    piece = labels[y:y + high, x:x + wide] == index
+    off = piece & ~layers['lines'][y:y + high, max(0, x - 3):x + wide + 3].any(axis=1)[:, None]
+    count = int(off.sum())
+    if not count or count < DOT_GREY[1] * int(piece.sum()):
+        return None
+    return int((layers['black'][y:y + high, x:x + wide] & off).sum()) / count
+
+
+def _box_black(layers: dict, head: dict) -> float:
+    """The share of the ink in a head's box that is black (layers.BLACK)."""
+    y0, x0 = max(0, int(head['y0'])), max(0, int(head['x0']))
+    y1, x1 = int(head['y1']) + 1, int(head['x1']) + 1
+    count = int(layers['ink'][y0:y1, x0:x1].sum())
+    return float((layers['black'][y0:y1, x0:x1] & layers['ink'][y0:y1, x0:x1]).sum()) / count if count else 0.0
+
+
 def _dot_on_line(layers: dict, labels: np.ndarray, index: int, x: int, y: int, wide: int, high: int):
     """A dot that sits on a staff line, with a hair of the line under or over it (DOT_LINE): the box, the ink and the
     middle of the piece without the rows of the line, or None where the piece is no such dot."""
@@ -7135,7 +7206,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
     # The dots of two voices stand one over the other, and the joining of dashes makes one upright stroke of them:
     # so the dots are looked for in the ink itself, not in the marks that are left without the strokes.
     count, labels, stats, centres = cv2.connectedComponentsWithStats(layers['bare'], connectivity=8)
-    haired = set()
+    haired, grey, shades = set(), set(), []
     found, full, sizes = [], [], []
     for index in range(1, count):
         x, y, wide, high, area = stats[index]
@@ -7155,9 +7226,24 @@ def dots(layers: dict, heads: list[dict]) -> None:
             continue
         if hair:
             haired.add(len(found))
+        if DOT_GREY:
+            shades.append(_dot_shade(layers, labels, index, stats[index]))
         found.append(centre)
         sizes.append((int(x), int(wide), int(high), int(area)))
         full.append(bool(DOT_CLOSE) and not hair and min(wide, high) >= DOT_CLOSE[1] * space and DOT_CLOSE[2] <= wide / high <= DOT_CLOSE[3])
+    if DOT_GREY and heads:
+        # (see DOT_GREY_PAGE: the page's dots are black)
+        rights = np.array([head['x1'] for head in heads], dtype=float)
+        middles = np.array([head['cy'] for head in heads], dtype=float)
+        near = [shade for place, shade in zip(found, shades) if shade is not None
+                and np.any((rights < place[0]) & (place[0] <= rights + DOT_REACH * space + 2)
+                           & (middles - 0.7 * space <= place[1]) & (place[1] <= middles + DOT_UNDER * space))]
+        others = [shade for shade in near if shade > DOT_GREY[0]]
+        page = bool(others) and 2 * sum(shade >= DOT_GREY_PAGE for shade in others) >= len(others)
+        if DOT_GREY_SEEN is not None:
+            DOT_GREY_SEEN.append({'near': near, 'page': page})
+        if page:
+            grey = {number for number, shade in enumerate(shades) if shade is not None and shade <= DOT_GREY[0]}
     specks = []
     for index in range(1, count if DOT_SPECK else 1):
         # (see DOT_SPECK: the shape of a dot, a little smaller)
@@ -7191,6 +7277,16 @@ def dots(layers: dict, heads: list[dict]) -> None:
     taken = set()
     first = {}
     takers, took = {}, {}
+    darks = {}
+
+    def refused(number: int, head: dict) -> bool:
+        # A grey piece is no dot of a black head (see DOT_GREY).
+        if number not in grey:
+            return False
+        if id(head) not in darks:
+            darks[id(head)] = _box_black(layers, head) >= DOT_GREY[2]
+        return darks[id(head)]
+
     for head in heads:
         head['dot'] = False
         head['dot_sure'] = False
@@ -7198,7 +7294,8 @@ def dots(layers: dict, heads: list[dict]) -> None:
                                and -DOT_ASK[2] * space <= y - head['cy'] <= DOT_UNDER * space for x, y in nearly)
         for number, (x, y) in enumerate(found):
             if DOT_NEAR * space <= x - edge(head, x, y) <= DOT_REACH * space and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space \
-                    and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space):
+                    and not (DOT_BETWEEN and DOT_BETWEEN[0] * space <= y - head['cy'] < DOT_BETWEEN[1] * space) \
+                    and not refused(number, head):
                 head['dot'] = True
                 if DOT_SURE and sizes[number][3] >= DOT_SURE[0] * space * space \
                         and DOT_SURE[1] <= sizes[number][1] / sizes[number][2] <= DOT_SURE[2] \
@@ -7267,7 +7364,7 @@ def dots(layers: dict, heads: list[dict]) -> None:
         one = first[id(head)]
         x, y = found[one]
         for number, (other, row) in enumerate(found):
-            if number in haired or not (near * space <= other - x <= far * space and abs(row - y) <= level * space):
+            if number in haired or refused(number, head) or not (near * space <= other - x <= far * space and abs(row - y) <= level * space):
                 continue        # (a dot that keeps a hair of a line is only the first dot of its head: DOT_LINE)
             if min(sizes[one][3], sizes[number][3]) < alike * max(sizes[one][3], sizes[number][3]) \
                     or not all(slim <= sizes[index][1] / sizes[index][2] <= flat for index in (one, number)):
@@ -7286,13 +7383,14 @@ def dots(layers: dict, heads: list[dict]) -> None:
         # A tight engraving sets the dot against the head. One dot is the dot of one head.
         if DOT_CLOSE and not head['dot']:
             head['dot'] = any(full[number] and number not in taken and DOT_CLOSE[0] * space <= x - head['x1'] < DOT_NEAR * space
-                              and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space for number, (x, y) in enumerate(found))
+                              and -0.7 * space <= y - head['cy'] <= DOT_UNDER * space and not refused(number, head)
+                              for number, (x, y) in enumerate(found))
         if not head['dot'] and LEDGER_DOT and abs(head['place']) > 4.6:
             # A hand draws the ledger line through the head and on to the right, and sets the dot at its end or
             # past its end.
             end, blob = _ledger_end(layers, head)
             if end >= head['x1'] + LEDGER_DOT[2] * space:
-                head['dot'] = blob or any(0.1 * space <= x - end <= LEDGER_DOT[1] * space and number not in haired
+                head['dot'] = blob or any(0.1 * space <= x - end <= LEDGER_DOT[1] * space and number not in haired and not refused(number, head)
                                           and abs(y - head['cy']) <= 0.7 * space for number, (x, y) in enumerate(found))
 
 
