@@ -32,7 +32,7 @@ ALONE = 2.5             # a mark stands alone: no word that is no mark within th
 HEAVY = (0.6, 0.75)     # a heavy D: the paper it closes in lies this far to the right, its stem is this share of the height
 ROW = (15.0, 2)         # or in a row of words: this many words that are no marks on its line within this many staff spaces
 FLAT = 0.4              # a piece under this many staff spaces high is no letter: a line after the mark, a hyphen
-BREVE = (3.5, 1.0, 1.0, 0.12, 0.9, 2.4, 1.15, 2.0, 0.45)
+BREVE = (3.5, 1.0, 1.0, 0.12, 0.9, 2.4, 1.05, 2.0, 0.4)
 #                       a print can set the ison's note under its letter as a breve |o|, a hollow head between two short
 #                       bars, and that breve is no note of the melody (the ison is read from the letter): a hollow head at
 #                       most the first number of staff spaces before a letter and the second after it, at most the third
@@ -41,7 +41,12 @@ BREVE = (3.5, 1.0, 1.0, 0.12, 0.9, 2.4, 1.15, 2.0, 0.45)
 #                       the middle row of the inside goes furthest up and down, of the columns whose ink there is at most
 #                       the sixth number long: it is from the seventh to the eighth number long and goes on past that
 #                       row by the ninth number up and down. A half note has its stem at one side, and the stem goes one
-#                       way. (None: off)
+#                       way. (None: off) A print can set the breve close under the staff with the bottom line through
+#                       its top, and its bars are then 1.09 staff spaces long and go on 0.42 over the middle of the inside
+#                       (pascha-hypakoe pg0536). Of the 28 hollow heads that this test is asked about on LitChoir's chant
+#                       pages, the other breves have bars of 1.2 staff spaces and 0.48 or more, and the bar of a head that
+#                       fails at one side only is at most 0.82 and 0.34 there: the limits of 1.15 and 0.45 are 1.05 and
+#                       0.4, and take that one breve more.
 
 
 BREVE_BARE = (2, 0.3, 0.7, 2.8, 1.4, 0.3)
@@ -56,6 +61,12 @@ BREVE_BARE = (2, 0.3, 0.7, 2.8, 1.4, 0.3)
 #                       hollow head with such strokes whose stem carries a filled head is the breve under the melody's
 #                       note: the notes of a chord are of one kind. On a page without letters the breves are the ison's
 #                       only notes, and they stay. (None: off)
+
+BREVE_TAIL = 0.3        # the stem of the melody's note over a breve can end in the breve's bar, and the breve's oval at
+#                       the one side of that stem was counted as its flag or beam: a stem that ends in the box of a breve
+#                       that was taken (this many staff spaces around it) has no flag or beam there. (A census of the
+#                       breves that are taken on LitChoir's chant pages: one such stem, the B4 over pascha-hypakoe's
+#                       breve on pg0536, a quarter note read as an eighth. None: off)
 
 
 def _holes(piece: np.ndarray) -> list[tuple[float, float, float]]:
@@ -352,4 +363,12 @@ def without_breves(layers: dict, heads: list[dict], letters: dict[int, list[dict
         if named and head['hollow'] and (not head['stems'] or filled_mate(head)) and is_bare_breve(layers, head):
             continue
         out.append(head)
+    if BREVE_TAIL is not None:
+        breves = [head for head in heads if not any(head is kept for kept in out)]
+        for head in out:
+            for stem in head['stems']:
+                if head['tails'].get(stem['direction']) and any(
+                        breve['staff'] == head['staff'] and breve['x0'] - BREVE_TAIL * space <= stem['x'] <= breve['x1'] + BREVE_TAIL * space
+                        and breve['y0'] - BREVE_TAIL * space <= stem['end'] <= breve['y1'] + BREVE_TAIL * space for breve in breves):
+                    head['tails'][stem['direction']] = 0
     return out
