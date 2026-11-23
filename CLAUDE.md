@@ -28,7 +28,7 @@ Not reached yet: 87.7 % of the drawn notes over all 364 counted scores (99.3 % o
 scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,134 of 22,655, counted by the page;
 21,990 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
 syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 516 printed notes and 146 syllables
-are lacking and 201 notes are read that are not there, each printed head counted once since round 78: 382 by the
+are lacking and 198 notes are read that are not there, each printed head counted once since round 78: 378 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
@@ -1479,6 +1479,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   of a line through struck-out words: the height of one whole note or of two a third apart, and a ledger line as
   short as one note's, part them. A print can set its first ledger line closer to the staff than a staff space
   (0.8): a note that a ledger line crosses stands on that line, whatever its distance.
+- The layer of the staff lines keeps a line where closed paper touches it, so paper that two signs close with two lines
+  joins the signs: a time signature set close after the key was one piece with the sharp, and its numbers were read as
+  notes. The ink without the lines that the ink alone shows parts them, and parts numbers that touch along the middle
+  line too: it is a second look where the first finds nothing (`meter.TIME_LINES`). A rule for the time signatures is
+  judged by the signatures and the starts of every staff of two runs, each change on a tile centred on it: a new
+  signature that takes no note shows in no count (the flat of a key that a page's reading misses passed as one).
 - `experiments/` holds the record of the first tests.
 
 ## Rules

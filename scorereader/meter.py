@@ -50,6 +50,15 @@ TIME_STACK = (1.25, 1.9, 1.1, 0.85, 0.08, 0.25, 0.85, 0.45)   # two numbers that
 #  inked columns is ink along a part of the staff only. A bar line and a closing bar are full columns at the edges
 #  with little beside them; the stem of a note stands at the edge of its head and is shorter than the staff. One
 #  engraving sets the stem of its 4 at 0.83 of the width of two touching numbers. (None: off)
+TIME_LINES = True        # numbers are also found in the ink without the staff lines that the ink alone shows, where no
+#                          other sign stands. The layer of the lines keeps a line where closed paper touches it (the
+#                          inside of a head), and a heavy print that sets its time signature close after the key closes
+#                          paper between the last sign of the key, the first number and two staff lines: the lines then
+#                          join the numbers to the key, and the numbers were read as whole notes. That ink is a second
+#                          look only: numbers that touch each other along the middle line fall apart in it. On LitChoir's
+#                          pages it finds 21 signatures on 12 pages, each looked at: 20 true ones, at the start of a staff
+#                          and after a bar line, in print and by hand, and the flat of a key that the reader does not read
+#                          on its page (it takes no note); none on the fresh set (False: off)
 COMMON = True            # the sign of common time (C) at the start of a staff is found too (False: only numbers)
 COMMON_HIGH = (1.5, 2.7) # the C is this high, in staff spaces
 COMMON_WIDE = (0.35, 2.3)    # and this wide (a hand copy draws a thin bow, and the staff lines take its two ends)
@@ -68,6 +77,14 @@ def _free(layers: dict) -> np.ndarray:
     if 'unfilled' not in layers:
         layers['unfilled'] = layers['ink'] & (1 - layers['lines'])
     return layers['unfilled']
+
+
+def _number_ink(layers: dict) -> np.ndarray:
+    """The ink without the staff lines that the ink alone shows (TIME_LINES)."""
+    if 'number_ink' not in layers:
+        from .layers import staff_lines
+        layers['number_ink'] = layers['ink'] & (1 - staff_lines(layers['ink'], layers['staves']))
+    return layers['number_ink']
 
 
 def _stacked(columns: np.ndarray, wides: list[int], space: float, crosses: bool) -> bool:
@@ -90,27 +107,40 @@ def time_signs(layers: dict, staff: dict, first: float | None = None, last: floa
     """The time signatures of a staff between the columns first and last (the whole staff when they are not given):
     each {'x0', 'x1'}. The numbers that pass only by the wider limit of TIME_LOOSE are marked ('loose': True). With
     `weak`, also the ink that fills the two halves of the staff as two numbers do and fails a check for a bar line,
-    a head or a stem ('weak': True): see TIME_MATE."""
-    found = _time_signs(layers, staff, first, last, weak, TIME_EDGE)
+    a head or a stem ('weak': True): see TIME_MATE. Numbers that are found only in the ink without the lines that the
+    ink alone shows (TIME_LINES) come after all others, where no other sign stands."""
+    found = _signs_in(layers, staff, first, last, weak, False)
+    if TIME_LINES:
+        found += [sign for sign in _signs_in(layers, staff, first, last, False, True) if _apart(sign, found)]
+        found.sort(key=lambda sign: sign['x0'])
+    return found
+
+
+def _apart(sign: dict, others: list[dict]) -> bool:
+    return not any(sign['x0'] <= other['x1'] and other['x0'] <= sign['x1'] for other in others)
+
+
+def _signs_in(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, alone: bool) -> list[dict]:
+    """The time signatures of time_signs() in one ink: the ink without the lines of the layers, or (`alone`) without
+    the lines that the ink alone shows."""
+    found = _time_signs(layers, staff, first, last, weak, TIME_EDGE, alone)
     if TIME_LOOSE:
-        wider = [dict(sign, loose=True) for sign in _time_signs(layers, staff, first, last, weak, TIME_LOOSE[0])]
-
-        def apart(sign: dict, others: list[dict]) -> bool:
-            return not any(sign['x0'] <= other['x1'] and other['x0'] <= sign['x1'] for other in others)
-
+        wider = [dict(sign, loose=True) for sign in _time_signs(layers, staff, first, last, weak, TIME_LOOSE[0], alone)]
         # Numbers that pass every check come before ink that fails one, and the closer limit before the wider one.
         sure = [sign for sign in found if not sign.get('weak')]
-        sure += [sign for sign in wider if not sign.get('weak') and apart(sign, sure)]
+        sure += [sign for sign in wider if not sign.get('weak') and _apart(sign, sure)]
         for sign in [sign for sign in found + wider if sign.get('weak')]:
-            if apart(sign, sure):
+            if _apart(sign, sure):
                 sure.append(sign)
         found = sorted(sure, key=lambda sign: sign['x0'])
     return found
 
 
-def _time_signs(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, limit: float) -> list[dict]:
-    """The time signatures of time_signs() whose numbers begin and end at most `limit` staff spaces from their lines."""
-    free = _free(layers)
+def _time_signs(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, limit: float,
+                alone: bool = False) -> list[dict]:
+    """The time signatures of time_signs() whose numbers begin and end at most `limit` staff spaces from their lines,
+    in the ink without the lines of the layers or (`alone`) without the lines that the ink alone shows."""
+    free = _number_ink(layers) if alone else _free(layers)
     height, width = free.shape
     space, rows = staff['space'], staff['rows']
     top, middle, bottom = rows[0], rows[2], rows[4]
