@@ -5316,6 +5316,27 @@ FLAG_BOW = (1.8, 0.7, 1.3, 0.8)   # the flag of a down stem that is a bow: it le
 #                            bulges to the right and comes back to the stem before its end. The ink right of the stem
 #                            is this many staff spaces high, reaches from this to this far from the stem and no
 #                            farther, and paper lies between it and the stem for this many staff spaces (None: off)
+STEEP_FLAG = (2.2, 0.45, 0.4, 0.95, 0.25, 0.5, 0.3, 0.8, 0.25)
+#                            one old engraving draws the flag of an eighth as a thin straight stroke that leaves the
+#                            stem steeply, back toward the head: a Y at the end of a stem down (the stem goes on past
+#                            the fork) and a Λ at the top of a stem up (the stroke hugs the stem first), and the older
+#                            rules look for a flag at the very end of the stem. The stroke is followed in the first
+#                            number of staff spaces from the stem's end; it leaves the stem the second number or more
+#                            from the end, reaches from the third to the fourth number to the right and ends in paper,
+#                            comes back toward the head by the fifth number and by the sixth share of how far it
+#                            reaches, is at most the seventh number wide, touches the stem in one run of rows, on at most
+#                            the eighth share of its height, and only goes away from the stem to its tip; no ink crosses
+#                            the stem within the ninth number of the rows where it leaves it, and the stroke does not go
+#                            on straight at the other side of the stem (a slash across a stem) (None: off). A census of
+#                            every stem that the first form (no limits for where the stroke leaves and how long it
+#                            touches) gave a flag on LitChoir's pages: 104 stems, 24 notes gained and 41 lost, nearly all
+#                            losses on copies by hand, where a stroke that hugs the stem all its way or a thin flag at the
+#                            stem's end is a stem or a mark by hand as often as a flag. The print's flags leave the stem
+#                            0.48 staff spaces or more from its end and touch it on 0.77 of their height at most. The
+#                            rule then takes 21 stems on 13 pages, each looked at: 20 eighths (8 of them were read as
+#                            quarter notes) and the wire of a paperclip, which is no note. A rule for one print, with its
+#                            likes on two copies by hand.
+STEEP_SEEN = None    # a list: every stem that STEEP_FLAG gives a flag, with its measures (a census)
 DOT_REACH = 1.3      # a dot stands at most this many staff spaces right of its head
 DOT_NEAR = 0.3       # and at least this many
 DOT_UNDER = 0.6      # its middle lies at most this many staff spaces under the middle of the head (and 0.7 over it)
@@ -5636,6 +5657,107 @@ def _bow_flag(layers: dict, head: dict, stem: dict, low: float) -> bool:
     return False
 
 
+def _steep_flag(layers: dict, head: dict, stem: dict, last: float) -> dict | None:
+    """The measures of the steep flag at a stem (STEEP_FLAG), or None: a thin straight stroke at the right of the stem
+    that leaves it a little before its end and goes back toward the head. `last` is the middle row of the last head
+    on the stem."""
+    ink, space = layers['bare'], layers['space']
+    zone, from_low, far_low, far_high, back_low, slope, wide_high, hug, across = STEEP_FLAG
+    height, width = ink.shape
+    up = stem['direction'] == 'up'
+    x, end = int(stem['x']), int(stem['end'])
+    inward = int(min(zone * space, max(0.0, abs(last - end) - 1.0 * space)))
+    outward = int(0.3 * space)
+    top, bottom = (end - outward, end + inward) if up else (end - inward, end + outward)
+    top, bottom = max(0, top), min(height, bottom + 1)
+    first, final = max(0, x - int(0.8 * space)), min(width, x + int(1.3 * space) + 1)
+    if bottom - top < 0.5 * space or final - first < space:
+        return None
+    raw = ink[top:bottom, first:final].copy()
+    if stem.get('words'):
+        raw[max(0, int(stem['words'][0]) - top):max(0, int(stem['words'][1]) + 1 - top)] = 0
+    # The stroke is followed as in tail_marks, where a staff line comes back where ink stands over it and under it; what
+    # crosses the stem is asked without the staff lines.
+    window = raw.copy()
+    lines = layers['lines'][top:bottom, first:final]
+    high = int(np.ceil(head['staff_ref']['thick'])) + 3
+    near = cv2.dilate(window, np.ones((1, 5), np.uint8))
+    window |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((high, 1), np.uint8)) & lines
+    if stem.get('words'):
+        window[max(0, int(stem['words'][0]) - top):max(0, int(stem['words'][1]) + 1 - top)] = 0
+    centre = x - first
+    band = max(2, int(round(0.13 * space)))
+    stem_rows = window[:, max(0, centre - band):centre + band + 1].any(axis=1)
+    cut = window.copy()
+    cut[:, max(0, centre - band):centre + band + 1] = 0
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(cut, connectivity=8)
+    edge_right, edge_left = centre + band + 1, centre - band - 1
+    if edge_left < 0 or edge_right >= window.shape[1]:
+        return None
+    bare = raw.copy()
+    bare[:, max(0, centre - band):centre + band + 1] = 0
+    _, left_labels = cv2.connectedComponents(bare, connectivity=8)
+    left_rows = np.nonzero((left_labels[:, edge_left] > 0) & stem_rows)[0]
+    for index in range(1, count):
+        px, py, wide, tall, area = stats[index]
+        if px <= centre:
+            continue
+        touch = np.nonzero((labels[:, edge_right] == index) & stem_rows)[0]
+        if len(touch) == 0:
+            continue
+        from_end = float(np.abs(touch + top - end).min()) / space
+        far = (px + wide - 1 - centre) / space
+        if from_end < from_low or len(touch) > hug * tall or not far_low <= far <= far_high or px + wide >= window.shape[1]:
+            continue
+        part = labels == index
+        ys, xs = np.nonzero(part)
+        tip = float(ys[xs >= xs.max() - 1].mean())
+        back = ((tip - touch.mean()) if up else (touch.mean() - tip)) / space
+        if back < back_low or back < slope * far:
+            continue
+        # How wide the stroke is: its ink for its length from the stem to its tip.
+        length = float(np.hypot(far, back))
+        stroke = area / space ** 2 / max(length, 0.1)
+        if stroke > wide_high:
+            continue
+        # No ink crosses the stem where the stroke leaves it (a slur, the bar of a letter).
+        if len(left_rows) and np.abs(left_rows[:, None] - touch[None, :]).min() <= across * space:
+            continue
+        # A slash across the stem goes on straight at its other side (where it crosses a staff line, the ink without
+        # the lines can show no piece that touches the stem there).
+        rise = (tip - touch.mean()) / max(1.0, float(px + wide - 1 - edge_right))
+        reach = int(0.4 * space)
+        hits = 0
+        for step in range(1, reach + 1):
+            col = edge_left - step
+            row = int(round(touch.mean() - rise * (edge_right - col)))
+            if col < 0 or not 1 <= row < window.shape[0] - 1:
+                break
+            hits += bool(window[row - 1:row + 2, col].any())
+        if hits >= 0.5 * reach:
+            continue
+        # The stroke leaves the stem once and goes away from it to its tip: it touches the stem in one run of rows
+        # (a staff line that it crosses there does not count), and the paper between it and the stem only widens
+        # toward the tip (a letter A comes back to its other leg with its bar).
+        line_rows = lines.any(axis=1)
+        line_rows = line_rows | np.roll(line_rows, 1) | np.roll(line_rows, -1)
+        free = np.array([row for row in touch if not line_rows[row]])
+        if not len(free) or np.diff(free).max(initial=0) > 0.2 * space:
+            continue
+        step = 1 if (tip > free.mean()) else -1
+        lefts = []
+        for row in range(int(free.max() if step > 0 else free.min()), int(round(tip)) + step, step):
+            if 0 <= row < part.shape[0] and not line_rows[row]:
+                cols = np.nonzero(part[row])[0]
+                if len(cols):
+                    lefts.append(int(cols.min()))
+        if any(later < earlier - 2 for number, earlier in enumerate(lefts) for later in lefts[number + 1:]):
+            continue
+        return {'from_end': round(from_end, 2), 'far': round(far, 2), 'back': round(back, 2), 'stroke': round(stroke, 2),
+                'touch': round(len(touch) / space, 2), 'tall': round(tall / space, 2)}
+    return None
+
+
 def _is_beam(piece: dict) -> bool:
     return bool(piece['thick'] >= TAIL_THICK and piece['far'] >= BEAM_FAR)
 
@@ -5908,6 +6030,16 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 if _bow_flag(layers, head, stem, head['y1'] + last - head['cy']):
                     head['tails']['down'] = 1
                     stem['bow'] = True
+            if STEEP_FLAG and not head['tails'][stem['direction']] and not any(piece['beam'] for piece in pieces):
+                # A thin flag that leaves the stem steeply (see STEEP_FLAG).
+                last = _last_head([other for other in staffs[head['staff']] if not other['hollow']], head, stem, space)
+                steep = _steep_flag(layers, head, stem, last)
+                if steep is not None:
+                    head['tails'][stem['direction']] = 1
+                    stem['steep'] = True
+                    if STEEP_SEEN is not None:
+                        STEEP_SEEN.append(dict(steep, staff=head['staff'], x=float(head['cx']), y=float(head['cy']),
+                                               direction=stem['direction'], sx=int(stem['x']), end=int(stem['end'])))
         if ROOM_HEADS and head.get('room'):
             # The room at such a head is closed by a flag or by a beam: the stem that goes along the room has one.
             x0, y0, x1, y1 = head['loop']
