@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.7 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
-scans; 99 scores at 99 % or more), 97.6 % of the notes on the clean copies (22,118 of 22,653, counted by the page;
-21,976 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
-syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 530 printed notes and 146 syllables
-are lacking and 202 notes are read that are not there, each printed head counted once since round 78: 384 by the
+scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,125 of 22,655, counted by the page;
+21,981 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 41 scores read every printed note, 47 every
+syllable, 37 both, 44 have no note that is not there, 36 are whole in all three; 525 printed notes and 146 syllables
+are lacking and 200 notes are read that are not there, each printed head counted once since round 78: 384 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
@@ -1463,6 +1463,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   every place where the first form took it, and cost a clean score 5 notes. Places at the start of a staff (clefs,
   the sharps of a key) cost no note, because the start of the notes drops their heads, but a census lists them:
   count the places inside the music before a rule is judged by how often it acts.
+- The layer of the stems can hold whole heads. Where a print draws the flag of an eighth with its stem down back up
+  to its head, the head, the closed flag and a touching head of the other voice are one upright piece over a short
+  stem, four times as wide as the page's stems, and the older rule for such a stroke wants a quarter of its rows thin
+  (`layers.STEM_OWN`; the stroke had 0.245). A census of every slim stroke that stays much wider than the page's stems
+  (1,605 on LitChoir's pages, 761 in the music, each kind looked at on tiles) gave the shape: the thin rows are one run
+  at one end, and the wide rows stand beside that run's column (`layers.STEM_BESIDE`); a quarter rest, a sharp, a clef
+  and the numbers of a time signature stand around their stroke. Ink that a rule moves from one layer to another is
+  only the ink that the rule is about: released whole, the closed flag went to the marks with its head, the cut of the
+  piece at a staff line parted its paper into two insides, and a false half note stood where the eighth stayed lost.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

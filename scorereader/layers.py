@@ -33,6 +33,20 @@ STEM_USUAL = (2.2, 1.8)   # a stroke under this height (staff spaces) is no stem
 STEM_OWN = 0.25      # a slim stroke that is much wider than the page's stems, but has this share of rows as thin as
 #                      they are: its thin rows are the stem, and its wide rows are heads that stand one over the other
 #                      on it (two voices a third apart, each with a short stem to its own beam). None: off
+STEM_BESIDE = (0.5, 0.25, 0.2, 6.0)   # a slim stroke that is much wider than the page's stems, with too few thin rows
+#                      for STEM_OWN, is still a stem with heads at one end where its thin rows are one run at its other
+#                      end at least this many staff spaces long, with at most this many staff spaces of thin rows
+#                      elsewhere, where the middle of its wide rows stands this many staff spaces or more beside the column
+#                      of that run, and where it is at most this many staff spaces high: the prints of three scores
+#                      draw the flag of an eighth with its stem down back up to its head, and the head, the closed flag
+#                      and the head of the other voice that touches it are one wide piece over a short stem. The wide
+#                      rows of a sharp, of a clef or of a time signature stand around their stroke (0.19 at most on
+#                      LitChoir's pages, the four true strokes 0.23 to 0.36), and the lines of a brace are as high as a
+#                      system. Only the rows of the heads leave the stroke: from its far end up to the closed paper of
+#                      the flag. Released whole, the flag went to the marks with its head, and where a staff line
+#                      crosses the flag the cut of the piece parted its closed paper into two insides, read as a half
+#                      note. The rule acts at four strokes of LitChoir's pages and at none of the fresh set's: a rule
+#                      for those prints. None: off
 BRUSH = 0.32         # the round brush for thick marks, in staff spaces
 HOLE = (1.2, 1.0, 1.7)   # a head's hole: at most this area (spaces squared), height and width (spaces)
 HOLE_SIDE = (1.1, 0.7, 2.0, 4.5)   # closed paper this many staff spaces wide or more is a cell of the staff, and no
@@ -760,7 +774,7 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     through = lines & over & under
     joined = free | cv2.morphologyEx(thin_ink | through, cv2.MORPH_CLOSE, np.ones((gap, 1), np.uint8))
     up = upright(joined, int(round(UPRIGHT * space)))
-    strokes, stems = _strokes(up, joined, free, space)
+    strokes, stems = _strokes(up, joined, free, space, holes)
     # The page shows whether it is a weak copy: its long strokes have gaps. On a page whose strokes are whole, a gap
     # ends a stroke, so the ink is joined over small gaps only.
     long = [stroke for stroke in strokes if stroke['slim'] and stroke['y1'] - stroke['y0'] >= 2.5 * space]
@@ -781,7 +795,8 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
             'bare': bare, 'weak': weak, 'bridge': bridge, 'clip': clip, 'black': black, 'lean': lean}
 
 
-def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float) -> tuple[list[dict], np.ndarray]:
+def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float,
+             holes: np.ndarray | None = None) -> tuple[list[dict], np.ndarray]:
     """The upright strokes, and the mask of the thin part of each slim stroke.
 
     Each stroke: 'x' (its column at its middle row), 'y0', 'y1', 'width' (px; the median width of the ink that it
@@ -837,16 +852,63 @@ def _strokes(up: np.ndarray, joined: np.ndarray, free: np.ndarray, space: float)
                     if stroke['slim'] and stroke['width'] > STEM_USUAL[1] * usual + 1 and len(seen) \
                             and (seen <= thin).mean() >= STEM_OWN:
                         stroke['width'] = float(np.median(seen[seen <= thin]))
+                    elif STEM_BESIDE and stroke['slim'] and stroke['width'] > STEM_USUAL[1] * usual + 1 and len(seen):
+                        own = stem_beside(stroke, thin, space, holes)
+                        if own is not None and own['end'] >= STEM_BESIDE[0] and own['inner'] <= STEM_BESIDE[1] \
+                                and own['beside'] >= STEM_BESIDE[2] and stroke['y1'] - stroke['y0'] + 1 <= STEM_BESIDE[3] * space:
+                            # The heads are the wide rows at the far end, up to the closed paper of the flag that is
+                            # drawn back to them: the flag stays with the stem, as before.
+                            stroke['keep'] = (own['heads'], 1.6 * stroke['width'] + 2)
+                            stroke['width'] = own['width']
     for stroke in strokes:
         runs, xs, left, right, y = stroke.pop('runs'), stroke['xs'], stroke['left'], stroke['right'], stroke['y0']
+        keep = stroke.pop('keep', None)
         if stroke['slim']:
             limit = 1.6 * stroke['width'] + 2
             for step in range(len(runs)):
-                if 0 < runs[step] <= limit:
+                if 0 < runs[step] <= (keep[1] if keep is not None and not keep[0][step] else limit):
                     stems[y + step, xs[step] - left[step] + 1:xs[step] + right[step]] = 1
                 elif runs[step] == 0:
                     stems[y + step, max(0, xs[step] - 1):xs[step] + 2] |= joined[y + step, max(0, xs[step] - 1):xs[step] + 2]
     return strokes, stems & free
+
+
+def stem_beside(stroke: dict, thin: float, space: float, holes: np.ndarray | None = None) -> dict | None:
+    """The measures of STEM_BESIDE for a stroke whose 'runs' are still in it: the longest run of thin rows at one of
+    its ends ('end', in staff spaces; gaps at the very end are left out), the thin rows elsewhere ('inner'), how far the
+    middle of its wide rows stands from the column of that run ('beside'), the run's own width ('width') and the rows
+    of its heads ('heads', by row of the stroke: from the other end up to the first row whose ink holds closed paper)."""
+    runs, xs = stroke['runs'], stroke['xs']
+    rows = np.flatnonzero(runs > 0)
+    if not len(rows):
+        return None
+    is_thin = (runs > 0) & (runs <= thin)
+    best = None
+    for order in (rows, rows[::-1]):
+        count = 0
+        for row in order:
+            if not is_thin[row]:
+                break
+            count += 1
+        if count and (best is None or count > len(best)):
+            best = order[:count]
+    if best is None:
+        return None
+    wide = (runs > thin)
+    if not wide.any():
+        return None
+    heads = np.zeros(len(runs), bool)
+    order = range(len(runs)) if best[0] > rows[0] else range(len(runs) - 1, -1, -1)
+    left, right, y = stroke['left'], stroke['right'], stroke['y0']
+    for row in order:
+        if row in best:
+            break
+        if holes is not None and runs[row] > 0 and holes[y + row, xs[row] - left[row] + 1:xs[row] + right[row]].any():
+            break
+        heads[row] = True
+    return {'end': len(best) / space, 'inner': (is_thin.sum() - len(best)) / space,
+            'beside': abs(float(np.median(xs[wide])) - float(np.median(xs[best]))) / space,
+            'width': float(np.median(runs[best])), 'heads': heads}
 
 
 COLOURS = {            # BGR
