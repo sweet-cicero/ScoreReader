@@ -3360,6 +3360,19 @@ OPEN_BESIDE = 0.25   # a piece of the rim can lie just outside the box of an ope
 #                      was read as a sign is no sign: the second head of a chord, which hangs on the same stem, is
 #                      asked without them.
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+OPEN_FLAT = (0.85, 0.7)   # an open hole is no inside of a head where its top or its bottom is level at a staff line in the
+#                      first share of its columns or more (as FLAT_CELL asks of closed paper) and the paper that mirrors it
+#                      across that line is open in the second share or more (as FLAT_WEDGE asks): the paper over a half
+#                      note that a staff line, the bar of the ison's breve beside it and the note's own stem close (one
+#                      print sets the melody's note against the breve so), the paper between a slur or a beam, a stem and
+#                      a line, between a pencil ring and a head, and in the bowl of a C or of a number of a time signature.
+#                      The inside of a head whose rim broke touches a line at a point; where a line runs through a head,
+#                      the other half of the head lies across it. The heads that were read in the box of a refused
+#                      cell stay as they were read: a filled head that the cell had taken for a piece of its rim is a
+#                      head again, and so are the pieces of what closed the cell (the bar of a natural, the bowl of a
+#                      flat). A whole note on a line whose upper rim is open at one end is refused too, where the lower
+#                      half of its inside is not in the layer of the insides (one place on LitChoir's pages, read as a
+#                      half note before). (None: off)
 HOLE_FIVE = (0.75, 0.12, 0.4, 0.85)   # a hollow head in the first space beside the staff (no ledger line belongs there)
 #                      is a head without a ledger line. A head of a chord that touches the head on the staff's outer
 #                      line is lost so: the other head keeps the stem that goes past this one, and this one takes the
@@ -3487,6 +3500,31 @@ def _lean_halves(layers: dict, holes: np.ndarray, ragged: np.ndarray | None) -> 
                 both[uy + uh:ly, first:last + 1] = 1
                 through[uy + uh:ly, first:last + 1] = 1
     return both, through
+
+
+def _open_flat(layers: dict, part: np.ndarray, left: int, top: int) -> bool:
+    """(OPEN_FLAT) Whether open paper (its piece in its box, whose corner is at column left and row top) is level at a
+    staff line at its top or at its bottom, with open paper across that line, as FLAT_CELL and FLAT_WEDGE measure
+    closed paper."""
+    rows = np.array(sorted(row for staff in layers['staves'] for row in staff['rows']), float)
+    half = max(staff['thick'] for staff in layers['staves']) / 2
+    slack = max(FLAT_CELL[2], half)
+    high = part.shape[0]
+    first, last = part.argmax(axis=0), high - 1 - part[::-1].argmax(axis=0)
+    above = float((first <= 1).mean()) if np.abs(rows - (top - 0.5 - half)).min() <= slack else 0.0
+    below = float((last >= high - 2).mean()) if np.abs(rows - (top + high - 0.5 + half)).min() <= slack else 0.0
+    if max(above, below) < OPEN_FLAT[0]:
+        return False
+    edge = top - 0.5 - half if above >= below else top + high - 0.5 + half
+    line = float(rows[np.abs(rows - edge).argmin()])
+    ys, xs = np.nonzero(part)
+    across = np.round(2 * line - (ys + top)).astype(int)
+    inside = (across >= 0) & (across < layers['ink'].shape[0])
+    across, xs = across[inside], xs[inside] + left
+    if not len(across):
+        return False
+    paper = (layers['ink'][across, xs] == 0) & (layers['lines'][across, xs] == 0) & (layers['holes'][across, xs] == 0)
+    return float(paper.mean()) >= OPEN_FLAT[1]
 
 
 def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[int, list[float]] | None = None,
@@ -3638,6 +3676,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
             head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
                     'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
                     'stems': stems, 'mark': None, 'from_hole': True, 'core': None, 'alt': None}
+            if is_open and OPEN_FLAT is not None and _open_flat(layers, labels[y:y + high, x:x + wide] == index, x, y):
+                continue      # a cell along a staff line (see OPEN_FLAT)
             if is_open:
                 # The pieces of the broken rim: the heads that were read in the box of this one. An open hole with
                 # no such piece is the hook of a rest, or the paper between two signs.

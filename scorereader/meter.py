@@ -271,7 +271,7 @@ def common_signs(layers: dict, staff: dict, first: float, last: float) -> list[d
     return sorted(found, key=lambda sign: sign['x0'])
 
 
-COMMON_BOLD = (1.8, 2.45, 0.15, 1.0, 1.9, 0.5, 0.25, 0.75, -0.05)   # the bold C of a print, which is read as a note
+COMMON_BOLD = (1.8, 2.6, 0.15, 1.0, 1.9, 0.5, 0.25, 0.75, -0.05)   # the bold C of a print, which is read as a note
 #   or two: its ink without the staff lines is one piece or two side by side, each this high (two numbers, in staff
 #   spaces) with its middle at most this far from the middle line; together they are this wide (two numbers), at
 #   most this far apart, they fill this share of their box (two numbers), they close in one piece of paper at most
@@ -280,7 +280,9 @@ COMMON_BOLD = (1.8, 2.45, 0.15, 1.0, 1.9, 0.5, 0.25, 0.75, -0.05)   # the bold C
 #   is higher, the numbers of a time signature stand over and under the middle line, and an eighth rest, a double
 #   sharp and two whole notes one over the other have a waist at the left where the C has its bow (a census of the
 #   clean pages, each of 61 pieces looked at: 39 signs from -0.25 to -0.07, and 20 of the 22 other pieces from 0.0
-#   on). None: off
+#   on). The upper limit of the height was 2.45, from the clean pages; the census of every page of LitChoir with 2.8
+#   (22 more pieces, each looked at) held 18 true signs from 2.45 to 2.57, then a head with its stem at 2.70, two
+#   true signs at 2.76 and 2.78 and a quarter rest by hand at 2.79. None: off
 COMMON_ARM = 0.6         # and its two ends turn to the right: in the upper and in the lower fifth of its rows the ink reaches
 #   this share of its width (the signs of the clean pages: 0.81 and more; a flat that a hand draws large has its
 #   stroke at the left over its bowl: up to 0.52 at one end, 14 such marks on the copies by hand)
