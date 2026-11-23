@@ -28,7 +28,7 @@ Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % o
 scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,139 of 22,655, counted by the page;
 21,995 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
 syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 511 printed notes and 146 syllables
-are lacking and 196 notes are read that are not there, each printed head counted once since round 78: 375 by the
+are lacking and 186 notes are read that are not there, each printed head counted once since round 78: 365 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
@@ -1509,6 +1509,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   that is read right makes more bars of a page add up, and the page's full bar (`music.full_sum`) then settles the
   tied vote of a bar whose bar line a copy by hand faded: 2 notes lost by no wrong dot. Name such a note in the
   worklog.
+- A grace note is no note of the bar, and the scorer leaves `<grace/>` out of the typed hymn and of the reading alike:
+  a small note that is written as one is neither lacking nor false, and the notes after it keep their moments. One
+  print draws it as a small head on a stem down whose foot is a knot of the flag and a slash (`symbols.GRACE`); the
+  reader read the knot as a head with the stem up, and the paper under the slur as a half note. A stroke is measured
+  at both of its tips, and the top of a stem up has a knob as well (its beam or its flag): the knot reaches less far
+  from the stem than a head at the foot of a stem up, and the small head stands in paper where a beam or a flag leaves
+  its knob. The stroke is followed from the middle of the read stem, both ways: a head that was read from the knot is
+  no middle of the stroke.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

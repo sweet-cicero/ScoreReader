@@ -24,7 +24,7 @@ the page prints it (since 15 November 2026, see below; 141 notes so far, 105 of 
 
 The first milestone was 99 % on clean copies until 17 November 2026; since then it is clean copies that are read
 whole, every note and every syllable of each score, with no note that is not there (the owner: "the clean copies
-should be consistently perfect"). The copies by hand keep 99 %. After round 100, 43 of the 78 counted clean scores
+should be consistently perfect"). The copies by hand keep 99 %. After rounds 100 and 101, 43 of the 78 counted clean scores
 read every printed note, 47 every syllable, 39 every note and syllable, 45 have no note that is not there, and 38 are whole
 in all three (42, 47, 38, 45 and 37 after round 99; 41, 47, 37, 44 and 36 after rounds 92 to 98; 40, 47, 36, 43 and 35 after rounds 89 to 91; 40, 47, 36, 42 and 35 after round 88; 40, 47, 36, 41 and 35 after round 87; 39, 46, 35, 41 and 34 after round 86; 39, 44, 33, 41 and 33 after round 85; 38, 44, 33, 40 and 33 after round 84; 37, 43, 31, 39 and 31 after round 83; 37, 39, 29, 39 and 29 after round 82; 36, 38, 28, 37 and 28 after round 81; 34, 38, 27, 35 and 26 after round 80; 31, 38, 25, 35 and 24 after rounds 78 and 79). Since round 78 a printed head that the count had given to two parts counts once among the notes that
 are not there: by that count the reading of round 77 has 34 and 24, and by the count of its time 30 and 23
@@ -110,10 +110,11 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   and round 97 brought none and took 3 notes that are not there: the numbers of a heavy time signature that the lines of the staff joined to the key;
   and round 98 brought 1 and took 1 note that is not there, on one score: a dot that sits on a staff line, and the hairline flag of an eighth that was read as a head of the other voice;
   and round 99 brought 3 and took 1 note that is not there: a speck of grey ink read as the dot of a black head, and the end of a grey streak read as a note;
-  and round 100 brought 1: a printed dot that a pen line joins, read by the dot of the other voice in its column.
-  The reader also writes 203 notes on the clean copies that are not there (2,459 on
-  all scores; 196 with the places that a hand changed counted apart). Until round 77 a head that the count gave to
-  two parts of a staff counted twice there: by that count they are 388, 4,504 and 375 (388, 4,506 and 375 after round 99; 390, 4,508 and 377 after round 98; 391, 4,511 and 378 after round 97; 395, 4,540 and 382 after rounds 95 and 96; 396, 4,540 and 383 after round 93; 396, 4,544 and 383 after round 92; 398, 4,546 and 387 after round 91; 409, 4,577 and 398 after round 88, and 405, 4,573 and 394 with the list of the notes by the page of round 89; 412, 4,585 and 401 after round 87; 411, 4,584 and 401 after round 86; 412, 4,588 and 402 after round 85; 417, 4,602 and 407 after round 84; 419, 4,604 and 409 after rounds 82 and 83; 426, 4,625 and 416 after
+  and round 100 brought 1: a printed dot that a pen line joins, read by the dot of the other voice in its column;
+  and round 101 brought none and took 10 notes that are not there: the grace notes of one print, written as grace notes.
+  The reader also writes 193 notes on the clean copies that are not there (2,449 on
+  all scores; 186 with the places that a hand changed counted apart). Until round 77 a head that the count gave to
+  two parts of a staff counted twice there: by that count they are 378, 4,494 and 365 (388, 4,504 and 375 after round 100; 388, 4,506 and 375 after round 99; 390, 4,508 and 377 after round 98; 391, 4,511 and 378 after round 97; 395, 4,540 and 382 after rounds 95 and 96; 396, 4,540 and 383 after round 93; 396, 4,544 and 383 after round 92; 398, 4,546 and 387 after round 91; 409, 4,577 and 398 after round 88, and 405, 4,573 and 394 with the list of the notes by the page of round 89; 412, 4,585 and 401 after round 87; 411, 4,584 and 401 after round 86; 412, 4,588 and 402 after round 85; 417, 4,602 and 407 after round 84; 419, 4,604 and 409 after rounds 82 and 83; 426, 4,625 and 416 after
   round 81; 430, 4,629 and 420 after
   round 80; 433, 4,633 and 423 after
   round 79; 442, 4,643 and 432 after round 78; 447, 4,699 and 437 after round 77). Round 87 shows 1 that the count had hidden: a ring that a hand drew in pen
@@ -192,6 +193,54 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 101 (23 November 2026): grace notes, which one print draws as a small head on a stem down with a knot of its
+  flag and a slash at the foot.
+
+  - **Looked at.** The two scans of pascha-hypakoe (pg0536, pg0537) print five grace notes each: a small A4 between two
+    quarter notes G4 under a slur, on a stem down 2.6 to 3.2 staff spaces long that ends in a knot of the flag (at the
+    right) and the slash (a tick at the left). The reader read the knot as a filled head with the stem up to the small
+    head, the paper between the slur and the small head as a half note with the stem down, or the small head as an
+    eighth note: 10 marks that are no notes of the bar, and every note after each of them in its bar began late. The
+    typed hymn leaves the grace notes out, and the scorer leaves a note that is written as `<grace/>` out of the
+    reading too.
+  - **A grace note** (`symbols.GRACE`, `symbols.grace_notes`). The stroke of every read stem is followed in the ink
+    without the staff lines, both ways from the middle of the stem, across gaps of a quarter of a staff space (from the
+    head's middle, a head that was read from the knot has no stroke to follow). A census of the whole stroke of every
+    stem of LitChoir's scan pages, at the reader's step, measured the knob at each tip and the ink beside the stroke
+    near each tip. The ten grace notes have a knob at the top tip 0.43 to 0.5 of the page's heads wide and 0.18 to 0.4
+    high, 0.1 to 0.21 heads under the tip, a stroke of 2.64 to 3.2 staff spaces, and at the foot ink 0.24 to 0.54
+    staff spaces left of the stem and 0.19 to 0.42 right of it. 63 other strokes pass the knob and the length: the top
+    of a stem up has a knob too, its beam or its flag. 57 of them reach further from the stem at the foot (49 more than
+    0.6 staff spaces left, 8 more than 0.5 right). The 5 others that pass the knot by the rule's own arithmetic (a
+    sixth passed by the census's rounded measures) have a beam or a flag that leaves the knob, or a stem that runs into
+    a word: the small head of a grace note stands in paper (other ink within a quarter of a head's width beside the
+    knob and half a head's height under it: 0.025 square staff spaces at most at the grace notes, 0.05 or more at the
+    five). With all limits the rule takes the ten grace notes on every page of LitChoir and nothing else, and nothing
+    on the fresh set. The marks that were read from the stroke go, and the small head is written as a grace note with a
+    slash (`<grace slash="yes"/>`, with no duration) before the next note of its staff, at its pitch by the clef and the
+    key (`reader.read_page`, `music.musicxml`). A rule for one print: the standard acciaccatura of
+    hierarchical-xenia-prokeimenon--s2 (pg0325 x1727: a small head with its stem up and the slash across the flag) and
+    the grace notes by hand of transfiguration-forefeast are not read.
+  - The rule on every page: only pg0536 and pg0537 change. The 10 marks are gone, the notes after them begin on time,
+    and each page's MusicXML holds its five grace notes A4. No note and no syllable is gained or lost by the count: 10
+    notes that are not there fewer (pascha-hypakoe 7 to 2, its second scan 11 to 6). The software-made PDFs, read with
+    the round's code because `music.py` changed: none of 139 pages differs. The fresh set: no page changes.
+  - **Left.** The 2 and 6 notes that are not there on the two scans of pascha-hypakoe are other marks. On
+    liturgy-mercy-of-peace the one lacking note is a hand's: a whole note D4 on the slip that a hand wrote and pasted
+    over the first system, whose stem runs up into the letter p of the words over its staff (on the list of the notes
+    that a hand changed).
+
+    Clean copies 22,139 of 22,655 notes (97.7 %; 45 at 99 %; 21,995 of 22,605 as typed), 6,109 of 6,255 syllables
+    (97.7 %; 6,044 of 6,260 as typed) and 4,332 of 4,528 whole words, as before. The reading before the round, scored as
+    typed, gives the figures of round 100 exactly. 43 clean scores read every printed note (511 lacking), 47 every
+    syllable (146), 39 both, 45 have no note that is not there (186, 10 fewer; 365 by the count before round 78) and 38
+    are whole in all three; 4 scores lack one to three notes, and 402 notes are needed for 99 % of each. All scores
+    78,883 of 89,868 notes (87.8 %; 99 at 99 %), and 2,449 that are not there (4,494 by the count before round 78);
+    syllables 25,649 of 28,696 and whole words 16,939 of 20,591, as before. Scans 58,867 of 69,705 notes (84.5 %; 46 at
+    99 %), thick copies 7,133 and copies by hand 29,595. Staff by staff 76,237 of 92,684 notes, the clean copies 21,223
+    of 23,096, as before. The kit 6,242 of 6,901 by parts and 5,808 of 6,419 staff by staff, as before. The fresh set
+    39,968 of 41,761 notes, 617 that are not there, 8,344 of 11,341 syllables and 5,917 of 6,647 whole words, as before.
+
 - Round 100 (23 November 2026): a printed dot that other ink joins, read by the dot of the other voice in its column.
 
   - **Looked at.** nativity-god-is-with-us lacked one note and was whole otherwise: on pg0018 the tenor's dotted half
@@ -7573,6 +7622,7 @@ are scored (258 pages, 40,906 notes); 14 have a staff with three voices or more,
 | After round 98 (a thin head kept off a stem whose hairline flag curls back to it: one page differs, an engraved eighth whose flag is a thin S along its stem, 1 note gained and 1 that is not there fewer; a dot that sits on a staff line changes no page; no word moves) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | After round 99 (a grey speck that a black head took as its dot, and a head read from a grey stem: no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | After round 100 (a printed dot that other ink joins, read by the dot of the other voice in its column: no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
+| After round 101 (grace notes of one print, written as grace notes: no page differs) | 214 | 95.7 % (39,968 of 41,761) | 101 | 183 | 73.6 % (8,344 of 11,341) | 89.0 % (5,917 of 6,647) | 97.9 % |
 | of these, last counted after round 47: English (Orthodox Liturgics) | 109 | 95.6 % (13,779 of 14,415) | 49 | 87 | 92.3 % | 94.2 % | 98.0 % |
 | Romanian | 88 | 93.7 % (17,144 of 18,288) | 37 | 77 | 66.6 % | 87.2 % | 98.6 % |
 | Church Slavonic | 17 | 97.1 % (8,797 of 9,058) | 4 | 16 | 43.2 % | 71.2 % | 95.6 % |
@@ -7827,6 +7877,7 @@ typed hymns, of all typed notes.
 - Over all hymns the own rules read more notes right than the network they replaced: 90.5 % against 81 %.
 - They are behind the network on two kinds: old copies (87 % against 88 %) and the two poor pages (83 % against 95 %).
 - 12 of the 31 hymns are at 95 % or more, and 19 are at 90 % or more. 5 are under 80 %.
+- Round 101 brings the kit no note and no syllable (6242 and 5808).
 - Round 100 brings the kit no note and no syllable (6242 and 5808).
 - Round 99 brings the kit no note and no syllable (6242 and 5808).
 - Round 98 brings the kit no note and no syllable (6242 and 5808).

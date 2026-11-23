@@ -660,6 +660,14 @@ def _note_xml(note: dict, chord: bool) -> str:
     return ''.join(parts)
 
 
+def _grace_xml(grace: dict) -> str:
+    """A grace note: a small note with a slash through its stem and flag, which takes no time of the bar
+    (scorereader.symbols.GRACE). It is written before the note that it leads to."""
+    return (f"<note><grace slash=\"yes\"/><pitch><step>{grace['step']}</step>"
+            + (f"<alter>{grace['alter']}</alter>" if grace['alter'] else '')
+            + f"<octave>{grace['octave']}</octave></pitch><voice>{grace['voice']}</voice><type>eighth</type></note>")
+
+
 def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | None = None) -> str:
     """MusicXML of a page. `parts` holds one list for each staff of a system from the top (the same staff of every
     system is one part); each entry is a bar: {'notes': [...], 'clef': 'G' | 'G8vb' | 'F', 'key': int}. `names`
@@ -703,6 +711,8 @@ def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | N
                 if voice == 2 and written:
                     out.append(f'<backup><duration>{int(written * DIVISIONS)}</duration></backup>')
                 last_onset = None
+                graces = sorted((grace for grace in bar.get('graces', []) if grace['voice'] == voice),
+                                key=lambda grace: (grace['onset'], grace['x']))
                 for note in sorted(notes + [dict(rest, rest=True) for rest in quiet],
                                    key=lambda note: (note['onset'], 0 if note.get('rest') else -note['midi'])):
                     chord = note['onset'] == last_onset and not note.get('rest')
@@ -717,6 +727,9 @@ def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | N
                         out.append(f'<note><rest/><duration>{int(note["length"] * DIVISIONS)}</duration><voice>{voice}</voice></note>')
                         last_onset = None
                         continue
+                    if not chord:
+                        while graces and graces[0]['onset'] <= note['onset']:
+                            out.append(_grace_xml(graces.pop(0)))
                     out.append(_note_xml(note, chord))
                     last_onset = note['onset']
                 if voice == 1:

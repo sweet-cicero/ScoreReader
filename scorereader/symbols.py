@@ -7030,6 +7030,154 @@ def without_dot_columns(layers: dict, heads: list[dict]) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+GRACE = (0.25, 0.38, 0.62, 0.15, 0.6, 2.4, 3.4, 0.2, 0.6, 0.15, 0.5, 0.04)
+#   a grace note: a small head with a stem down that ends in a knot of its flag and a slash, which one print sets
+#   between two notes under a slur. The reader read the knot as a filled head with the stem up to the small head, the
+#   paper between the slur and the small head as a half note with the stem down, or the small head as an eighth note.
+#   The stroke of the stem is followed in the ink without the staff lines, both ways from the middle of a read stem: at
+#   its top tip a knob (the small head) begins within the first number of a head's height, from the second to the third
+#   number of the page's heads wide where it is wider than the stroke by 3 pixels and an eighth of a head, from the
+#   fourth to the fifth number of a head's height long, and the stroke narrows to the stem under it; the stroke is from
+#   the sixth to the seventh number of staff spaces long; within 1.2 staff spaces of its bottom tip ink stands from the
+#   eighth to the ninth number of staff spaces left of the stem (the slash) and from the tenth to the eleventh right of
+#   it (the flag). The small head stands in paper: other ink within a quarter of a head's width beside it and half a
+#   head's height under it is at most the twelfth number of square staff spaces (a beam or a flag that leaves the top of
+#   a stem up, the knob of a stem that runs into a word). The marks that were read from such a stroke are no notes; the
+#   small head is a grace note, which takes no time and is written before the next note of its staff
+#   (scorereader.music.musicxml). (A census of the whole stroke of every stem of LitChoir's scan pages, at this step:
+#   the ten grace notes of the two scans of one print measure a knob 0.43 to 0.5 heads wide and 0.18 to 0.4 high, 0.1 to
+#   0.21 heads under the tip, a stroke of 2.64 to 3.2 staff spaces, a slash of 0.24 to 0.54 and a flag of 0.19 to 0.42
+#   staff spaces, and other ink of 0.025 square staff spaces at most; of the 63 other strokes that pass the first seven
+#   limits, 49 reach further than 0.6 staff spaces left at the bottom tip and 8 further than 0.5 right, and the 5 that
+#   pass the knot by the rule's own arithmetic (a sixth by rounded measures) have 0.05 square staff spaces of ink or
+#   more beside the knob, the 10 grace notes of the census alone pass all limits; none on the fresh set.) A rule for one
+#   print: a standard acciaccatura with its stem up and its slash at the flag, and a grace note by hand, are not read.
+#   None: off
+GRACE_SEEN = None    # a census: every grace stroke with its measures
+
+
+def _ink_run(bare: np.ndarray, y: int, x: int) -> tuple[int, int] | None:
+    """The run of ink in row y that holds column x, or a pixel within 2 of it: (left, right)."""
+    height, width = bare.shape
+    if not 0 <= y < height:
+        return None
+    row = bare[y]
+    for dx in (0, -1, 1, -2, 2):
+        if 0 <= x + dx < width and row[x + dx]:
+            start = x + dx
+            break
+    else:
+        return None
+    left = right = start
+    while left > 0 and row[left - 1]:
+        left -= 1
+    while right < width - 1 and row[right + 1]:
+        right += 1
+    return left, right
+
+
+def _stem_stroke(bare: np.ndarray, head: dict, stem: dict, space: float) -> list[tuple[int, int, int, int]]:
+    """The stroke of a stem in the ink without the staff lines, followed both ways from the middle of the stem (over
+    gaps of a staff line's height): (row, column, left, right) from its top tip to its bottom tip."""
+    tip, middle, end = int(stem['x']), int(stem.get('mid', stem['x'])), int(stem['end'])
+    cy = int(round(head['cy']))
+
+    def column(y: int) -> int:
+        share = min(max((y - cy) / (end - cy), -1.0), 1.5) if end != cy else 0.0
+        return int(round(middle + (tip - middle) * share))
+
+    seed = next((y for y in ((cy + end) // 2 + dy for dy in (0, 1, -1, 2, -2, 3, -3)) if _ink_run(bare, y, column(y))), None)
+    if seed is None:
+        return []
+    rows = {}
+    for step in (-1, 1):
+        y, gap = seed, 0
+        while gap <= max(2, int(0.25 * space)) and abs(y - seed) < 8 * space:
+            run = _ink_run(bare, y, column(y))
+            if run:
+                rows[y] = (column(y),) + run
+                gap = 0
+            else:
+                gap += 1
+            y += step
+    return [(y,) + rows[y] for y in sorted(rows)]
+
+
+def grace_notes(layers: dict, heads: list[dict]) -> tuple[list[dict], list[dict]]:
+    """The heads without the marks that were read from a grace note, and the grace notes (GRACE): each {'staff', 'cx',
+    'cy', 'place'} at its small head."""
+    if not GRACE:
+        return heads, []
+    cap, narrow, wide, short, long, least, most, slash, slash_most, flag, flag_most, alone = GRACE
+    bare = layers['bare'] > 0
+    space = layers['space']
+    head_wide, head_high = layers['head']
+    strokes, graces = [], []
+    for head in heads:
+        for stem in head['stems']:
+            rows = _stem_stroke(bare, head, stem, space)
+            if len(rows) < 5:
+                continue
+            if any(abs(rows[0][0] - top) <= 2 and abs(rows[0][1] - x) <= 0.3 * space for top, x, _ in strokes):
+                continue
+            widths = [right - left + 1 for _, _, left, right in rows]
+            n = len(rows)
+            ws = float(np.median(widths[n // 4:3 * n // 4 + 1]))
+            if not least * space <= rows[-1][0] - rows[0][0] <= most * space:
+                continue
+            # the knob at the top tip
+            knob = [i for i in range(min(int(0.9 * head_high), n)) if widths[i] >= ws + max(3, 0.12 * head_wide)]
+            if not knob or knob[0] > cap * head_high:
+                continue
+            first, last = knob[0], knob[-1]
+            if any(widths[i] < ws + 2 for i in range(first, last + 1)):
+                continue
+            after = widths[last + 1:last + 1 + max(1, int(0.3 * head_high))]
+            if not after or min(after) > ws + 2:
+                continue
+            if not narrow <= max(widths[first:last + 1]) / head_wide <= wide or not short <= (last - first + 1) / head_high <= long:
+                continue
+            # the slash and the flag within 1.2 spaces of the bottom tip
+            near = rows[max(0, n - int(1.2 * space)):]
+            left = max(max(0.0, (x - ws / 2) - l) for _, x, l, _ in near) / space
+            right = max(max(0.0, r - (x + ws / 2)) for _, x, _, r in near) / space
+            if not slash <= left <= slash_most or not flag <= right <= flag_most:
+                continue
+            # the small head stands in paper: little ink beside it and under it that is no part of the stroke
+            y0, y1 = max(0, rows[first][0] - int(0.15 * head_high)), rows[last][0] + int(0.5 * head_high)
+            x0 = max(0, min(l for _, _, l, _ in rows[first:last + 1]) - int(0.25 * head_wide))
+            x1 = max(r for _, _, _, r in rows[first:last + 1]) + int(0.25 * head_wide)
+            near_ink = bare[y0:y1 + 1, x0:x1 + 1].copy()
+            for y, _, l, r in rows:
+                if y0 <= y <= y1:
+                    near_ink[y - y0, max(0, l - x0):max(0, r - x0 + 1)] = False
+            if near_ink.sum() > alone * space * space:
+                continue
+            middle = (first + last) // 2
+            cx = float(np.mean([(l + r) / 2 for _, _, l, r in rows[first:last + 1]]))
+            cy = float(rows[middle][0])
+            strokes.append((rows[0][0], rows[0][1], rows[-1][0]))
+            grace = {'staff': head['staff'], 'cx': cx, 'cy': cy, 'place': pitch_place(head['staff_ref'], cy),
+                     'x': rows[0][1], 'top': rows[0][0], 'bottom': rows[-1][0]}
+            graces.append(grace)
+            if GRACE_SEEN is not None:
+                GRACE_SEEN.append(dict(grace, staff_ref=None, ws=ws, knob=[first, last], left=left, right=right, near=float(near_ink.sum()) / space ** 2, rows=rows))
+    if not graces:
+        return heads, []
+    # the marks that were read from a grace stroke: a head whose stem is the stroke, or whose middle stands on it
+    gone = set()
+    for grace in graces:
+        for head in heads:
+            on = [stem for stem in head['stems'] if abs(stem['x'] - grace['x']) <= 0.3 * space
+                  and min(stem['end'], head['cy']) <= grace['bottom'] and max(stem['end'], head['cy']) >= grace['top']]
+            inside = abs(head['cx'] - grace['x']) <= 0.4 * space and grace['top'] - 0.2 * space <= head['cy'] <= grace['bottom'] + 0.2 * space
+            if (on and len(on) == len(head['stems'])) or (inside and not head['stems']):
+                gone.add(id(head))
+            elif on:
+                head['stems'] = [stem for stem in head['stems'] if stem not in on]
+    return [head for head in heads if id(head) not in gone], graces
+
+
 CHORD_WHOLE = (-85.0, -30.0, 1.1, 2.0)   # a whole note that touches the half note of another voice was read with that
 #   note's stem: of the hollow heads that share one stem, the head at the far end from the stem's end (where a stem
 #   begins) is a whole note, and leaves the stem to the others, where its inside leans back: the axis of the inside

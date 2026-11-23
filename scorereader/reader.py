@@ -17,13 +17,13 @@ from .drone import letter_marks, without_breves
 from .fermatas import fermatas, on_fermata
 from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs
-from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, musicxml, staff_columns
+from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, key_alters, musicxml, pitch_of, staff_columns
 from . import music as _music
 from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import arc_pairs, arc_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
-    ring_heads, slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_strokes, without_flag_trails, without_flat_cells, without_clip_cells, without_grey_marks, without_f_marks, without_line_marks, without_p_bowls, without_beam_pieces, without_bow_middles, without_stem_end_marks, without_far_marks, without_stem_meets, without_dot_columns, without_stem_spans, without_joints, without_upright_holes, chord_wholes, dotless_wholes
+    ring_heads, slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_strokes, without_flag_trails, without_flat_cells, without_clip_cells, without_grey_marks, without_f_marks, without_line_marks, without_p_bowls, without_beam_pieces, without_bow_middles, without_stem_end_marks, without_far_marks, without_stem_meets, without_dot_columns, without_stem_spans, without_joints, without_upright_holes, chord_wholes, dotless_wholes, grace_notes
 from .ties import read_ties
 from .triplets import mark_triplets
 from .words import cut_stems, word_bands, word_rows
@@ -326,6 +326,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     heads = without_stem_meets(layers, heads)
     # A column of printed dots is no head: its top dot was read with the others as its stem.
     heads = without_dot_columns(layers, heads)
+    # A grace note is no note of the bar: the marks that were read from it go, and it is written before the next note
+    # of its staff (scorereader.symbols.GRACE).
+    heads, graces = grace_notes(layers, heads)
     # A fermata is no note: the thick middle of its arc was read as a flat head, with an arm of the arc as its stem.
     holds = fermatas(layers)
     heads = [head for head in heads if not on_fermata(head, holds, space)]
@@ -428,6 +431,7 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         quiet = voice_rests(staff, built, plans[index], bars[index], [block for block in blocks if block['staff'] == index]
                             + ([rest for rest in rests if rest['staff'] == index] if REST_QUARTER is not None else []), space,
                             places.get(staff['number'])) if REST_VOICE else {}
+        first = len(parts[staff['number']])
         for number, bar in enumerate(built):
             parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
             if quiet.get(number):
@@ -444,6 +448,17 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                         'sign': head.get('sign'), 'stems': [s['direction'] for s in head['stems']],
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))
+        for grace in (grace for grace in graces if grace['staff'] == index):
+            later = [(number, note) for number, bar in enumerate(built) for note in bar if note['x'] > grace['cx']]
+            if not later:
+                continue
+            number, note = min(later, key=lambda item: (item[1]['x'], -item[1]['midi']))
+            place = int(round(grace['place']))
+            step, alter, octave, midi = pitch_of(place, clefs[index], key_alters(keys[index]).get((MIDDLE[clefs[index]] + place) % 7, 0))
+            parts[staff['number']][first + number].setdefault('graces', []).append(
+                {'onset': note['onset'], 'voice': note['voice'], 'step': step, 'alter': alter, 'octave': octave, 'midi': midi,
+                 'x': float(grace['cx'])})
+            grace.update(step=step, alter=alter, octave=octave, bar=number)
     names = {}
     if any(bar['notes'] for bar in drone):
         parts.append(drone)
