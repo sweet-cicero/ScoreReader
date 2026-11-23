@@ -154,7 +154,7 @@ Outside the package:
 ## Where it stands
 
 ScoreReader is not accurate enough yet to use without proofreading what it gives you. Measured against hymns that
-were typed in by hand, it reads about 99% of the notes in PDFs from notation software and about 97% of the notes
+were typed in by hand, it reads about 99% of the notes in PDFs from notation software and about 98% of the notes
 on clean printed scans, with about as many of their syllables when Tesseract and a word list help. Heavy
 photocopies and hand-copied scores are harder, at roughly three notes in four, and they come next. Those figures
 are from the pages the rules were worked out on. On a separate set of engraved choir pieces that no rule was
