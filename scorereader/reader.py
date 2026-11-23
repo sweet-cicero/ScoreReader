@@ -30,6 +30,18 @@ from .words import cut_stems, word_bands, word_rows
 
 SIGNS = 'strokes'
 TIMES = True         # the numbers of a time signature in the middle of a staff are no notes (scorereader.meter)
+# The staves of a system show their time signature in the same columns. A head of a staff that shows no time signature
+# there, in the columns of the numbers that the nearest staff of its system shows, or of its bold C
+# (`meter.COMMON_BOLD`), is a number of its own staff's time signature (or its C) that the reading of the signs missed: a
+# hand's 4 that a pen stroke joins, numbers that touch the key, the clef or each other, a C of a heavy print. A census of
+# every read note of LitChoir's pages in the columns of another staff's time signature (56 marks on 33 pages, each looked
+# at) found numbers and Cs, and true notes in three places: beside a thin C that `meter.common_signs` read from a head
+# or a stem (two pages), and a chord of the lowest staff of a slanted page, where the Cs of the staves drift by half a
+# staff space from staff to staff and the chord stands in the columns of the Cs three to five staves over it. A thin C
+# is not asked, and only the nearest staves that show a time signature are. At the reader's step the rule takes 55
+# marks on 31 pages, each looked at: numbers and pieces of Cs. No head of the fresh set stands in such columns.
+TIME_COLUMN = True
+TIME_SEEN = None     # a list: the heads that TIME_COLUMN takes, for a census
 CHECK = True         # the music check: the voices of a system agree on the lengths (scorereader.music.agree_lengths)
 REST_HEADS = True    # a head in a printed whole or half rest is no note (scorereader.rests.BLOCK)
 REST_QUARTER = 0.75  # ... and a printed quarter rest too, for the voice that its place names: the upper voice's stands at least
@@ -178,6 +190,34 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
     return out
 
 
+def other_time(head: dict, staves: list[dict], starts: list[dict], times: dict, space: float) -> bool:
+    """Whether the head lies in the columns of a time signature that the nearest staff of its system shows (numbers, or a
+    bold C), where its own staff shows none (TIME_COLUMN)."""
+    def signs(index):
+        return ([starts[index]['time']] if starts[index].get('time') else []) + times.get(index, [])
+    own = head['staff']
+    near = [(abs(index - own), index) for index, staff in enumerate(staves)
+            if index != own and staff['system'] == staves[own]['system'] and signs(index)]
+    if not near:
+        return False
+    closest = min(gap for gap, _ in near)
+    for _, index in near:
+        if abs(index - own) != closest:
+            continue
+        for sign in signs(index):
+            if sign.get('common') and not sign.get('bold'):
+                continue
+            if not sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space:
+                continue
+            if any(mine['x0'] - space <= sign['x1'] and mine['x1'] + space >= sign['x0'] for mine in signs(own)):
+                continue
+            if TIME_SEEN is not None:
+                TIME_SEEN.append({'x': float(head['cx']), 'y': float(head['cy']), 'staff': own, 'other': index,
+                                  'x0': sign['x0'], 'x1': sign['x1'], 'common': bool(sign.get('common'))})
+            return True
+    return False
+
+
 def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
               clefs_before: list[str] | None = None, key_hymn: int | None = None, ties_before: list | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
@@ -286,6 +326,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                                    and (not sign.get('bold') or abs(head['cy'] - staves[head['staff']]['rows'][2])
                                                         <= COMMON_ROWS * staves[head['staff']]['space'])
                                                    for sign in times[head['staff']])]
+    if TIMES and TIME_COLUMN:
+        heads = [head for head in heads if not other_time(head, staves, begin['starts'], times, space)]
     # (The other finders of heads can find the sign at the bar line again.)
     heads = [head for head in heads
              if not any(sign['staff'] == head['staff'] and sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space

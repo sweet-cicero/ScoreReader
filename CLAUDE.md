@@ -28,7 +28,7 @@ Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % o
 scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,139 of 22,655, counted by the page;
 21,995 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
 syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 511 printed notes and 146 syllables
-are lacking and 186 notes are read that are not there, each printed head counted once since round 78: 365 by the
+are lacking and 182 notes are read that are not there, each printed head counted once since round 78: 359 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6242 of 6901).
@@ -1517,6 +1517,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   from the stem than a head at the foot of a stem up, and the small head stands in paper where a beam or a flag leaves
   its knob. The stroke is followed from the middle of the read stem, both ways: a head that was read from the knot is
   no middle of the stroke.
+- The staves of a system show their time signature in the same columns, and a staff whose own signature is not read
+  shows its numbers there as notes (`reader.TIME_COLUMN`): another staff tells where to look, as the page before tells
+  the next page. Ask that staff only where its sign is sure: a thin C that `meter.common_signs` reads can be a head
+  with its stem, and on a slanted page the columns drift by half a staff space from staff to staff, so a staff three
+  staves away named a true chord (only the nearest staves that show a sign are asked). A false mark that goes can
+  undo a line-up that it held with another false mark: a false 4 in the bass had pushed the bass's notes a beat late
+  as a false note over the treble pushed the treble's, and the two staves stood in step by chance (2 notes lost by
+  the count, none by the rule). And a false mark that goes can let the count set a run of typed notes apart as
+  recited: a bold C read as two whole notes had held 13 typed notes of a carol in the count of the drawn notes.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
