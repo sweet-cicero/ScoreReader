@@ -25,10 +25,10 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,149 of 22,655, counted by the page;
-22,005 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
-syllable, 39 both, 46 have no note that is not there, 39 are whole in all three; 501 printed notes and 146 syllables
-are lacking and 176 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,151 of 22,655, counted by the page;
+22,007 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
+syllable, 39 both, 46 have no note that is not there, 39 are whole in all three; 499 printed notes and 146 syllables
+are lacking and 175 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6245 of 6901).
 On the fresh test set, which no rule was set on: 95.7 % of the notes (39,980 of 41,761; 102 of 214 pieces at 99 %),
@@ -1564,6 +1564,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   once the cell in its bowl was refused. A census of every page of LitChoir with a wider limit (2.8, by the rule's own
   code), each piece looked at, put the limit at 2.6: the first false piece (a head with its stem) stands at 2.70, and
   two true signs past it stay out.
+- A limit that a true sign misses by a little is moved to where a census of every mark that the rule's other limits
+  take parts the signs, not to the one case. A heavy print draws its natural short: the right stroke goes 0.41 staff
+  spaces past the foot of the left one, under `signs.FLAT_LEG`'s 0.6. Of the 57 flats with a stroke at the right of
+  their bowl on LitChoir's scan pages, the true flats end at 0.0 or before, a slash and a bold C reach 0.11 and 0.28,
+  and from 0.35 to 0.6 stood the natural, a bracket by hand and a rest by hand: the limit is 0.35. A mark that is no
+  sign and is read as a natural in the place of a flat makes its note right where the key gives the pitch: a gain by
+  chance, which the worklog names.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
