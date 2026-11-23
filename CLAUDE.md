@@ -25,13 +25,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,150 of 22,655, counted by the page;
-22,006 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
-syllable, 39 both, 46 have no note that is not there, 39 are whole in all three; 500 printed notes and 146 syllables
-are lacking and 182 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,149 of 22,655, counted by the page;
+22,005 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
+syllable, 39 both, 46 have no note that is not there, 39 are whole in all three; 501 printed notes and 146 syllables
+are lacking and 176 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6243 of 6901).
-On the fresh test set, which no rule was set on: 95.7 % of the notes (39,968 of 41,761; 101 of 214 pieces at 99 %),
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6245 of 6901).
+On the fresh test set, which no rule was set on: 95.7 % of the notes (39,980 of 41,761; 102 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
@@ -1554,6 +1554,16 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   past it, and the line fills the staff to the other outer line and ends there; a stem ends at its head. A clean score
   that reads every note and syllable and has one note that is not there is the nearest whole score: count such scores
   (`wholecount`) beside the scores that lack one to three notes.
+- A mark that replaced other marks gives them back when a rule refuses it. An open hole of `hole_heads` takes the heads
+  in its box as pieces of its broken rim; where `symbols.OPEN_FLAT` refuses the hole (open paper level at a staff
+  line, with open paper across the line), true filled heads came back (two scores), and so did the pieces of what had
+  closed the cell: the bowl of a flat with its stroke, the bar of a natural, the ends of a bold C. List what each
+  refused mark had replaced, with the note that each piece becomes, before the rule is judged by the marks that go.
+- A limit that a census of the clean pages set is read again on every page when a new rule leans on it. The bold C
+  of one print is 2.46 to 2.57 staff spaces high, over `meter.COMMON_BOLD`'s 2.45, and its ends were read as notes
+  once the cell in its bowl was refused. A census of every page of LitChoir with a wider limit (2.8, by the rule's own
+  code), each piece looked at, put the limit at 2.6: the first false piece (a head with its stem) stands at 2.70, and
+  two true signs past it stay out.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
