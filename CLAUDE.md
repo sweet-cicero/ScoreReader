@@ -1526,6 +1526,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   as a false note over the treble pushed the treble's, and the two staves stood in step by chance (2 notes lost by
   the count, none by the rule). And a false mark that goes can let the count set a run of typed notes apart as
   recited: a bold C read as two whole notes had held 13 typed notes of a carol in the count of the drawn notes.
+- Two voices a second apart that a print sets side by side, the upper voice at the left with its stem up and the
+  lower at the right with its stem down, are read as one head and given to both voices at the one pitch. A hollow
+  such mark (the lower voice a half note) holds one hole that no cut parts, and the filled upper voice sits to the
+  left of the hole and a second over it, on the upper-left-to-lower-right diagonal (`symbols.DIAG_PAIR`); a filled
+  such mark (both voices quarters) is read as one head whose stem up and stem down are one line through its middle,
+  which `symbols.SIDE_TWO` leaves because the mark's four ways make no sharp, and `symbols.SIDE_HEAD` cuts it as
+  `SIDE_TWO` does. Both ask that the right head stand a second lower, so neither reads the unison form of the pair
+  (two voices on one pitch, the head read for both: pascha-christ-is-risen-romanian x417 stays lacking). The rules
+  acted at five marks of LitChoir, each looked at, and at none of the fresh set: four were the pair, and the fifth a
+  piece of a word that is read as no note before or after. A cut that fires but changes no note shows in no diff of
+  the notes: the census of every firing (`SIDE_SEEN`, `DIAG_SEEN`) names it, and it too is looked at on the page.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

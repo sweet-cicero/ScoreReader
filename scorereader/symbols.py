@@ -63,6 +63,20 @@ FLAG_END = 0.7       # the flag of such a note begins at most this many staff sp
 FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
 FLAG_STEM = 0.3      # the stem of a note with such a flag may be slim for this many staff spaces only, when the loop
 #                      was read as a head whose stem comes down to the note (0: off)
+DIAG_PAIR = (1.6, 1.45, 2.4, 0.55, 0.45, 0.4, 0.3, 0.55, 0.9)   # a mark with a stem up and a stem down and one hole that no cut parts, at least the first number
+#                     of times as wide as the page's heads, the second number of times as high, and at most the third number
+#                     of times either, is a half note and a quarter note of two voices a second apart, side by side: the
+#                     hollow head is the box of a head around the hole (the fourth number of a head to each side), and the
+#                     rest of the mark is the filled head (the upper voice, at the left and a second over the lower): it
+#                     holds ink of the fifth number of a head's box, its middle lies the sixth number of a head's width
+#                     LEFT of the hole and from the seventh to the ninth number of staff spaces OVER it (a second, not a
+#                     third), and a circle of ink the eighth number of a head's height fits in it. The two stems say that
+#                     two voices sing one note: a filled note whose slur or flag closes a loop of paper has but one stem,
+#                     and the upper-left-to-lower-right diagonal tells the pair from a head with a slur on the other side
+#                     (4 marks on 4 pages of LitChoir, each looked at, and none on the fresh set: three are the pair,
+#                     on liturgy-one-is-holy and its second scan and on communion-lords-prayer; the fourth is a piece
+#                     of a word near the foot of a page of wedding-service, cut but read as no note before and after)
+DIAG_SEEN = None     # a list: every mark that DIAG_PAIR cuts, for a census
 SOLID_LOOP = 0.7     # ink this share of a head's height over or under a hole is a filled head beside a flag's loop (0: off)
 ROOM_HEADS = (0.75, 4.0, 3)   # a mark larger than a head with a room that a large flag or a short beam closes with
 #                     the staff lines: its heads are the pieces that are left when an oval of this share of a head
@@ -360,6 +374,19 @@ SIDE_TWO = (1.5, 2.4, 1.3, 0.25, 0.3, 0.45, 0.55)   # a mark with one stem line 
 #                     circle of ink at least the seventh number of the page's heads high (its hole counts as ink:
 #                     the strokes across the stem of a tremolo are slim). Two voices a second apart stand so too,
 #                     the upper head at the left (None: off)
+SIDE_HEAD = (0.35, 0.3, 0.2, 0.15)   # a mark that is read as one head, with a stem up and a stem down that are one line through its
+#                     middle, is the same pair of two voices side by side (the upper voice at the left with its stem up,
+#                     the lower one at the right with its stem down), cut as SIDE_TWO cuts it, with SIDE_TWO's limits: the
+#                     two stems stand within the first number of staff spaces of each other (the heads of such a pair
+#                     overlap by a stem's width, so the stem up stands a little right of the stem down), and the rows
+#                     of a part that hold at most the second number of staff spaces of ink are the root of the other
+#                     head's stem, not its own head; the right head stands lower than the left one, a second: its top
+#                     and its bottom each at least the third number of staff spaces under those of the left one (None:
+#                     any); and closed paper of a part whose middle lies the fourth number of staff spaces or more from
+#                     the middle of its head, toward the other head, is the paper that the two heads close with the
+#                     stem line, no inside (1 mark of LitChoir, on the second scan of liturgy-one-is-holy, and none
+#                     on the fresh set)
+SIDE_SEEN = None     # a list: every mark that SIDE_HEAD cuts, for a census
 SIDE_WHOLE = False   # off: such a mark would have to be the whole piece of ink, because on a thick copy the staff
 #                     line joins the two heads of a second with the piece under them, and the lower head was read
 #                     twice. With the limits above as they are it changes no note on any page
@@ -1166,6 +1193,30 @@ def thick_marks(layers: dict) -> list[dict]:
                     column = int(round(cx - 0.55 * wide)) if left >= 0.6 * wide else int(round(cx + 0.55 * wide)) if right >= 0.6 * wide else None
                     if column is not None:
                         cut = (mask[:, :column], holes[:, :column], x, y), (mask[:, column:], holes[:, column:], x + column, y)
+                diag_ways = {name: _way(layers, mark, up, right) for name, up, right in
+                             (('up_right', True, True), ('up_left', True, False), ('down_right', False, True), ('down_left', False, False))} \
+                    if DIAG_PAIR and cut is None else {}
+                if cut is None and DIAG_PAIR and own_wide >= DIAG_PAIR[0] * wide and own_high >= DIAG_PAIR[1] * high \
+                        and own_wide <= DIAG_PAIR[2] * wide and own_high <= DIAG_PAIR[2] * high \
+                        and any(is_stem(diag_ways[name], space) for name in ('up_right', 'up_left')) \
+                        and any(is_stem(diag_ways[name], space) for name in ('down_right', 'down_left')):
+                    # A half note and a quarter note of two voices a second apart stand side by side and a step apart:
+                    # the pair is wider and higher than one head. The hollow head is a head's box around the hole, and
+                    # the rest is the filled head, beside it and a step over or under it.
+                    box = np.zeros_like(mask)
+                    box[max(0, int(round(cy - DIAG_PAIR[3] * high))):int(round(cy + DIAG_PAIR[3] * high)) + 1,
+                        max(0, int(round(cx - DIAG_PAIR[3] * wide))):int(round(cx + DIAG_PAIR[3] * wide)) + 1] = True
+                    rest = mask & ~box
+                    if rest.any():
+                        rows, columns = np.nonzero(rest)
+                        own = np.pad(rest[rows.min():rows.max() + 1, columns.min():columns.max() + 1], 1).astype(np.uint8)
+                        if rest.sum() >= DIAG_PAIR[4] * wide * high and cx - columns.mean() >= DIAG_PAIR[5] * wide \
+                                and DIAG_PAIR[6] * space <= cy - rows.mean() <= DIAG_PAIR[8] * space \
+                                and 2 * float(cv2.distanceTransform(own, cv2.DIST_L2, 5).max()) >= DIAG_PAIR[7] * high:
+                            cut = (mask & box, holes & box, x, y), (rest, holes & ~box, x, y)
+                            if DIAG_SEEN is not None:
+                                DIAG_SEEN.append({'box': [x, y, x + own_wide - 1, y + own_high - 1], 'hole': [x + cx, y + cy],
+                                                  'rest': [x + float(columns.mean()), y + float(rows.mean())], 'space': space})
                 if cut:
                     parts = [_mark(part, inside, px, py, mark['blob']) for part, inside, px, py in cut]
         elif PAIR_STEM and mark['hole'] < HOLLOW and (pair := _pair_at_stem(layers, mask, holes, x, y, wide, high, mark['blob'])):
@@ -2394,26 +2445,93 @@ def _side_two(layers: dict, mark: dict) -> list[dict] | None:
     column = float(np.mean(columns))
     if not mark['x0'] + SIDE_TWO[4] * own_wide <= column <= mark['x1'] - SIDE_TWO[4] * own_wide:
         return None
+    up = max((ways['up_left'], ways['up_right']), key=lambda way: way['length'])
+    down = max((ways['down_left'], ways['down_right']), key=lambda way: way['length'])
+    return _side_parts(layers, mark, column, up, down)
+
+
+def _side_parts(layers: dict, mark: dict, column: float, up: dict, down: dict, trim: bool = False, **tag) -> list[dict] | None:
+    """The two heads of a pair at one stem line (see SIDE_TWO), cut at the column of the stem line: [the left head
+    with the stem up, the right head with the stem down], or None where a part holds no head. With trim, the rows of
+    a part that hold only the root of the other head's stem (at the top of the right part, at the bottom of the left
+    one) are taken off it: the two heads of a second stand at two heights."""
+    space = layers['space']
+    wide, high = layers['head']
     cut = int(round(column)) - mark['x0']
     mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
     holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
-    up = max((ways['up_left'], ways['up_right']), key=lambda way: way['length'])
-    down = max((ways['down_left'], ways['down_right']), key=lambda way: way['length'])
+    top, bottom = 0, mask.shape[0]
+    if trim:
+        rows = mask[:, cut:].sum(axis=1)
+        while top < bottom and rows[top] <= SIDE_HEAD[1] * space:
+            top += 1
+        rows = mask[:, :cut].sum(axis=1)
+        while bottom > 0 and rows[bottom - 1] <= SIDE_HEAD[1] * space:
+            bottom -= 1
+    trimmed = (_mark(mask[:bottom, :cut], holes[:bottom, :cut], mark['x0'], mark['y0'], mark['blob']),
+               _mark(mask[top:, cut:], holes[top:, cut:], mark['x0'] + cut, mark['y0'] + top, mark['blob']))
     out = []
-    for part, stem in ((_mark(mask[:, :cut], holes[:, :cut], mark['x0'], mark['y0'], mark['blob']), up),
-                       (_mark(mask[:, cut:], holes[:, cut:], mark['x0'] + cut, mark['y0'], mark['blob']), down)):
+    for side, (part, stem) in enumerate(((_mark(mask[:, :cut], holes[:, :cut], mark['x0'], mark['y0'], mark['blob']), up),
+                                         (_mark(mask[:, cut:], holes[:, cut:], mark['x0'] + cut, mark['y0'], mark['blob']), down))):
         if part is None or part['area'] < SIDE_TWO[5] * wide * high or part['x1'] - part['x0'] + 1 < HEAD_WIDE[0] * space \
                 or part['y1'] - part['y0'] + 1 < HEAD_HIGH[0] * space:
             return None
         own = np.pad(mask[part['y0'] - mark['y0']:part['y1'] - mark['y0'] + 1, part['x0'] - mark['x0']:part['x1'] - mark['x0'] + 1], 1)
         if 2 * float(cv2.distanceTransform(own.astype(np.uint8), cv2.DIST_L2, 5).max()) < SIDE_TWO[6] * high:
             return None
-        out.append(dict(part, stems=[stem], kind='head', ways=mark['ways'], side_two=True))
+        if trim and trimmed[side] is not None:
+            part = dict(trimmed[side])
+            # The paper that the two heads close with the stem line lies where the two heads meet: over the middle
+            # of the lower head at the right, under the middle of the upper head at the left. The inside of a head
+            # lies in its middle.
+            box = (slice(part['y0'] - mark['y0'], part['y1'] - mark['y0'] + 1), slice(part['x0'] - mark['x0'], part['x1'] - mark['x0'] + 1))
+            inside = (mask[box] & holes[box]).astype(np.uint8)
+            count, labels = cv2.connectedComponents(inside, connectivity=8)
+            keep = np.zeros(inside.shape, dtype=bool)
+            for label in range(1, count):
+                cell = labels == label
+                away = (part['cy'] - (part['y0'] + float(np.nonzero(cell)[0].mean()))) * (1 if side else -1)
+                if away < SIDE_HEAD[3] * space:
+                    keep |= cell
+            part['hole'] = float(keep.sum()) / part['area']
+            part['hole_cy'] = float(part['y0'] + np.nonzero(keep)[0].mean()) if keep.any() else None
+        out.append(dict(part, stems=[stem], kind='head', ways=mark['ways'], side_two=True, **tag))
     pair = {'x0': mark['x0'], 'x1': mark['x1'], 'y0': mark['y0'], 'y1': mark['y1'], 'cx': (mark['x0'] + mark['x1']) / 2,
             'hole': max(part['hole'] for part in out)}
     for part in out:
         part['pair'] = pair
     return out
+
+
+def _side_head(layers: dict, mark: dict) -> list[dict] | None:
+    """The two heads of a mark that was read as one head, where its stem up and its stem down are one line through
+    its middle (see SIDE_HEAD): [the left head with the stem up, the right head with the stem down], or None."""
+    space = layers['space']
+    wide, high = layers['head']
+    ways = mark.get('ways') or {}
+    up = ways.get('up_right')
+    if not is_stem(up, space):
+        return None
+    downs = [ways[name] for name in ('down_left', 'down_right')
+             if is_stem(ways.get(name), space) and abs(ways[name]['mid'] - up['mid']) <= SIDE_HEAD[0] * space]
+    if not downs:
+        return None
+    down = max(downs, key=lambda way: way['length'])
+    own_wide, own_high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    if not (SIDE_TWO[0] * wide <= own_wide <= SIDE_TWO[1] * wide and own_high <= SIDE_TWO[2] * high):
+        return None
+    column = (up['mid'] + down['mid']) / 2
+    if not mark['x0'] + SIDE_TWO[4] * own_wide <= column <= mark['x1'] - SIDE_TWO[4] * own_wide:
+        return None
+    parts = _side_parts(layers, mark, column, up, down, trim=True, side_head=True)
+    if parts is not None and SIDE_HEAD[2] is not None and not (
+            parts[1]['y0'] - parts[0]['y0'] >= SIDE_HEAD[2] * space and parts[1]['y1'] - parts[0]['y1'] >= SIDE_HEAD[2] * space):
+        parts = None
+    if parts is not None and SIDE_SEEN is not None:
+        SIDE_SEEN.append({'box': [mark['x0'], mark['y0'], mark['x1'], mark['y1']], 'column': column, 'hole': mark['hole'],
+                          'parts': [[part['x0'], part['y0'], part['x1'], part['y1'], part['cx'], part['cy'], part['hole']]
+                                    for part in parts], 'space': space, 'head': [wide, high]})
+    return parts
 
 
 def _glued_two(layers: dict, mark: dict) -> list[dict] | None:
@@ -3014,6 +3132,8 @@ def read_symbols(layers: dict) -> dict:
         split = []
         for mark in marks:
             parts = _two_heads(layers, mark) if mark['kind'] == 'head' and len(mark['stems']) == 2 else None
+            if SIDE_HEAD and parts is None and mark['kind'] == 'head':
+                parts = _side_head(layers, mark)
             if GLUED_TWO and parts is None and mark['kind'] in (None, 'beam'):
                 parts = _glued_two(layers, mark)
             if SIDE_TWO and parts is None and mark['kind'] == 'sharp' \
