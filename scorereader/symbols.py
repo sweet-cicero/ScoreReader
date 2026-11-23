@@ -5033,6 +5033,26 @@ DOT_GREY_PAGE = 0.3  # ... and only where the page's other dots are black: of th
 #                    (none on the other pages that the rule changes; on every page of LitChoir 384 of the 423 pages with
 #                    such pieces have them all black, and the pale print's pages none).
 DOT_GREY_SEEN = None # a census: the pieces that DOT_GREY_PAGE measures on each page, and its verdict (None: none)
+DOT_JOIN = (0.12, 0.6, 0.7, 1.4, 0.2, 1.3)   # a printed dot that a pen line, a slur, a staff line or its own head
+#                    joins is one piece with that ink, and no piece of a dot's shape. Notes that sound together agree on
+#                    a dot: where the head of the other voice in the column has a dot, a blot of that dot's size at that
+#                    dot's column, in this head's rows, is this head's dot. [0] the blot's middle at most this many staff
+#                    spaces from the column of the other dot; [1] the blot is the ink that an ellipse of this share of
+#                    the dot's smaller side keeps; [2], [3] its area, width and height this share of the dot's; [4] its
+#                    middle at least this many staff spaces from the row of a line (a dot stands in a space, and the
+#                    end of a ledger line is no dot); [5] the piece that holds it is more than this many times as large
+#                    as the dot (a piece of a dot's size alone was judged by the steps before). A census of every head
+#                    without a dot whose column holds a dotted head of its staff (617 on LitChoir's pages): of the 18
+#                    blots that are joined, 10 are dots that the typed hymn has and the reader lost, 5 dots that the
+#                    music step gave back, 1 a printed dot that the typed hymn leaves out and the vote gave, the dot of
+#                    a breve, and a dash of a dashed bar line by hand (DOT_JOIN_ROUND). On every page: 14 pages of
+#                    LitChoir change, 9 notes gained and 1 lost by the count (a tied vote on a copy by hand that the
+#                    page's full bar settles otherwise once more bars add up), none on the fresh set.
+DOT_JOIN_ROUND = 0.5  # ... and the blot and the other dot are each at least this wide for their height and this high
+#                    for their width: a print's dot is round. A hand's dashed bar line through two voices' notes gave one
+#                    note a dash as its dot and the other note the next dash as a blot (0.42 and 0.39; the printed dots
+#                    of the census 0.59 or more)
+DOT_JOIN_SEEN = None # a census: every head that DOT_JOIN gives a dot, with its measures
 DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger line is this many times as wide as the
 #                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
 #                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
@@ -7392,6 +7412,61 @@ def dots(layers: dict, heads: list[dict]) -> None:
             if end >= head['x1'] + LEDGER_DOT[2] * space:
                 head['dot'] = blob or any(0.1 * space <= x - end <= LEDGER_DOT[1] * space and number not in haired and not refused(number, head)
                                           and abs(y - head['cy']) <= 0.7 * space for number, (x, y) in enumerate(found))
+    if DOT_JOIN:
+        level, reach = DOT_BESIDE[0], DOT_BESIDE[1]
+        dotted, blots = [head for head in heads if id(head) in first and head['dot']], []
+        for head in heads:
+            if head['dot']:
+                continue
+            partners = [other for other in dotted if other is not head and other.get('staff') == head.get('staff')
+                        and abs(other['x1'] - head['x1']) <= level * space and abs(other['cy'] - head['cy']) <= reach * space]
+            if partners:
+                other = min(partners, key=lambda o: abs(o['cy'] - head['cy']))
+                blot = _dot_joined(layers, head, found[first[id(other)]], sizes[first[id(other)]])
+                # one blot is the dot of one head
+                if blot and not any(abs(blot[0] - x) + abs(blot[1] - y) < 0.3 * space for x, y in blots):
+                    head['dot'] = True
+                    blots.append(blot)
+
+
+def _dot_joined(layers: dict, head: dict, place: tuple, size: tuple) -> tuple | None:
+    """(DOT_JOIN) The middle of a blot of the size of the dot at place (x, y) with size (left, wide, high, area), at
+    that dot's column, in the rows of a dot of head, inside a larger piece of ink; None where there is none."""
+    bare, space = layers['bare'], layers['space']
+    near, share, low, high, apart, joined = DOT_JOIN
+    dx, _ = place
+    _, wide, tall, area = size
+    x0, y0 = max(0, int(dx - 0.35 * space)), max(0, int(head['cy'] - 0.6 * space))
+    window = bare[y0:int(head['cy'] + 0.25 * space) + 1, x0:int(dx + 0.35 * space) + 1].astype(np.uint8)
+    if not window.any():
+        return None
+    side = max(3, int(round(share * min(wide, tall))) | 1)
+    core = cv2.morphologyEx(np.pad(window, side), cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (side, side)))[side:-side, side:-side]
+    count, _, stats, centres = cv2.connectedComponentsWithStats(core, connectivity=8)
+    if count < 2:
+        return None
+    best = max(range(1, count), key=lambda index: stats[index][4])
+    bw, bh, ba = (int(value) for value in stats[best][2:5])
+    cx, cy = x0 + float(centres[best][0]), y0 + float(centres[best][1])
+    if not (abs(cx - dx) <= near * space and low <= ba / area <= high and low <= bw / wide <= high and low <= bh / tall <= high):
+        return None
+    step = round(head['place'])
+    rows = [head['cy']] if step % 2 == 0 else [head['cy'] - 0.5 * space, head['cy'] + 0.5 * space]
+    if min(abs(cy - row) for row in rows) < apart * space:
+        return None
+    # the piece of ink that holds the blot, in a window two staff spaces around it
+    reach = int(2 * space)
+    lx, ly = int(round(cx)), int(round(cy))
+    ya, xa = max(0, ly - reach), max(0, lx - reach)
+    _, labels, pieces, _ = cv2.connectedComponentsWithStats(bare[ya:ly + reach, xa:lx + reach].astype(np.uint8), connectivity=8)
+    label = labels[ly - ya, lx - xa]
+    if not label or pieces[label][4] <= joined * area:
+        return None
+    if DOT_JOIN_SEEN is not None:
+        DOT_JOIN_SEEN.append({'head': (head['cx'], head['cy'], head['x1'], head.get('staff'), round(head['place'], 1)),
+                              'blot': (cx, cy, bw, bh, ba), 'dot': (dx, wide, tall, area), 'piece': [int(v) for v in pieces[label]],
+                              'space': space})
+    return (cx, cy) if min(bw / bh, bh / bw, wide / tall, tall / wide) >= DOT_JOIN_ROUND else None
 
 
 def _ledger_end(layers: dict, head: dict) -> tuple[int, bool]:

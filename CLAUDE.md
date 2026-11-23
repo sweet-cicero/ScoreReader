@@ -24,10 +24,10 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.4 % on
-scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,138 of 22,655, counted by the page;
-21,994 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 42 scores read every printed note, 47 every
-syllable, 38 both, 45 have no note that is not there, 37 are whole in all three; 512 printed notes and 146 syllables
+Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
+scans; 99 scores at 99 % or more), 97.7 % of the notes on the clean copies (22,139 of 22,655, counted by the page;
+21,995 of 22,605 as typed; 45 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
+syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 511 printed notes and 146 syllables
 are lacking and 196 notes are read that are not there, each printed head counted once since round 78: 375 by the
 count before), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
@@ -1502,6 +1502,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   are all grey, beside a head that is black by chance: the measure of black is the page's own. The count called it a
   gain, by a line-up with the place where the hymn sings the same words in quarter notes. The page's other dots tell
   (`DOT_GREY_PAGE`). A dot that goes is a gain only where the page prints none: look at each gain on the page too.
+- A blot of a dot's size inside other ink is a dot where the column says so: notes that sound together agree on a dot,
+  and the printed dot of the other voice gives the column and the size (`symbols.DOT_JOIN`; of 18 such blots on
+  LitChoir's pages, 10 were printed dots that a pen line, a slur, a staff line or the head's rim joined, and none a
+  head that has no dot). A hand's dashed bar line through two voices gives both a dash: a print's dot is round. A dot
+  that is read right makes more bars of a page add up, and the page's full bar (`music.full_sum`) then settles the
+  tied vote of a bar whose bar line a copy by hand faded: 2 notes lost by no wrong dot. Name such a note in the
+  worklog.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
