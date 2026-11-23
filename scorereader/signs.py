@@ -39,9 +39,14 @@ FLAT_FLAG = 0.2          # the flag of an eighth is no flat: a flat whose stroke
 #                          (the flag's reach and this many staff spaces more, right of the stem) and stands between
 #                          that stem's end and its head is the flag's own stroke and hook. A stem in a beam has
 #                          no flag, and a flat can stand close behind it, under the beam (None: off)
-FLAT_LEG = (0.35, 0.1, 0.4, 0.6)   # a flat whose bowl has a second stroke as its right wall is a natural: the stroke stands
-#                    from this far before the sign's right edge to this far past it, begins this far under the sign's
-#                    top or lower, and ends this far under its bottom (staff spaces; None: off)
+FLAT_LEG = (0.35, 0.1, 0.4, 0.35)   # a flat whose bowl has a second stroke as its right wall is a natural: the stroke
+#                    stands from this far before the sign's right edge to this far past it, begins this far under the
+#                    sign's top or lower, and ends this far under its bottom (staff spaces; None: off). The right wall of
+#                    a flat's bowl ends with its stroke; a heavy print draws the natural short, and its right stroke goes
+#                    0.41 staff spaces past the left one. (A census of every flat with such a stroke on LitChoir's scan
+#                    pages: the flats end at 0.0 or before, a slash and a bold C that are no signs at 0.11 and 0.28, and
+#                    from 0.35 to the 0.6 of the first form one natural, a bracket by hand at a whole note and a rest by
+#                    hand. The fresh set holds none from -0.3 to 1.09.)
 SIGN_START = 0.3     # a stroke in the first columns of the notes (this many staff spaces) whose ink goes on to the left
 #                    of them, in this many staff spaces of its rows, is the cut end of the clef or of the key: no sign
 #                    of a note (0: off)
