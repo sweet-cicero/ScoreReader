@@ -59,6 +59,14 @@ LINE_OUT = 0.12      # ... and one of the two specks lies outside the line: its 
 #                     0.134 on, eleven filled heads up to 0.112). Both specks outside the line by the thickness of a
 #                     staff line lost 30 half notes of thick copies and copies by hand. 0: off
 RIM = 0.8            # a note without a stem has its own ink at this share of the rim of its hole
+JOINT_CELL = (0.5, 0.4, 0.25, 1.4)   # two whole notes of a unison that touch side by side close a small cell of paper
+#                     between their rims and a staff line, over or under the place where they touch: a cell at most
+#                     this share of each inside, within this many staff spaces of both, between two insides of at least
+#                     this many square staff spaces, in a mark at most this many staff spaces high, is no hole of a head
+#                     (a census of every mark where a cell is half as large as the holes at its two sides, on LitChoir's
+#                     pages: the three such pairs of liturgy-one-is-holy and extra-beatitudes; the other cells were in
+#                     clefs, beams, chords and letters, and the paper inside a d stands farther from the e beside it)
+#                     (None: off)
 FLAG_END = 0.7       # the flag of such a note begins at most this many staff spaces from the end of the stem
 FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
 FLAG_STEM = 0.3      # the stem of a note with such a flag may be slim for this many staff spaces only, when the loop
@@ -78,6 +86,17 @@ DIAG_PAIR = (1.6, 1.45, 2.4, 0.55, 0.45, 0.4, 0.3, 0.55, 0.9)   # a mark with a 
 #                     of a word near the foot of a page of wedding-service, cut but read as no note before and after)
 DIAG_SEEN = None     # a list: every mark that DIAG_PAIR cuts, for a census
 SOLID_LOOP = 0.7     # ink this share of a head's height over or under a hole is a filled head beside a flag's loop (0: off)
+LOOP_FOOT = (0.75, 1.0, 1.2, 0.3)   # the flag of an eighth that comes back to its head meets the stem again, and the
+#                     two are one stroke for a while past the loop, at the side away from the head: of such a foot only
+#                     the rows at least this share of a head wide are the rim of a hollow head (SOLID_LOOP's 0.4 of a
+#                     head), where the foot is at most this share of a head wide in every row, the ink at the other side
+#                     of the loop is at most this many heads high, and it holds rows that wide on at least this share of
+#                     a head's height: a head. A census of every mark that a form without the last three limits took, on
+#                     LitChoir's pages, each looked at: the eighths of liturgy-one-is-holy--s2, cherubic-lvovsky,
+#                     trisagion-arabic and nativity-exapostilarion--s2 have such a head side; the double bar line at the
+#                     end of a copy's staff, the sharps of a key and the piece of a clef have none, and a chord or a
+#                     beam has a wider foot. The fresh set changed no page with the widest form. (None: off)
+LOOP_SEEN = None     # a list: every mark whose foot LOOP_FOOT takes for the stroke of a flag, for a census
 ROOM_HEADS = (0.75, 4.0, 3)   # a mark larger than a head with a room that a large flag or a short beam closes with
 #                     the staff lines: its heads are the pieces that are left when an oval of this share of a head
 #                     is pushed through its ink; the mark is at most this many heads wide and high, and holds at
@@ -664,7 +683,17 @@ def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tupl
             merged.append(dict(hole))
     # A sliver of paper at the rim of a head is no hole of its own.
     largest = max((hole['area'] for hole in merged), default=0.0)
-    return [(hole['cx'], hole['cy']) for hole in merged if hole['area'] >= 0.25 * largest]
+    kept = [hole for hole in merged if hole['area'] >= 0.25 * largest]
+    if JOINT_CELL and len(kept) >= 3 and inside.shape[0] <= JOINT_CELL[3] * step:
+        # Two whole notes that touch side by side (see JOINT_CELL): the cell where they touch is no head.
+        joints = [hole for hole in kept
+                  if any(left['x1'] < hole['x0'] and hole['x1'] < right['x0'] and hole['x0'] - left['x1'] <= JOINT_CELL[1] * step
+                         and right['x0'] - hole['x1'] <= JOINT_CELL[1] * step
+                         and min(left['area'], right['area']) >= JOINT_CELL[2] * step * step
+                         and hole['area'] <= JOINT_CELL[0] * min(left['area'], right['area'])
+                         for left in kept for right in kept)]
+        kept = [hole for hole in kept if not any(hole is joint for joint in joints)]
+    return [(hole['cx'], hole['cy']) for hole in kept]
 
 
 def head_size(marks: list[dict], space: float) -> tuple[float, float]:
@@ -1260,7 +1289,20 @@ def thick_marks(layers: dict) -> list[dict]:
             line = int(round(layers["staves"][0]["thick"]))
             tail = ROOM_SOLID and not by_holes and _loop_room(mask & holes, line, wide, high) \
                 and _flag_room(mask, mask & holes, line, wide, high) and max(over, under) >= 1.5 * min(over, under)
-            if max(over, under) >= SOLID_LOOP * high and (min(over, under) <= 0.4 * high or tail):
+            near = min(over, under)
+            if LOOP_FOOT and near > 0.4 * high and LOOP_FOOT[2] * high >= max(over, under) >= SOLID_LOOP * high and not tail:
+                # An eighth whose flag comes back to its head: the foot past the loop is the flag's stroke and the
+                # stem, and no rim (see LOOP_FOOT).
+                foot = mask[:int(inside[0])] if over < under else mask[int(inside[-1]) + 1:]
+                solid = mask[int(inside[-1]) + 1:] if over < under else mask[:int(inside[0])]
+                widths = foot.sum(axis=1)
+                if widths.max() <= LOOP_FOOT[1] * wide \
+                        and int((solid.sum(axis=1) >= LOOP_FOOT[0] * wide).sum()) >= LOOP_FOOT[3] * high:
+                    near = int((widths >= LOOP_FOOT[0] * wide).sum())
+                    if LOOP_SEEN is not None and near <= 0.4 * high:
+                        LOOP_SEEN.append({'box': [int(x), int(y), int(x + own_wide - 1), int(y + own_high - 1)], 'over': over,
+                                          'under': under, 'foot': float(widths.max() / wide), 'space': float(space)})
+            if max(over, under) >= SOLID_LOOP * high and (near <= 0.4 * high or tail):
                 span = (0, int(inside[0])) if over > under else (int(inside[-1]) + 1, own_high)
             own_staff = _staff_of(layers, x + own_wide / 2, y + own_high / 2) if ROOM_SOLID and by_holes else None
             if own_staff is not None and x >= layers['staves'][own_staff]['x0'] + ROOM_SOLID[9] * space:
