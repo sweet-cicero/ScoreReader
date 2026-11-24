@@ -37,13 +37,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules; the one model is the second look of `headnet.py`, which can be switched off.
 
 Not reached yet (with the small network of round 113, each page read by the network that never saw its hymn): 88.0 %
-of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.7 % on scans; 105 scores at 99 % or
-more), 97.9 % of the notes on the clean copies (22,169 of 22,655, counted by the page; 22,025 of 22,605 as typed; 50
-of the 78 counted scores at 99 %; 46 scores read every printed note, 48 every syllable, 42 both, 48 have no note that
-is not there, 42 are whole in all three; 481 printed notes and 145 syllables are lacking and 174 notes are read that
+of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.8 % on scans; 105 scores at 99 % or
+more), 97.9 % of the notes on the clean copies (22,177 of 22,655, counted by the page; 22,032 of 22,605 as typed; 50
+of the 78 counted scores at 99 %; 48 scores read every printed note, 48 every syllable, 44 both, 49 have no note that
+is not there, 44 are whole in all three; 473 printed notes and 145 syllables are lacking and 168 notes are read that
 are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,110 of 6,255, counted by the page; 6,045 of 6,260 as typed; 95.7 % of the whole words; 49 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.6 % on the kit (6251 of 6901).
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.6 % on the kit (6252 of 6901).
 On the fresh test set, which no rule was set on: 95.8 % of the notes (39,992 of 41,761; 103 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
@@ -1638,6 +1638,24 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The network's third kind (no head) is right on the clean copies (14 of the 15 marks that it calls no head from 0.8 on
   are false: the loops of a clef and of a flag, a slur, a letter) and even on all copies, where a hand's head looks like
   stray ink to it. No rule without a sign of the page that it is a print.
+- A step that refuses a mark by another mark of the same step depends on the order in which it asks them. An open hole
+  whose stem a filled mark held was refused where that mark was a piece of the broken rim of the head beside it, which a
+  later open hole makes: two half notes a third apart whose rims both broke, the upper asked first. Such a refusal is
+  asked again after every other mark of the step (`symbols.OPEN_ORDER`).
+- A bow that runs along another stroke is one band of ink with it, and a way that follows the middle of the band bends
+  into the other stroke and is no tie. The bow keeps to the edge where it came in, as thick as it was alone
+  (`ties.TIE_EDGE`). A staff line thickens the band in the same way, and the first form lost true ties where a bow runs
+  into a line. A true tie can end at a false head that the bow makes with a bar line, and the note at its start is then
+  joined to that head: look at the head at each end of a new tie.
+- A test of a cell along a staff line asks the line's edge, and a ragged edge lets the paper into the rows of the line
+  here and there (`symbols.FLAT_RAGGED`: the cell is measured again without the rows from the edge on). A worn quarter
+  note whose head is a slanted stroke at its stem is the same wedge as the false cells: of 44 marks one was such a note,
+  and the rule stays for the 43; the worklog names the note.
+- The layer of the staff lines leaves a gap where a line is thicker than its staff's other lines, and the rest of the
+  line there is a piece of a dot's size (`symbols.DOT_IN_LINE`). A print with thick lines sets its true dots on the
+  lines: the first form took three of them, and the guard is the ink of the piece, not its place. A false dot that goes
+  from a false note moves the count's line-up of a poor copy (6 notes) and the window of a page that holds more than
+  its hymn: look at the note whose dot went before the loss is taken for the rule's.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

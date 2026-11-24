@@ -29,6 +29,14 @@ TIE_SWELL = (0.65, 0.6, 4.0)   # a bow that swells in its middle (None: off): wh
 TIE_SIDE = 0.9          # it begins and ends at most this many staff spaces from the heads, sideways
 TIE_HIGH = 1.4          # and at most this many staff spaces over or under their middle
 TIE_GAP = 0.5           # it may break for this many staff spaces
+TIE_EDGE = 0.2          # a bow that runs along another stroke (a tie over a slur that touches it): where the thin ink in its
+#                         column is thicker by at least this many staff spaces than the bow was in its last column alone,
+#                         and the bow comes in at one edge of it, the bow keeps to that edge, as thick as it was alone (a
+#                         bow that swells grows by a pixel at a time). Not where a staff line runs in the rows of the band
+#                         within half a staff space: a bow that runs into a line goes on in it. Six ties on LitChoir's pages,
+#                         none on the fresh set; one of them ends at a false head that the bow and a bar line make
+#                         (blessed-be-bortniansky--s2). None: off: the way follows the middle of the band, and the bow is
+#                         flattened
 TIE_SEEN = (0.6, 0.9)   # its ink shows in this share of the columns; its ink or a staff line that hides it in this share
 TIE_BOW = (0.2, 3.5)    # the bow is at least and at most this many staff spaces high
 TIE_FLAT = (0.15, 0.9, 0.6)   # a short tie between two heads that stand close hides its ends under the heads, and what
@@ -155,6 +163,7 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
     height = thin.shape[0]
     most = int(round((thick or TIE_THIN) * space)) + 1
     rows, kinds, gap, blind = [], [], 0, 0
+    own, along, alongs = None, False, 0    # how thick the bow's own ink was in the last column where it ran alone (TIE_EDGE)
     for column in range(x, last + 1):
         reach = int(min(0.8 * space, 3 + 0.5 * blind))
         low, high = max(1, int(round(y)) - reach), min(height - 1, int(round(y)) + reach + 1)
@@ -168,7 +177,19 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
             while bottom + 1 < height and thin[bottom + 1, column]:
                 bottom += 1
             if bottom - top + 1 <= most:
-                y = (top + bottom) / 2
+                size = bottom - top + 1
+                side = int(round(0.5 * space))
+                if TIE_EDGE and own is not None and (size - own >= TIE_EDGE * space or (along and size > own + 1)) \
+                        and not lines[top:bottom + 1, max(0, column - side):column + side + 1].any():
+                    # The bow runs along another stroke and is one band of ink with it: the bow keeps to the side of
+                    # the band where it came in, as thick as it was alone, until the band is no thicker than the bow.
+                    along = True
+                    alongs += 1
+                    y = top + (own - 1) / 2 if y - top <= bottom - y else bottom - (own - 1) / 2
+                else:
+                    along = False
+                    y = (top + bottom) / 2
+                    own = size
                 kind = 'seen'
                 gap = blind = 0
         if kind is None:
@@ -193,7 +214,7 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
     if kinds.count('seen') < 2:
         return None
     return {'rows': np.array(rows), 'shown': np.array([kind == 'seen' for kind in kinds]), 'seen': kinds.count('seen'),
-            'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1, 'tail': tail or 0}
+            'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1, 'tail': tail or 0, 'along': alongs}
 
 
 def _apart(way: dict, x: int, first: int, last: int, space: float) -> bool:
@@ -343,10 +364,13 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                 if TIE_APART and not low and abs(one['cy'] - two['cy']) <= TIE_APART[4] * space \
                         and _apart(way, column, first, last, space) and not pencil(way, column):
                     return True
-                if swell is not None and not low and way['seen'] >= TIE_SWELL[1] * count and count >= TIE_SWELL[2] * space:
-                    # A bow that swells: the same way in ink that may be fatter.
+                if swell is not None and not low and way['seen'] >= TIE_SWELL[1] * count \
+                        and (count >= TIE_SWELL[2] * space or (TIE_EDGE and way['along'])):
+                    # A bow that swells: the same way in ink that may be fatter. And a bow that runs along another
+                    # stroke (TIE_EDGE), where the band of the two is fatter than thin ink.
                     fat = _follow(swell, lines, column, float(row), last, space, TIE_SWELL[0])
-                    if fat is not None and fat['end'] >= last - side and abs(fat['rows'][-1] - two['cy']) <= high \
+                    if fat is not None and (count >= TIE_SWELL[2] * space or fat['along']) \
+                            and fat['end'] >= last - side and abs(fat['rows'][-1] - two['cy']) <= high \
                             and fat['seen'] + fat['hidden'] >= TIE_SEEN[1] * len(fat['rows']) \
                             and fat['seen'] >= TIE_SEEN[0] * len(fat['rows']) and _is_bow(fat, space) and not pencil(fat, column):
                         return True
