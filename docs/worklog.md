@@ -201,6 +201,13 @@ milestone: 26 printed but thick, blurred or grey copies, and 190 with notes or w
   divides only the top or the bottom note was counted, and a false note in a chord took the place of the true
   one. Now the other notes of a chord are counted after that line-up (see the round of the count below). The line-up itself
   has no sense of time: it compares the notes of a part in their order.
+- Round 114 (24 November 2026): the network's weights ship with the reader. The owner chose to publish them in the
+  repository: `scorereader/headnet.npz` (359 KB) holds the weights of round 113 trained on all of LitChoir's scan pages,
+  learned from the scans and holding none of them. The second look is on by default now; `--headnet off` (or
+  `SCOREREADER_HEADNET=off`) reads by the rules alone, and `--headnet <file>` names other weights. No rule changed, and
+  the figures stay those of round 113: the wide test names its weights for every reading (on LitChoir the network of the
+  fold that never saw the hymn, on the fresh set these weights), because the shipped weights saw LitChoir's own pages.
+  A reading of the kit with the shipped weights reads pages that the network was trained on.
 - Round 113 (24 November 2026): a small trained network takes a second look at the kind of each head.
 
   - **Why.** The owner allowed offline neural networks on 24 November 2026, and a survey of the existing offline

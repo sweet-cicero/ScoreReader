@@ -4,7 +4,8 @@
 # kit's copisteria environment. SCOREREADER_JOBS pages are read at a time (6 without it). Each of the three still
 # counts under its name from before the rename (SCOREREAD_KIT and so on) where the new name is not set.
 # usage: bash bench/kit.sh <name> [ScoreReader options]        output: out/kit/<name>/
-#   bash bench/kit.sh own                     the engine (rules only, no model)
+#   bash bench/kit.sh own                     the engine, with its small network (scorereader.headnet)
+#   bash bench/kit.sh own --headnet off       the engine by its rules alone
 #   bash bench/kit.sh v04 --yardstick         the yardstick: the engine's clean pages, read with copisteria's network
 #                                             (bench/yardstick; --ledger after it turns its ledger rule on)
 set -uo pipefail

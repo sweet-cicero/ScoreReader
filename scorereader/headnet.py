@@ -3,16 +3,32 @@
 The network is a small convolutional classifier (three 3x3 layers of 16, 32 and 64 channels, each with a 2x2 max
 pool, and two dense layers). It sees a square of four staff spaces around the head, scaled to 32 by 32 pixels, with
 the ink high. It was trained offline on the heads that the reader read on LitChoir's scans, each labelled by the
-typed hymn; its weights are a NumPy file outside the package (`SCOREREADER_HEADNET`), and without them this step is
-off. Only NumPy and OpenCV run it: no model library is needed to read a page."""
+typed hymn. Its weights ship with the reader (`headnet.npz` beside this module, trained on all of LitChoir's scan
+pages); `SCOREREADER_HEADNET` names other weights, and `off` there switches the step off, so that the notes are read by
+the rules alone. Only NumPy and OpenCV run it: no model library is needed to read a page."""
 from __future__ import annotations
+
+import os
 
 import cv2
 import numpy as np
 
+from . import setting
+
 SIZE, SPAN, PAD = 32, 4.0, 200      # the square: 32 pixels, four staff spaces; the paper set around the page
 
 _WEIGHTS: dict[str, dict] = {}
+WEIGHTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'headnet.npz')    # the weights that ship with the reader
+OFF = ('off', 'none', 'no', '0', '')
+
+
+def weights() -> str | None:
+    """The file of the network's weights: the one that SCOREREADER_HEADNET names, none where it says `off`, and else the
+    weights that ship with the reader."""
+    named = setting('HEADNET')
+    if named is not None:
+        return None if named.strip().lower() in OFF else named
+    return WEIGHTS if os.path.exists(WEIGHTS) else None
 
 
 def load(path: str) -> dict:
