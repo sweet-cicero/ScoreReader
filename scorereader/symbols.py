@@ -368,6 +368,12 @@ CHORD_STEM = (0.7, 1.3, 0.75, 1.3, 0.3, 0.25, 1.25, 0.02)   # a filled mark with
                          # staff spaces of paper lie between the two, and the mark closes in at most this much
                          # paper (staff spaces squared; a whole note on a ledger line closes in two slivers)
                          # (None: off)
+CHORD_GONE = True     # CHORD_STEM gives a mark the stem of a head that gone_stems() or thin_heads() read, as it gives
+                      # the stem of any other head. The first form left such heads out: a printed C4 with no stem under
+                      # an F4 whose stem gone_stems() put together from its pieces stayed lost (transfiguration-troparion
+                      # --s2). 7 marks on LitChoir's pages, each looked at: 5 true heads of a chord (5 notes gained), a
+                      # printed G3 that the count lines up with no typed note, and a head by hand read a step low;
+                      # none on the fresh set (False: off)
 MIDDLE_KIND = 0.4     # the middle head of a column on one stem line, with no head of the column within this many staff
                       # spaces of its height, goes with the neighbour of its own kind (filled or hollow) (None: off)
 MIDDLE_LEAVES = 1.8   # ... where that neighbour's stem leaves the column on its side and ends this many staff spaces from it
@@ -1026,6 +1032,17 @@ CELL_BETWEEN = (0.65, 2.7)   # and a cell that fills the room between two staff 
 #   beside the head (3.2 on one clean page). (None: off)
 
 
+CELL_UNDER = (0.5, 0.6)   # and a cell along a staff line with thin ink at both sides is such a cell too where its other
+#   edge is a head: across the cell from the line, in the middle 0.6 of its columns, the ink holds a circle at least half
+#   as high as the page's heads. Two eighths a second apart whose heads touch close a cell with their two stems and the
+#   line over them, and the piece was one hollow mark that no step read (memorial-troparia: 3 notes). The loop of a flag
+#   has thin ink at both sides too, and its other edge is the flag's slim stroke. Such a cell is taken out only where
+#   the piece's own reading does not cut it into two marks or more (thick_marks): a print whose touching heads a second
+#   apart are cut at the room between them was one head without the cell, and 3 notes were lost (wedding-isaiah). 137
+#   cells on 82 pages of LitChoir pass, most of them in the clefs at the start of a staff, where no note is read, and the
+#   notes change at the one place; one cell on the fresh set, where no note changes. A rule for one case. (None: off)
+
+
 def _upright(layers: dict, column: int, run: int, row: int) -> float:
     """How far the thin stroke at the left of a cell goes on upright, in staff spaces: the rows above and below `row`,
     one after the other, that hold ink in the stroke's columns (`run` columns that end at `column`, and one more at
@@ -1042,18 +1059,19 @@ def _upright(layers: dict, column: int, run: int, row: int) -> float:
     return (last - first + 1) / layers['space']
 
 
-def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float) -> np.ndarray | None:
-    """The closed paper of a thick piece that is a cell along a staff line (CELL_OUT), as a mask of the piece's box;
-    None where there is none or where the piece holds no filled head."""
+def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: int, wide: float, high: float) -> tuple:
+    """The closed paper of a thick piece that is a cell along a staff line (CELL_OUT), as a mask of the piece's box,
+    and whether every such cell is one under a head with thin ink at both sides (CELL_UNDER); None where there is
+    none or where the piece holds no filled head. A piece with both kinds gives its CELL_OUT cells only."""
     space = layers['space']
     inside = (whole & holes).astype(np.uint8)
     if not inside.any():
-        return None
+        return None, False
     rows = np.array(sorted(row for staff in layers['staves'] for row in staff['rows']), float)
     thick = max(staff['thick'] for staff in layers['staves'])
     half, slack = thick / 2, max(CELL_OUT[2], thick / 2)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(inside, connectivity=4)
-    cells = np.zeros(whole.shape, bool)
+    cells, under = np.zeros(whole.shape, bool), np.zeros(whole.shape, bool)
     for index in range(1, count):
         left, top, width, height, _ = (int(value) for value in stats[index])
         if height < CELL_OUT[0] * space:
@@ -1080,13 +1098,25 @@ def _cells_out(layers: dict, whole: np.ndarray, holes: np.ndarray, x: int, y: in
                 along or (sides[0] < sides[1] and _upright(layers, x + left - 1, int(round(sides[0] * space)),
                                                            y + top + height // 2) >= CELL_BETWEEN[1])):
             cells |= labels == index
-    if not cells.any():
-        return None
+        elif CELL_UNDER and along and max(sides) <= CELL_OUT[4]:
+            # Thin ink at both sides: the ink across the cell from the line, in its middle columns, is a head.
+            at_top = level[0] >= CELL_OUT[1] and lines[0] <= slack
+            margin = int(width * (1 - CELL_UNDER[1]) / 2)
+            if at_top:
+                band = slice(y + top + height // 2, y + top + height + int(round(high)))
+            else:
+                band = slice(max(0, y + top - int(round(high))), y + top + height // 2 + 1)
+            region = np.ascontiguousarray(layers['ink'][band, x + left + margin:x + left + width - margin] > 0).astype(np.uint8)
+            fat = 2 * float(cv2.distanceTransform(np.pad(region, 1), cv2.DIST_L2, 5).max()) if region.size else 0.0
+            if fat >= CELL_UNDER[0] * high:
+                under |= labels == index
+    if not (cells | under).any():
+        return None, False
     ink = (whole & ~holes).astype(np.uint8)
     oval = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(CELL_OUT[3] * wide) | 1, int(CELL_OUT[3] * high) | 1))
     if not cv2.morphologyEx(np.pad(ink, max(oval.shape)), cv2.MORPH_OPEN, oval).any():
-        return None
-    return cells
+        return None, False
+    return (cells, False) if cells.any() else (under, True)
 
 
 def thick_marks(layers: dict) -> list[dict]:
@@ -1119,6 +1149,7 @@ def thick_marks(layers: dict) -> list[dict]:
                                            and staff['x0'] <= mark['cx'] <= staff['x1'] for staff in layers['staves'])]
     wide, high = head_size(own, space)
     layers['head'] = (wide, high)
+    later = {}   # the pieces of a blob without its cells under a head (CELL_UNDER), read where the blob is not cut
     if CELL_OUT:
         # A cell along a staff line beside a filled head is taken out of its piece, and the piece is made anew: the
         # brush goes through what is left, as it went through the marks of the page.
@@ -1129,7 +1160,7 @@ def thick_marks(layers: dict) -> list[dict]:
             x, y, own_wide, own_high, _ = (int(value) for value in stats[index])
             whole = labels[y:y + own_high, x:x + own_wide] == index
             holes = layers['holes'][y:y + own_high, x:x + own_wide] > 0
-            cells = _cells_out(layers, whole, holes, x, y, wide, high)
+            cells, under = _cells_out(layers, whole, holes, x, y, wide, high)
             if cells is None:
                 continue
             pad = brush.shape[0]
@@ -1147,8 +1178,10 @@ def thick_marks(layers: dict) -> list[dict]:
                     mark = _mark(part[first:last + 1], inside[first:last + 1], x + left_x, y + top + first, blob)
                     if mark and mark['area'] >= SMALL * space * space:
                         made.append((mark, part[first:last + 1], inside[first:last + 1], x + left_x, y + top + first))
-            if made:
+            if made and not under:
                 again.append((index, made))
+            elif made and sum(1 for piece in pieces if piece[0]['blob'] == index) == 1:
+                later[index] = made
         for index, made in again:
             pieces = [piece for piece in pieces if piece[0]['blob'] != index] + made
     marks = []
@@ -1363,6 +1396,10 @@ def thick_marks(layers: dict) -> list[dict]:
                 if len(found) == 1:
                     mark = found[0]
                 parts = found
+        if len(parts) < 2 and mark['blob'] in later:
+            # A piece that its own reading does not cut is read again without its cells under a head (CELL_UNDER).
+            pieces.extend(later.pop(mark['blob']))
+            continue
         marks += parts if len(parts) >= 2 else [mark]
     return marks
 
@@ -4251,7 +4288,7 @@ def chord_stems(layers: dict, heads: list[dict], orphans: list[dict]) -> list[di
             continue
         best = None
         for head in heads:
-            if head['staff'] != mark['staff'] or head.get('thin') or head.get('gone'):
+            if head['staff'] != mark['staff'] or (not CHORD_GONE and (head.get('thin') or head.get('gone'))):
                 continue
             for stem in head['stems']:
                 up = stem['direction'] == 'up'

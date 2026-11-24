@@ -1656,6 +1656,19 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   lines: the first form took three of them, and the guard is the ink of the piece, not its place. A false dot that goes
   from a false note moves the count's line-up of a poor copy (6 notes) and the window of a page that holds more than
   its hymn: look at the note whose dot went before the loss is taken for the rule's.
+- A step that asks the read heads for a neighbour asks the heads of every finder. The stem of a chord was given to a
+  filled mark past a read head (`symbols.CHORD_STEM`), and the heads that `gone_stems` and `thin_heads` read were left
+  out as partners: a printed head with no stem under a head whose stem was put together from pieces stayed lost.
+  Asked too (`symbols.CHORD_GONE`), 7 marks on LitChoir's pages, each looked at: 5 true heads of a chord, a printed
+  head that the count lines up with no typed note, and a head by hand read a step low.
+- A step that takes paper out of a piece meets pieces that an older step already cuts rightly. A cell under two
+  touching heads a second apart, closed by their two stems and a staff line (`symbols.CELL_UNDER`), was the paper of
+  one print (the piece was one hollow mark, and neither note was read); on another print the piece's own reading cut it at the room between its heads, and without the cell it
+  was one head (3 notes lost). Such a cell is taken out only where the piece's own reading gives one mark: a second
+  reading that is asked where the first does not cut.
+- A milder form of a test is measured against every mark that the milder limit takes, with the scorer's verdicts,
+  before it is written for one false mark: a point test that took the blunt wedge of a false F5 (0.17) would take a
+  true half note by hand (0.2). No rule.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
