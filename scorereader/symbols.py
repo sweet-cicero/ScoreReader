@@ -3402,6 +3402,12 @@ OPEN_BESIDE = 0.25   # a piece of the rim can lie just outside the box of an ope
 #                      was read as a sign is no sign: the second head of a chord, which hangs on the same stem, is
 #                      asked without them.
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+OPEN_ORDER = True    # an open hole whose stem a filled mark holds (OPEN_STEM) is asked again after every other open hole:
+#                      the mark can be a piece of the broken rim of a head that a later open hole makes, and such a piece
+#                      owns no stem (two half notes of a chord a third apart, both rims broken, the upper head asked
+#                      first). Four such chords on LitChoir's pages (trisagion-obleschuk, nativity-kontakion,
+#                      nativity-troparion--s2, triodion-publican), none on the fresh set. (False: off)
+OPEN_ORDER_SEEN = None   # a census: the open holes that OPEN_STEM refuses, with whether they were asked again (None: none)
 UNISON_SLIT = (0.35, 0.3)   # a slit (RAGGED_SLIT) beside a whole filled head is the inside of a second head, of the other
 #                      voice on the same pitch, where the filled head has a stem up at its right and the slit has a stem
 #                      down in that column at its left (within the first number of staff spaces), the filled head at the
@@ -3633,9 +3639,18 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
         passes.append((True, ragged, None))
     if OPEN_HEADS and layers.get('open_holes') is not None:
         passes.append((True, layers['open_holes'], None))
-    for is_open, paper, through in passes:
+    again = {}      # the open holes whose stem a filled mark held, by their paper: asked again at the end (OPEN_ORDER)
+    if OPEN_ORDER:
+        passes.append(None)
+    for entry in passes:
+        if entry is None:
+            passes += [(True, paper, None, indexes) for paper, indexes in again.values()]
+            continue
+        is_open, paper, through, only = entry if len(entry) == 4 else entry + (None,)
         count, labels, stats, centres = cv2.connectedComponentsWithStats((paper > 0).astype(np.uint8), connectivity=4)
         for index in range(1, count):
+            if only is not None and index not in only:
+                continue
             x, y, wide, high, area = (int(value) for value in stats[index])
             cx, cy = float(centres[index][0]), float(centres[index][1])
             if through is not None and not through[y:y + high, x:x + wide][labels[y:y + high, x:x + wide] == index].any():
@@ -3793,6 +3808,10 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                                    for other in heads if not (OPEN_BESIDE and id(other) in pieces)
                                    for stem in other['stems'])
                             for way in stems):
+                        if OPEN_ORDER and only is None:
+                            again.setdefault(id(paper), (paper, set()))[1].add(index)
+                        if OPEN_ORDER_SEEN is not None:
+                            OPEN_ORDER_SEEN.append({'cx': cx, 'cy': cy, 'again': only is not None})
                         continue      # a stem that is not its own
                 # A piece of rim is lower than a head. A whole head beside the paper is a note of its own: the paper
                 # is closed in between two heads a second apart.
@@ -6878,9 +6897,10 @@ FLAT_WEDGE = (0.85, 0.35, 0.1, 0.7)   # a lower cell along a staff line (under F
 #   strokes by hand, no head.) None: off
 
 
-def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, height: int, line: float, space: float) -> bool:
+def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, height: int, line: float, space: float,
+                cut: bool = False) -> bool:
     """Whether the closed paper of a hollow mark that lies in this box, level at the staff line in this row, is a wedge
-    with open paper across the line (FLAT_WEDGE)."""
+    with open paper across the line (FLAT_WEDGE). `cut`: only the rows of the box count (FLAT_RAGGED)."""
     reach = int(round(1.2 * space))
     y0, x0 = max(0, int(head['y0']) - reach), max(0, int(head['x0']) - reach)
     window = (slice(y0, int(head['y1']) + reach + 1), slice(x0, int(head['x1']) + reach + 1))
@@ -6891,11 +6911,18 @@ def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, heigh
     if not found:
         return False
     part = labels == max(found, key=lambda number: int((inside == number).sum()))
+    if cut:
+        part[:max(0, top - y0)] = False
+        part[top - y0 + height:] = False
     ys, xs = np.nonzero(part)
     high = part[ys.min():ys.max() + 1, xs.min():xs.max() + 1].sum(axis=0).astype(float)
     ends = max(1, int(round(0.12 * len(high))))
     first, last = float(high[:ends].mean()) / high.max(), float(high[-ends:].mean()) / high.max()
     most = float(np.argmax(high)) / max(1, len(high) - 1)
+    if cut:
+        # a cell cut at the edge of the line is as high as it gets along a stretch: the end of that stretch counts
+        tops = np.nonzero(high == high.max())[0] / max(1, len(high) - 1)
+        most = float(tops[0]) if tops[0] <= 1 - tops[-1] else float(tops[-1])
     if not (max(first, last) >= FLAT_WEDGE[0] and min(first, last) <= FLAT_WEDGE[1]
             and (most <= FLAT_WEDGE[2] or most >= 1 - FLAT_WEDGE[2])):
         return False
@@ -6908,6 +6935,40 @@ def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, heigh
         return False
     paper = across & ~(layers['ink'][window] > 0) & ~(layers['lines'][window] > 0) & ~holes
     return float(paper.sum()) / float(across.sum()) >= FLAT_WEDGE[3]
+
+
+FLAT_RAGGED = (0.12, 0.5)   # a cell along a staff line whose edge at the line is ragged: the edge of the line is uneven, and
+#   the paper of the cell reaches into the rows of the line in some columns, so that the cell is level there in too few of
+#   them for FLAT_CELL. Where the line's edge (its middle row less half the thickest staff line) lies inside the cell, at
+#   most the first number of staff spaces from the cell's last row, the cell is measured again without the rows from the
+#   line's edge on, and the cell keeps at least the second share of its rows. A cell under a beam at its stem, and a
+#   cell between a stroke and the wire of a paperclip, were read so as notes. It took 44 marks on LitChoir's pages, each
+#   looked at: 43 cells of beams, slurs, clefs, bar lines and a clip, and one worn quarter note of a pale copy whose head
+#   is a slanted stroke at its stem (dormition-koinonikon). None on the fresh set (None: off)
+FLAT_RAGGED_SEEN = None   # a census: the cells that pass FLAT_CELL's level test only so (None: none)
+
+
+def _flat_ragged(part: np.ndarray, top: int, rows: np.ndarray, half: float, space: float):
+    """The closed paper `part` (its box begins at the row `top`) without the rows that lie in the ragged edge of a staff
+    line at its top or its bottom (FLAT_RAGGED), with the shift of its box (rows, columns); None where no line's edge
+    lies so."""
+    height = part.shape[0]
+    keep = np.ones(height, bool)
+    for row in rows:
+        under = int(np.ceil(row - half)) - top          # the first row of the line's ink, in the cell's rows
+        over = int(np.floor(row + half)) - top          # its last row
+        if 0 < under < height and height - under <= FLAT_RAGGED[0] * space + 1:
+            keep[under:] = False
+        if 0 <= over < height - 1 and over + 1 <= FLAT_RAGGED[0] * space + 1:
+            keep[:over + 1] = False
+    if keep.all() or keep.sum() < FLAT_RAGGED[1] * height:
+        return None
+    first = int(np.argmax(keep))
+    kept = part[keep]
+    columns = np.nonzero(kept.any(axis=0))[0]
+    if not len(columns):
+        return None
+    return kept[:, columns[0]:columns[-1] + 1], (first, int(columns[0]))
 
 
 def without_flat_cells(layers: dict, heads: list[dict]) -> list[dict]:
@@ -6937,12 +6998,28 @@ def without_flat_cells(layers: dict, heads: list[dict]) -> list[dict]:
                     top, bottom = y0 + y, y0 + y + height
                     above = float((first <= 1).mean()) if np.abs(rows - (top - 0.5 - half)).min() <= slack else 0.0
                     below = float((last >= height - 2).mean()) if np.abs(rows - (bottom - 0.5 + half)).min() <= slack else 0.0
+                    ragged = False
+                    if FLAT_RAGGED and max(above, below) < FLAT_CELL[1]:
+                        # (see FLAT_RAGGED: the cell without the paper in the ragged edge of a staff line)
+                        cut = _flat_ragged(part, top, rows, half, space)
+                        if cut is not None:
+                            part, shift = cut
+                            ragged = True
+                            height, width = part.shape
+                            y, x = y + shift[0], x + shift[1]
+                            first, last = part.argmax(axis=0), height - 1 - part[::-1].argmax(axis=0)
+                            top, bottom = y0 + y, y0 + y + height
+                            above = float((first <= 1).mean()) if np.abs(rows - (top - 0.5 - half)).min() <= slack else 0.0
+                            below = float((last >= height - 2).mean()) if np.abs(rows - (bottom - 0.5 + half)).min() <= slack else 0.0
+                            if FLAT_RAGGED_SEEN is not None and max(above, below) >= FLAT_CELL[1]:
+                                FLAT_RAGGED_SEEN.append({'head': (head['cx'], head['cy']), 'cell': (int(x0 + x), int(top), int(width), int(height)),
+                                                         'above': above, 'below': below})
                     if max(above, below) >= FLAT_CELL[1]:
                         if height < FLAT_CELL[0] * space:
                             # A low cell: only a wedge with open paper across its line (FLAT_WEDGE).
                             edge = top - 0.5 - half if above >= FLAT_CELL[1] and above >= below else bottom - 0.5 + half
                             line = float(rows[np.abs(rows - edge).argmin()])
-                            if not _flat_wedge(layers, head, x0 + x, top, width, height, line, space):
+                            if not _flat_wedge(layers, head, x0 + x, top, width, height, line, space, ragged):
                                 out.append(head)
                                 continue
                         own = np.ascontiguousarray(layers['ink'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2])
@@ -7971,6 +8048,32 @@ def _dot_on_line(layers: dict, labels: np.ndarray, index: int, x: int, y: int, w
             (float(x + xs.mean()), float(y + rows[0] + ys.mean())))
 
 
+DOT_IN_LINE = (0.1, 0.12)   # a piece of a dot's size whose rows all lie within the first number of staff spaces past the
+#                    edges of a staff line (its middle row and its thickness), where the line itself goes on at both sides
+#                    of the piece in those rows, and that holds less ink than the second number of staff spaces squared,
+#                    is a thick stretch of the line or a speck on it, and no dot: the layer of the lines leaves a gap where
+#                    a line is thicker than its staff's lines, and the rest of the line there stood as a dot under a half
+#                    note. A print with thick lines sets its true dots on the lines, and they are as large as its other
+#                    dots. 24 dots went on LitChoir's pages, each looked at, and none was printed (9 lengths that the
+#                    typed hymns confirm); none on the fresh set (None: off)
+DOT_IN_LINE_SEEN = None   # a census: the pieces that DOT_IN_LINE refuses (None: none)
+
+
+def _in_line(layers: dict, x: int, y: int, wide: int, high: int) -> bool:
+    """Whether the piece in this box lies in the rows of a staff line that goes on at both sides of it (DOT_IN_LINE)."""
+    space, lines = layers['space'], layers['lines']
+    for staff in layers['staves']:
+        if not staff['x0'] <= x <= staff['x1']:
+            continue
+        for row in staff['rows']:
+            reach = staff['thick'] / 2 + DOT_IN_LINE[0] * space
+            if row - reach <= y and y + high - 1 <= row + reach:
+                band = slice(int(y), int(y + high))
+                if lines[band, max(0, x - 3):x].any() and lines[band, x + wide:x + wide + 3].any():
+                    return True
+    return False
+
+
 def dots(layers: dict, heads: list[dict]) -> None:
     """Sets head['dot'] to True where a dot stands at the right of a head: a small round mark in the space beside it."""
     space = layers['space']
@@ -7994,6 +8097,10 @@ def dots(layers: dict, heads: list[dict]) -> None:
                 continue
             hair = True
         if DOT_TIP and _bow_tip(layers, *box, labels, stats):
+            continue
+        if DOT_IN_LINE and not hair and area < DOT_IN_LINE[1] * space * space and _in_line(layers, x, y, wide, high):
+            if DOT_IN_LINE_SEEN is not None:
+                DOT_IN_LINE_SEEN.append((float(centre[0]), float(centre[1]), int(wide), int(high), int(area)))
             continue
         if hair:
             haired.add(len(found))
