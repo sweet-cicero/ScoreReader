@@ -6,6 +6,12 @@ The end goal is a local engine of our own that reads scanned choir scores consis
 methods. A page goes in and the notes come out, on the owner's own computer, with no assistant, no cloud model and
 no neural network in the loop. The result must go into the LitChoir app as a typed hymn.
 
+The owner changed this on 24 November 2026: "I don't care if neural networks are used, I just need a product that can
+reliably run without internet access". A model is allowed where it runs offline on the owner's own computer, and an
+existing offline reader is preferred to building one where it reads as well ("i don't want to develop a new product if
+an existing product already does what I need"). A survey of the existing readers, neural ones too, decides the next
+step; until it reports, the rule rounds hold and the lines below stand as they are.
+
 The target (the owner, 10 November 2026): every score of LitChoir is read locally, without AI, and none of them is
 under 99 % of the notes that its pages show. The words under the notes belong to the result: music without its
 words is of no use. Recited syllables that no page prints are counted apart, and the reader must mark a reciting
@@ -25,13 +31,13 @@ optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it
 must catch up with it. The notes are read by rules alone, with no model.
 
 Not reached yet: 87.9 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 103 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,162 of 22,655, counted by the page;
-22,018 of 22,605 as typed; 49 of the 78 counted scores at 99 %; 45 scores read every printed note, 48 every
-syllable, 41 both, 47 have no note that is not there, 41 are whole in all three; 488 printed notes and 145 syllables
-are lacking and 174 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+scans; 103 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,163 of 22,655, counted by the page;
+22,019 of 22,605 as typed; 49 of the 78 counted scores at 99 %; 46 scores read every printed note, 48 every
+syllable, 42 both, 48 have no note that is not there, 42 are whole in all three; 487 printed notes and 145 syllables
+are lacking and 173 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,110 of 6,255, counted by the page; 6,045 of 6,260 as typed; 95.7 % of the whole words; 49 scores at 99 % of the syllables);
 89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6247 of 6901).
-On the fresh test set, which no rule was set on: 95.7 % of the notes (39,980 of 41,761; 102 of 214 pieces at 99 %),
+On the fresh test set, which no rule was set on: 95.8 % of the notes (39,992 of 41,761; 103 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
@@ -1594,6 +1600,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   cell where their rims meet (`symbols.JOINT_CELL`). A cell half as large as the holes at both sides took 132 marks in
   its first form, and the cell between two half notes of a chord took both notes with it: the pair is one head high,
   its insides are those of whole notes, and the cell stands within 0.4 staff spaces of both.
+- A refusal that is right for one shape is asked again where the stems say otherwise. A whole filled head in the box
+  of an open inside is a head a second apart, and the inside was refused; where the filled head's stem goes up and the
+  inside's stem goes down in the same column, the two are one pitch of two voices that a print joined into one blot,
+  and the inside is a half note of its own (`symbols.UNISON_SLIT`, a rule for one print).
+- A mark that took the end of another head's stem as its own is told by that stem, not by the mark's shape: the stem's
+  column, followed up, is ink into a head that has no stem down (`symbols.FAR_FLAG`). The flag that one print draws
+  back up to the stem was the case on LitChoir's pages; on the fresh set the same test took 16 slurs that leave a stem
+  down, each a false head, and gained 12 notes with none lost.
+- A script's own setting must not share a name with a setting of the reader's runner: `BASE` for the comparison was
+  read by `runh.py` as the run to copy unchanged pages from, the full pass read no page, and its figures were the
+  base's own. A pass whose log reads 0 pages is no result.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
