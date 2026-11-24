@@ -3402,6 +3402,14 @@ OPEN_BESIDE = 0.25   # a piece of the rim can lie just outside the box of an ope
 #                      was read as a sign is no sign: the second head of a chord, which hangs on the same stem, is
 #                      asked without them.
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+UNISON_SLIT = (0.35, 0.3)   # a slit (RAGGED_SLIT) beside a whole filled head is the inside of a second head, of the other
+#                      voice on the same pitch, where the filled head has a stem up at its right and the slit has a stem
+#                      down in that column at its left (within the first number of staff spaces), the filled head at the
+#                      left of that column and the slit at its right, their middles at most the second number of staff
+#                      spaces apart: a print sets a quarter note and a half note of two voices on one pitch side by side,
+#                      and one print joins them into one blot whose half note keeps only a slit of its inside. A rule for
+#                      one print (None: off)
+UNISON_LOG = None
 OPEN_FLAT = (0.85, 0.7)   # an open hole is no inside of a head where its top or its bottom is level at a staff line in the
 #                      first share of its columns or more (as FLAT_CELL asks of closed paper) and the paper that mirrors it
 #                      across that line is open in the second share or more (as FLAT_WEDGE asks): the paper over a half
@@ -3736,6 +3744,27 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                         and mark['y0'] - beside <= other['cy'] <= mark['y1'] + beside
                         and other['y0'] <= mark['y1'] and other['y1'] >= mark['y0']]
                 head['open'] = True
+                unison = False
+                if UNISON_SLIT and paper is ragged and second is None and len(stems) == 1 and stems[0]['direction'] == 'down':
+                    # A quarter note and a half note of two voices on one pitch, side by side (UNISON_SLIT).
+                    whole = [other for other in head['replaces']
+                             if other['y1'] - other['y0'] + 1 >= OPEN_PIECE * layers['head'][1] and not other.get('thin')]
+                    if len(whole) == 1 and len(head['replaces']) == 1 and not whole[0]['hollow'] \
+                            and abs(whole[0]['cy'] - cy) <= UNISON_SLIT[1] * space \
+                            and whole[0]['cx'] < stems[0]['x'] < cx \
+                            and [stem['direction'] for stem in whole[0]['stems']] == ['up'] \
+                            and abs(whole[0]['stems'][0]['x'] - stems[0]['x']) <= UNISON_SLIT[0] * space:
+                        unison = True
+                    if UNISON_LOG is not None and whole:
+                        UNISON_LOG.append({'cx': cx, 'cy': cy, 'area': area, 'wide': wide, 'high': high, 'fired': unison,
+                                           'stem': (stems[0]['x'], stems[0]['end']),
+                                           'whole': [(other['cx'], other['cy'], other['hollow'], other['x0'], other['x1'],
+                                                      other['y0'], other['y1'],
+                                                      [(stem['direction'], stem['x'], stem['end']) for stem in other['stems']])
+                                                     for other in head['replaces']]})
+                    if unison:
+                        head['replaces'] = []
+                        head['unison'] = True
                 if second is not None:
                     if not stems:
                         stems = head['stems'] = [dict(stem) for stem in second['stems']]
@@ -3745,7 +3774,7 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                                                       for way in stems)] or second['stems']
                 if not stems:
                     continue
-                if not head['replaces']:
+                if not head['replaces'] and not unison:
                     if not OPEN_ALONE:
                         continue
                     y0, x0 = max(0, y - 3), max(0, x - 3)
@@ -7145,6 +7174,16 @@ FAR_MARK = (0.75, 1.5)   # a low filled mark whose own stem ends in the box of a
 #   beam on a staff line over a chord, the top of a flag, the corner of a box beam by hand and a slur at the end of the
 #   stem; the first true note stands at 0.77.) None: off
 
+FAR_FLAG = (1.0, 1.5, 1.0)   # and a filled mark is no head where its one stem goes down at most the first number of
+#   staff spaces past it and the column of that stem, followed up, is ink into the box of a filled head of its staff (the
+#   two middles at least the second number of staff spaces apart, the gap between the boxes at most the third) that has
+#   no stem down: the end of that head's own stem down with what hangs on it. One print draws the flag of such a stem as
+#   a stroke from the stem's end back up to the head, closing a small triangle of paper; a head that two voices share
+#   has a flag at its stem down; an engraving lets a slur leave the stem. The head's own way down stops at the mark, so
+#   the mark took the end of the stem as its own. Every mark that it took was looked at: 2 on LitChoir's pages (the
+#   two flags) and 17 on the fresh set (slurs and one flag), none a note. None: off
+FAR_FLAG_LOG = None
+
 
 def without_far_marks(layers: dict, heads: list[dict]) -> list[dict]:
     """The heads without the low marks at the far end of another head's stem that took that stem as their own
@@ -7164,6 +7203,32 @@ def without_far_marks(layers: dict, heads: list[dict]) -> list[dict]:
                    and not any(own['direction'] == toward for own in other['stems']) for other in heads):
                 gone.add(id(head))
                 break
+    if FAR_FLAG:
+        ink = layers['ink']
+        for head in heads:
+            if head['hollow'] or id(head) in gone or len(head['stems']) != 1 or head['stems'][0]['direction'] != 'down' \
+                    or head['stems'][0].get('past', 0.0) > FAR_FLAG[0] * space:
+                continue
+            stem = head['stems'][0]
+            column = int(round(stem['x']))
+            for other in heads:
+                if other is head or other['staff'] != head['staff'] or other['hollow'] or other['y1'] >= head['y0'] \
+                        or head['cy'] - other['cy'] < FAR_FLAG[1] * space or head['y0'] - other['y1'] > FAR_FLAG[2] * space + 1 \
+                        or not other['x0'] - 2 <= stem['x'] <= other['x1'] + 2:
+                    continue
+                strip = ink[int(other['y1']):int(head['y0']) + 1, max(0, column - 3):column + 4]
+                joined = bool(strip.size) and bool(strip.any(axis=1).all())
+                down = any(own['direction'] == 'down' for own in other['stems'])
+                if FAR_FLAG_LOG is not None:
+                    FAR_FLAG_LOG.append({'x0': head['x0'], 'y0': head['y0'], 'x1': head['x1'], 'y1': head['y1'], 'cx': head['cx'],
+                                         'cy': head['cy'], 'high': (head['y1'] - head['y0'] + 1) / layers['head'][1],
+                                         'past': stem.get('past', 0.0) / space, 'gap': (head['y0'] - other['y1']) / space,
+                                         'joined': joined, 'down': down, 'fired': joined and not down, 'staff': head['staff'],
+                                         'other': (other['x0'], other['y0'], other['x1'], other['y1'],
+                                                   [(own['direction'], own['x'], own['end']) for own in other['stems']])})
+                if joined and not down:
+                    gone.add(id(head))
+                    break
     return [head for head in heads if id(head) not in gone]
 
 
