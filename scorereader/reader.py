@@ -19,6 +19,8 @@ from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, key_alters, musicxml, pitch_of, staff_columns
 from . import music as _music
+from . import headnet
+from . import setting
 from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
@@ -58,6 +60,11 @@ OCTAVE = 0.4         # a treble staff with a small 8 under its clef sounds an oc
                      # its place in the systems show the 8 (scorereader.starts.octave_mark); None: the 8 is not read
 TENORS = 2.5         # a number: a treble staff over the bass staff is the tenors' only when its notes do not sound this many
                      # places under the notes of the bass staff (the middle note of each); None: always the tenors'
+HEADNET_FLIP = 0.8   # with the weights of the small network (SCOREREADER_HEADNET, scorereader.headnet), a head is read as the
+                     # other kind (hollow for filled, filled for hollow) where the network is at least this sure of that
+                     # kind. Each page of LitChoir read with the network that never saw its hymn: 152 lengths mended and
+                     # 19 broken at 0.8 (42 and 2 at 0.9); on the fresh set 9 heads turn and no note is lost. None, or
+                     # no weights: off
 
 
 def page_starts(grey: np.ndarray, places: list[dict]) -> list[dict]:
@@ -441,6 +448,14 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # ison's note: it is no note of the melody (scorereader.drone.BREVE).
     letters = {index: letter_marks(layers, index, clefs[index]) for index in range(len(staves))} if width == 1 else {}
     heads = without_breves(layers, heads, letters)
+    # A second look at the kind of each head by the small network, where its weights are given (scorereader.headnet).
+    net = setting('HEADNET')
+    if net and HEADNET_FLIP is not None and heads:
+        for head, (filled, hollow, none) in zip(heads, headnet.kinds(grey, heads, space, headnet.load(net))):
+            head['net'] = (float(filled), float(hollow), float(none))
+            if (filled if head['hollow'] else hollow) >= HEADNET_FLIP:
+                head['hollow'] = not head['hollow']
+                head['net_flip'] = True
     parts = [[] for _ in range(width)]
     notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
