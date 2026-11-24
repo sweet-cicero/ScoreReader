@@ -13,8 +13,8 @@ Three things shape how it is built:
 - It runs on your own computer. Nothing is uploaded, and it needs no account and no network.
 - The notes are read by rules. The program measures the ink on the page (lines, strokes, blobs, the holes in
   hollow notes) and applies what a musician knows about how music is written down. When it gets something wrong,
-  there is a reason you can find and fix. One optional step adds a small trained network of its own, which takes a
-  second look at each note head; it is off unless you give it its weights.
+  there is a reason you can find and fix. One step adds a small trained network of its own, which takes a second
+  look at each note head. Its weights come with the program, and `--headnet off` reads by the rules alone.
 - It shows its work. One command paints the page with each kind of ink in its own colour, so you can see at a
   glance what was taken for a staff line, a stem or a note head.
 
@@ -124,7 +124,7 @@ Reading a scanned page, in the order the steps run:
 | `rests.py` | Finds printed quarter rests. |
 | `fermatas.py` | Finds fermatas, so that none is read as a note. |
 | `drone.py` | On a chant page, reads the letters over the staff that name the ison, the held note. |
-| `headnet.py` | The optional second look: a small network that tells a filled head from a hollow one where it is sure. |
+| `headnet.py` | The second look: a small network that tells a filled head from a hollow one where it is sure (its weights are `headnet.npz`). |
 | `music.py` | Turns the symbols into pitches, voices and rhythm, and writes MusicXML. |
 | `reader.py` | Runs these steps for one page. |
 

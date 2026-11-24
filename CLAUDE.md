@@ -13,8 +13,10 @@ an existing product already does what I need"). A survey of the existing readers
 none comes near on these pages (on the clean copies homr read 82.5 % of the notes and no words, Audiveris 56.7 % and
 41 % of the syllables; on the fresh set homr 84.0 %), so ScoreReader goes on and the rule rounds go on (the owner:
 "sounds good"). A small network of our own is tried where the rules have stalled: it is trained offline on LitChoir's
-pages, runs with NumPy and OpenCV on the owner's computer, and is an optional step that is off without its weights
-(`scorereader/headnet.py`, round 113).
+pages, runs with NumPy and OpenCV on the owner's computer, and is a step that `--headnet off` switches off
+(`scorereader/headnet.py`, round 113). Its weights ship with the reader since round 114: the owner chose on 24 November
+2026 to publish them in the repository ("Publish them in the repo"); they are learned from the choir's scans and hold
+none of them.
 
 The target (the owner, 10 November 2026): every score of LitChoir is read locally, without AI, and none of them is
 under 99 % of the notes that its pages show. The words under the notes belong to the result: music without its
@@ -32,7 +34,7 @@ after it. The owner decided against a local language model. The owner allowed Te
 (11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"; 16 November
 2026, of its larger language files: "use the big one"): it is an
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
-must catch up with it. The notes are read by rules; the one model is the optional second look of `headnet.py`.
+must catch up with it. The notes are read by rules; the one model is the second look of `headnet.py`, which can be switched off.
 
 Not reached yet (with the small network of round 113, each page read by the network that never saw its hymn): 88.0 %
 of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.7 % on scans; 105 scores at 99 % or
@@ -80,8 +82,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   next steps and the history. The README's status is one paragraph of rounded figures (about 96 %): change it
   only when a rounded figure changes.
 - `scorereader/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
-  `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `fermatas.py`, `music.py`, and `headnet.py` where
-  its weights are given). `letters.py` and `lyrics.py` read the
+  `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `fermatas.py`, `music.py`, and `headnet.py` unless
+  it is switched off). `letters.py` and `lyrics.py` read the
   words of a scan, and `ocr.py` reads them with Tesseract when asked, with rules of its own around it; the list of
   words (`--words`) serves both.
   `scorereader/vector.py` reads a software-made PDF from its drawing.
@@ -1644,8 +1646,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - The test kit is in `~/Projects/LitChoir/tmp/omr-test` (`SCOREREADER_KIT`). Do not change the kit's own files.
 - The reader needs only OpenCV and NumPy (and pdfplumber for software-made PDFs). Nothing in `scorereader/` may
   import PyTorch, JAX, copisteria or any other model library. A network of our own runs with NumPy and OpenCV
-  (`scorereader/headnet.py`); it is trained with JAX by `bench/headnet/`, and its weights stay outside git, because they
-  are learned from the choir's scans (`SCOREREADER_HEADNET` names them). The one exception is `scorereader/ocr.py`: it calls the Tesseract
+  (`scorereader/headnet.py`); it is trained with JAX by `bench/headnet/`. The weights trained on all of LitChoir's scan
+  pages ship in the package (`scorereader/headnet.npz`, since round 114, by the owner's choice); the weights of the
+  folds stay outside git. The shipped weights saw LitChoir's own pages, the kit's among them: every reading that
+  measures on those pages names its weights (`SCOREREADER_HEADNET`: the fold that never saw the hymn, or `off`), and
+  a reading of the fresh set names the shipped weights. The one exception is `scorereader/ocr.py`: it calls the Tesseract
   program for the rows of the words, only when it is asked for, and no note may depend on it. The kit's
   copisteria environment (`$SCOREREADER_KIT/tools/copisteria/.venv/bin/python`, after
   `source "$SCOREREADER_KIT/env.sh"`) has all of it and runs the yardstick too.

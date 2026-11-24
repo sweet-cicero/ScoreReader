@@ -1,7 +1,7 @@
 """The command: a page of a score in, its notes out. Everything runs on this computer.
 
-usage: python -m scorereader read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng] [--second FOLDER]] [--headnet FILE]
-       python -m scorereader hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng] [--second FOLDER]] [--headnet FILE]
+usage: python -m scorereader read <page.png | score.pdf> --out <folder> [--page N] [--name NAME] [--key-before K] [--words FILE | --tesseract [--language eng] [--second FOLDER]] [--headnet FILE|off]
+       python -m scorereader hymn <score.pdf | page1.png page2.png ...> --out <folder> [--pages 2-4] [--name NAME] [--words FILE | --tesseract [--language eng] [--second FOLDER]] [--headnet FILE|off]
        python -m scorereader layers <page.png | score.pdf> --out <folder> [--page N]
        python -m scorereader layout <page.png | score.pdf> --out <folder> [--page N]
 
@@ -40,9 +40,10 @@ reader calls, it reads the rows of words alone, and the reader works without it.
 folders with the path separator between them; SCOREREADER_OCR_SECOND names them too). A row that the first file
 does not read as words of the list alone is read with it as well, and the reading that fits the list best is kept.
 
---headnet names the weights of the reader's small network (scorereader.headnet; SCOREREADER_HEADNET names them too). It
-takes a second look at each note head, and a head is read as the other kind (filled or hollow) where the network is
-sure of that kind. It runs with NumPy and OpenCV; without the weights the notes are read by the rules alone.
+The reader's small network (scorereader.headnet) takes a second look at each note head, and a head is read as the
+other kind (filled or hollow) where the network is sure of that kind. Its weights ship with the reader and it runs with
+NumPy and OpenCV. --headnet names other weights, and --headnet off reads the notes by the rules alone
+(SCOREREADER_HEADNET says the same).
 
 A PDF page is made into an image at 300 dpi with pdftoppm. A page that is a photo kept with no size of its own (a
 phone picture at 72 dpi makes a page of 42 by 56 inches) is made as long as an A4 page at 300 dpi.
@@ -326,7 +327,8 @@ def main(argv=None) -> int:
                         help="the folder of a second language file of Tesseract (or SCOREREADER_OCR_SECOND), as its standard "
                              "'eng.traineddata': a second opinion on the rows that the first file does not read whole")
     parser.add_argument('--headnet', default=None,
-                        help="the weights of the small network that takes a second look at each note head (or SCOREREADER_HEADNET)")
+                        help="other weights for the small network that takes a second look at each note head, or 'off' for the rules "
+                             "alone (or SCOREREADER_HEADNET); its own weights ship with the reader")
     parser.add_argument('--key-before', type=int, default=None,
                         help='the key of the page before in the same hymn (sharps +, flats -), for a page that shows no key signature')
     args = parser.parse_args(argv)

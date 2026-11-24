@@ -6,7 +6,7 @@ PY="$SCOREREADER_KIT/tools/copisteria/.venv/bin/python"           # or any Pytho
 $PY bench/drawn_check.py                                        # the whole reader on a page the script draws; needs no kit
 $PY bench/staves_check.py "$SCOREREADER_KIT/pages" out/staves   # 38 of 38 pages right
 $PY bench/systems_check.py "$SCOREREADER_KIT"                   # 37 of 38; on the other page the copy lost a staff
-bash bench/kit.sh own                                           # reads all 38 pages (rules only)
+bash bench/kit.sh own                                           # reads all 38 pages
 bash bench/kit.sh v04 --yardstick                               # the yardstick: the same clean pages with copisteria's network
 python3 "$SCOREREADER_KIT/score.py" --results out/kit --tools own v04
 ```
@@ -25,8 +25,10 @@ scans and typed hymns.
 `bench/headnet/` trains the small network of `scorereader/headnet.py` (filled head, hollow head, no head):
 `build.py` cuts the reader's own crop around every read head of a run of the wide test, labelled by the scorer
 against the typed hymn, and `train.py` trains it with JAX on the CPU (`pip install jax optax`), held out by hymn
-or on everything. The reader is given the weights with `SCOREREADER_HEADNET=<file>.params.npz`. They are learned
-from the choir's scans, so they stay outside git.
+or on everything. The weights trained on everything ship with the reader (`scorereader/headnet.npz`); other weights
+are given with `SCOREREADER_HEADNET=<file>.params.npz`, and `SCOREREADER_HEADNET=off` reads by the rules alone. The
+shipped weights saw LitChoir's pages, the kit's among them, so a measure on those pages names the weights of the fold
+that never saw the hymn, or reads with the network off.
 
 ## The test kit
 
