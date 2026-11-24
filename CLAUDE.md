@@ -1615,3 +1615,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   worked on with LitChoir's pages and then measured on it. Report its figures beside the clean copies.
   Read it before a round of rules is committed: a rule that loses notes on it is switched off, and narrowed on
   LitChoir's pages.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the repo's GitHub Issues (`sweet-cicero/ScoreReader`). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, made when they are first needed. See `docs/agents/domain.md`.
