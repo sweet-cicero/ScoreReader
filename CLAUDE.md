@@ -9,8 +9,12 @@ no neural network in the loop. The result must go into the LitChoir app as a typ
 The owner changed this on 24 November 2026: "I don't care if neural networks are used, I just need a product that can
 reliably run without internet access". A model is allowed where it runs offline on the owner's own computer, and an
 existing offline reader is preferred to building one where it reads as well ("i don't want to develop a new product if
-an existing product already does what I need"). A survey of the existing readers, neural ones too, decides the next
-step; until it reports, the rule rounds hold and the lines below stand as they are.
+an existing product already does what I need"). A survey of the existing readers, neural ones too, reported the same day:
+none comes near on these pages (on the clean copies homr read 82.5 % of the notes and no words, Audiveris 56.7 % and
+41 % of the syllables; on the fresh set homr 84.0 %), so ScoreReader goes on and the rule rounds go on (the owner:
+"sounds good"). A small network of our own is tried where the rules have stalled: it is trained offline on LitChoir's
+pages, runs with NumPy and OpenCV on the owner's computer, and is an optional step that is off without its weights
+(`scorereader/headnet.py`, round 113).
 
 The target (the owner, 10 November 2026): every score of LitChoir is read locally, without AI, and none of them is
 under 99 % of the notes that its pages show. The words under the notes belong to the result: music without its
@@ -28,22 +32,24 @@ after it. The owner decided against a local language model. The owner allowed Te
 (11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"; 16 November
 2026, of its larger language files: "use the big one"): it is an
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
-must catch up with it. The notes are read by rules alone, with no model.
+must catch up with it. The notes are read by rules; the one model is the optional second look of `headnet.py`.
 
-Not reached yet: 87.9 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 103 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,163 of 22,655, counted by the page;
-22,019 of 22,605 as typed; 49 of the 78 counted scores at 99 %; 46 scores read every printed note, 48 every
-syllable, 42 both, 48 have no note that is not there, 42 are whole in all three; 487 printed notes and 145 syllables
-are lacking and 173 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+Not reached yet (with the small network of round 113, each page read by the network that never saw its hymn): 88.0 %
+of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.7 % on scans; 105 scores at 99 % or
+more), 97.9 % of the notes on the clean copies (22,169 of 22,655, counted by the page; 22,025 of 22,605 as typed; 50
+of the 78 counted scores at 99 %; 46 scores read every printed note, 48 every syllable, 42 both, 48 have no note that
+is not there, 42 are whole in all three; 481 printed notes and 145 syllables are lacking and 174 notes are read that
+are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
 files and a list of words (6,110 of 6,255, counted by the page; 6,045 of 6,260 as typed; 95.7 % of the whole words; 49 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6247 of 6901).
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.6 % on the kit (6251 of 6901).
 On the fresh test set, which no rule was set on: 95.8 % of the notes (39,992 of 41,761; 103 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
 
 Every step is the engine's own: staves, systems, the clean page, the layers, the symbols, the music rules, and the
-drawing of a software-made PDF. The engine is rules and classical image processing only, and it is ours to design:
+drawing of a software-made PDF. The engine is rules and classical image processing, with a small network of our own as a
+second look where the rules have stalled (since round 113), and it is ours to design:
 it is no wrapper of another reader. copisteria, homr and Audiveris are yardsticks only; copisteria's step lives in
 `bench/yardstick`, outside the package, and nothing in `scorereader/` may import it. Ideas, each to test:
 
@@ -74,7 +80,8 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   next steps and the history. The README's status is one paragraph of rounded figures (about 96 %): change it
   only when a rounded figure changes.
 - `scorereader/reader.py` reads a clean page (`layers.py`, `words.py`, `symbols.py`, `starts.py`, `meter.py`,
-  `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `fermatas.py`, `music.py`). `letters.py` and `lyrics.py` read the
+  `signs.py`, `ties.py`, `triplets.py`, `drone.py`, `rests.py`, `fermatas.py`, `music.py`, and `headnet.py` where
+  its weights are given). `letters.py` and `lyrics.py` read the
   words of a scan, and `ocr.py` reads them with Tesseract when asked, with rules of its own around it; the list of
   words (`--words`) serves both.
   `scorereader/vector.py` reads a software-made PDF from its drawing.
@@ -1611,6 +1618,24 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A script's own setting must not share a name with a setting of the reader's runner: `BASE` for the comparison was
   read by `runh.py` as the run to copy unchanged pages from, the full pass read no page, and its figures were the
   base's own. A pass whose log reads 0 pages is no result.
+- A trained network is measured held out by hymn (`scorereader/headnet.py`, round 113): five folds by the hymn's name
+  (the part before `--`, so that the scans of one hymn stay together), and in the full reading each page of LitChoir is
+  read with the network of the fold that never saw its hymn (a hook in a copy of the code, outside git). Trained on
+  every page, it would read its own training pages. Its labels are the scorer's verdicts: a read head that lines up
+  with a typed note is filled or hollow by the typed length, and a mark that is not there is no head; on a copy by
+  hand such a label is wrong where the line-up slipped. The fresh set is read with the network of all of LitChoir.
+- The network sees four staff spaces around a head and nothing of the page. One print's filled heads hold a pale speck
+  and look like its half notes, and the rules know that print by the page (`symbols.HOLLOW_PALE`): the network said
+  hollow at 0.81 and 0.85. A typewriter's dotted half note with a thin slit was filled for it at 0.84 and 0.88. The
+  limit for how sure it must be came from a census of every read head with the scorer's verdict, in bands (0.7, 0.8,
+  0.9), on the clean copies and on all, and from full readings at 0.9 and at 0.8: 152 lengths mended and 19 broken at
+  0.8 (42 and 2 at 0.9); from 0.7 the clean copies lose as much as they gain. A guard by the page's share of heads
+  where the network and the rules disagree took mends and breaks alike.
+- A head that turns can move a count that no note of it is in: a dotted half note that the network turned filled (read
+  2 before, 1 after, typed 3) brought three typed notes of a recitation back into the count, and the score lost 7.
+- The network's third kind (no head) is right on the clean copies (14 of the 15 marks that it calls no head from 0.8 on
+  are false: the loops of a clef and of a flag, a slur, a letter) and even on all copies, where a hand's head looks like
+  stray ink to it. No rule without a sign of the page that it is a print.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
@@ -1618,7 +1643,9 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - This repository is public. Do not add scans, typed hymns, recordings or keys. They stay in the test kit, outside git.
 - The test kit is in `~/Projects/LitChoir/tmp/omr-test` (`SCOREREADER_KIT`). Do not change the kit's own files.
 - The reader needs only OpenCV and NumPy (and pdfplumber for software-made PDFs). Nothing in `scorereader/` may
-  import PyTorch, copisteria or any other model. The one exception is `scorereader/ocr.py`: it calls the Tesseract
+  import PyTorch, JAX, copisteria or any other model library. A network of our own runs with NumPy and OpenCV
+  (`scorereader/headnet.py`); it is trained with JAX by `bench/headnet/`, and its weights stay outside git, because they
+  are learned from the choir's scans (`SCOREREADER_HEADNET` names them). The one exception is `scorereader/ocr.py`: it calls the Tesseract
   program for the rows of the words, only when it is asked for, and no note may depend on it. The kit's
   copisteria environment (`$SCOREREADER_KIT/tools/copisteria/.venv/bin/python`, after
   `source "$SCOREREADER_KIT/env.sh"`) has all of it and runs the yardstick too.

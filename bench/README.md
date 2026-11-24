@@ -22,6 +22,12 @@ words of each hymn in their order, so the list also tells which words follow eac
 The wide test (every score of LitChoir) is run with scripts outside this repository, because it needs the app's
 scans and typed hymns.
 
+`bench/headnet/` trains the small network of `scorereader/headnet.py` (filled head, hollow head, no head):
+`build.py` cuts the reader's own crop around every read head of a run of the wide test, labelled by the scorer
+against the typed hymn, and `train.py` trains it with JAX on the CPU (`pip install jax optax`), held out by hymn
+or on everything. The reader is given the weights with `SCOREREADER_HEADNET=<file>.params.npz`. They are learned
+from the choir's scans, so they stay outside git.
+
 ## The test kit
 
 The tests need the test kit, which is not in this repository. The reader itself does not need it.
