@@ -31,6 +31,10 @@ AGAIN = (32, 50)         # a second look: the row is read again at these sizes, 
 ROOM = (0.6, 2.0)        # the room kept over and under the band, and at its sides, in staff spaces
 DIGITS = True            # a 0 or a 1 that Tesseract read in the place of a letter is read as that letter (O, I, l)
 DIGIT_JOIN = True        # a 0 with a hyphen beside it is the syllable o too ('The-0-to-kos')
+SECTION = 'sg'           # with a list of words, a § beside letters is the first of these letters that makes a word of
+#                          the list: Tesseract reads an S or a G that a stem or a slur touches as a § ('1§' is 'is',
+#                          '§reat' is 'great', '§+one' is 'stone'). An o was tried third and changed only one misread
+#                          into another ('§n' for 'in' became 'on'). None: off.
 DIGIT_LIST = True        # with a list of words, a 1 among small letters is an i where the list holds the word with an i
 #                          and not with an l ('1s' is 'is'): the word is the piece with the pieces that its hyphens
 #                          join it to, with the word that the row before leaves open where the piece stands in the first
@@ -443,6 +447,14 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
         text = text.replace('|', '').strip(LINES)
         if not text:
             continue
+        if SECTION and known and '§' in text and len(text.strip(STOPS + JOINS + LINES)) >= 2:
+            # A letter that a stroke touches is read as a § (see SECTION): the list of words tells which.
+            capital = not any(sign.islower() for sign in text)
+            for letter in SECTION:
+                tried = text.replace('§', letter.upper() if capital else letter)
+                if ''.join(sign for sign in _no_digits(tried).lower() if sign.isalpha()) in known:
+                    text = tried
+                    break
         if DIGITS:
             digit, text = text, _no_digits(text, first=number == 0)
             other = ''.join('i' if was == '1' and now == 'l' else now for was, now in zip(digit, text)) \

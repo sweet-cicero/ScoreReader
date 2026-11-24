@@ -24,14 +24,14 @@ after it. The owner decided against a local language model. The owner allowed Te
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
 must catch up with it. The notes are read by rules alone, with no model.
 
-Not reached yet: 87.8 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
-scans; 100 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,150 of 22,655, counted by the page;
-22,006 of 22,605 as typed; 46 of the 78 counted scores at 99 %; 43 scores read every printed note, 47 every
-syllable, 39 both, 45 have no note that is not there, 38 are whole in all three; 500 printed notes and 146 syllables
-are lacking and 183 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
-files and a list of words (6,109 of 6,255, counted by the page; 6,044 of 6,260 as typed; 95.7 % of the whole words; 48 scores at 99 % of the syllables);
-89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6243 of 6901).
-On the fresh test set, which no rule was set on: 95.7 % of the notes (39,968 of 41,761; 101 of 214 pieces at 99 %),
+Not reached yet: 87.9 % of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.5 % on
+scans; 103 scores at 99 % or more), 97.8 % of the notes on the clean copies (22,162 of 22,655, counted by the page;
+22,018 of 22,605 as typed; 49 of the 78 counted scores at 99 %; 45 scores read every printed note, 48 every
+syllable, 41 both, 47 have no note that is not there, 41 are whole in all three; 488 printed notes and 145 syllables
+are lacking and 174 notes are read that are not there, each printed head counted once since round 78), and of their syllables 49.9 % with the own letter reader and 97.7 % with Tesseract, its larger
+files and a list of words (6,110 of 6,255, counted by the page; 6,045 of 6,260 as typed; 95.7 % of the whole words; 49 scores at 99 % of the syllables);
+89.4 % of all syllables with Tesseract (88.5 % on scans), and 90.5 % on the kit (6247 of 6901).
+On the fresh test set, which no rule was set on: 95.7 % of the notes (39,980 of 41,761; 102 of 214 pieces at 99 %),
 73.6 % of the syllables and 89.0 % of the whole words.
 
 ## Direction
@@ -1547,6 +1547,53 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   whole notes stand as an 8, the head over the broken one had taken the broken one's side for a short stem, and with
   the new head beside it that stem crossed the voices (the count by parts lost 2 notes where the staff count held).
   Such a stem ends in the new head's box and goes (`OPEN_SIDE`).
+- A mark that a rule takes by the line that goes on at both sides of it (`symbols.BAR_MARK`: the paper that a tie
+  closes where it crosses a bar line) is missed at an end of the line. A bar line begins and ends at the staff's
+  outer lines, and a slur that meets an outer line at a bar line closes its paper there, with the bar line as the
+  stem of a half note. The end of the line tells (`symbols.BAR_END`): the mark touches the outer line, nothing goes on
+  past it, and the line fills the staff to the other outer line and ends there; a stem ends at its head. A clean score
+  that reads every note and syllable and has one note that is not there is the nearest whole score: count such scores
+  (`wholecount`) beside the scores that lack one to three notes.
+- A mark that replaced other marks gives them back when a rule refuses it. An open hole of `hole_heads` takes the heads
+  in its box as pieces of its broken rim; where `symbols.OPEN_FLAT` refuses the hole (open paper level at a staff
+  line, with open paper across the line), true filled heads came back (two scores), and so did the pieces of what had
+  closed the cell: the bowl of a flat with its stroke, the bar of a natural, the ends of a bold C. List what each
+  refused mark had replaced, with the note that each piece becomes, before the rule is judged by the marks that go.
+- A limit that a census of the clean pages set is read again on every page when a new rule leans on it. The bold C
+  of one print is 2.46 to 2.57 staff spaces high, over `meter.COMMON_BOLD`'s 2.45, and its ends were read as notes
+  once the cell in its bowl was refused. A census of every page of LitChoir with a wider limit (2.8, by the rule's own
+  code), each piece looked at, put the limit at 2.6: the first false piece (a head with its stem) stands at 2.70, and
+  two true signs past it stay out.
+- A limit that a true sign misses by a little is moved to where a census of every mark that the rule's other limits
+  take parts the signs, not to the one case. A heavy print draws its natural short: the right stroke goes 0.41 staff
+  spaces past the foot of the left one, under `signs.FLAT_LEG`'s 0.6. Of the 57 flats with a stroke at the right of
+  their bowl on LitChoir's scan pages, the true flats end at 0.0 or before, a slash and a bold C reach 0.11 and 0.28,
+  and from 0.35 to 0.6 stood the natural, a bracket by hand and a rest by hand: the limit is 0.35. A mark that is no
+  sign and is read as a natural in the place of a flat makes its note right where the key gives the pitch: a gain by
+  chance, which the worklog names.
+- A mark that a later step takes away was read by the steps before it. The ison's breve under the staff is taken from
+  the notes (`drone.without_breves`), and its oval had stood at the side of the stem of the melody's note over it as that
+  note's flag: a stem that ends in the box of a breve that was taken has no flag there (`drone.BREVE_TAIL`). A breve
+  that a print sets close under the staff has bars 1.09 staff spaces long; of the 28 hollow heads that the breve test is
+  asked about on LitChoir's chant pages, the other breves have 1.2 or more and a head that fails at one side only 0.82
+  at most, so the limit moved into that gap. The letter of a hymn's last note stands over its fermata, past the note
+  (`music.ISON_LAST`). Rules for one case: say so.
+- One old engraving draws the flag of an eighth as a thin straight stroke that leaves the stem steeply before its end,
+  back toward the head, and the older rules look for a flag at the stem's very end (`symbols.STEEP_FLAG`). The first
+  form, with no limit for where the stroke leaves the stem and for how long it hugs it, gained 24 notes and lost 41,
+  nearly all on copies by hand: a stroke that hugs a stem all its way, a thin flag at the very end and a slash across a
+  stem pass as such a flag there. The census of every stem that the first form took, labelled by the typed hymn, gave
+  the print's shape (the stroke leaves the stem 0.48 staff spaces from its end or more and touches it on 0.77 of its
+  height at most), and a slash is a stroke that goes on straight at the other side of the stem. A rule for one print.
+- A rule that reads one side of a mark by its shape asks the other side for its shape too. The flag of an eighth that
+  comes back to its head meets the stem again, and past the loop the two are one stroke as high as the rim of a hollow
+  head (`symbols.LOOP_FOOT`: of that foot only the rows as wide as a rim count). A foot no wider than a head still
+  passed at a copy's final double bar line, whose cells the staff lines close, and the page lost a whole note on another
+  staff: the side across the loop must hold a head (rows 0.75 of a head wide on 0.3 of its height; the true heads 0.35
+  or more, the bar line none, the sharps of a key 0.2 at most). Two whole notes of a unison that touch close a small
+  cell where their rims meet (`symbols.JOINT_CELL`). A cell half as large as the holes at both sides took 132 marks in
+  its first form, and the cell between two half notes of a chord took both notes with it: the pair is one head high,
+  its insides are those of whole notes, and the cell stands within 0.4 staff spaces of both.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

@@ -59,6 +59,14 @@ LINE_OUT = 0.12      # ... and one of the two specks lies outside the line: its 
 #                     0.134 on, eleven filled heads up to 0.112). Both specks outside the line by the thickness of a
 #                     staff line lost 30 half notes of thick copies and copies by hand. 0: off
 RIM = 0.8            # a note without a stem has its own ink at this share of the rim of its hole
+JOINT_CELL = (0.5, 0.4, 0.25, 1.4)   # two whole notes of a unison that touch side by side close a small cell of paper
+#                     between their rims and a staff line, over or under the place where they touch: a cell at most
+#                     this share of each inside, within this many staff spaces of both, between two insides of at least
+#                     this many square staff spaces, in a mark at most this many staff spaces high, is no hole of a head
+#                     (a census of every mark where a cell is half as large as the holes at its two sides, on LitChoir's
+#                     pages: the three such pairs of liturgy-one-is-holy and extra-beatitudes; the other cells were in
+#                     clefs, beams, chords and letters, and the paper inside a d stands farther from the e beside it)
+#                     (None: off)
 FLAG_END = 0.7       # the flag of such a note begins at most this many staff spaces from the end of the stem
 FLAG_LOOP = True     # a hollow mark beside the stem of a note with a printed flag is the flag's loop, not a head
 FLAG_STEM = 0.3      # the stem of a note with such a flag may be slim for this many staff spaces only, when the loop
@@ -78,6 +86,17 @@ DIAG_PAIR = (1.6, 1.45, 2.4, 0.55, 0.45, 0.4, 0.3, 0.55, 0.9)   # a mark with a 
 #                     of a word near the foot of a page of wedding-service, cut but read as no note before and after)
 DIAG_SEEN = None     # a list: every mark that DIAG_PAIR cuts, for a census
 SOLID_LOOP = 0.7     # ink this share of a head's height over or under a hole is a filled head beside a flag's loop (0: off)
+LOOP_FOOT = (0.75, 1.0, 1.2, 0.3)   # the flag of an eighth that comes back to its head meets the stem again, and the
+#                     two are one stroke for a while past the loop, at the side away from the head: of such a foot only
+#                     the rows at least this share of a head wide are the rim of a hollow head (SOLID_LOOP's 0.4 of a
+#                     head), where the foot is at most this share of a head wide in every row, the ink at the other side
+#                     of the loop is at most this many heads high, and it holds rows that wide on at least this share of
+#                     a head's height: a head. A census of every mark that a form without the last three limits took, on
+#                     LitChoir's pages, each looked at: the eighths of liturgy-one-is-holy--s2, cherubic-lvovsky,
+#                     trisagion-arabic and nativity-exapostilarion--s2 have such a head side; the double bar line at the
+#                     end of a copy's staff, the sharps of a key and the piece of a clef have none, and a chord or a
+#                     beam has a wider foot. The fresh set changed no page with the widest form. (None: off)
+LOOP_SEEN = None     # a list: every mark whose foot LOOP_FOOT takes for the stroke of a flag, for a census
 ROOM_HEADS = (0.75, 4.0, 3)   # a mark larger than a head with a room that a large flag or a short beam closes with
 #                     the staff lines: its heads are the pieces that are left when an oval of this share of a head
 #                     is pushed through its ink; the mark is at most this many heads wide and high, and holds at
@@ -664,7 +683,17 @@ def _hole_centres(layers: dict, inside: np.ndarray, x: int, y: int) -> list[tupl
             merged.append(dict(hole))
     # A sliver of paper at the rim of a head is no hole of its own.
     largest = max((hole['area'] for hole in merged), default=0.0)
-    return [(hole['cx'], hole['cy']) for hole in merged if hole['area'] >= 0.25 * largest]
+    kept = [hole for hole in merged if hole['area'] >= 0.25 * largest]
+    if JOINT_CELL and len(kept) >= 3 and inside.shape[0] <= JOINT_CELL[3] * step:
+        # Two whole notes that touch side by side (see JOINT_CELL): the cell where they touch is no head.
+        joints = [hole for hole in kept
+                  if any(left['x1'] < hole['x0'] and hole['x1'] < right['x0'] and hole['x0'] - left['x1'] <= JOINT_CELL[1] * step
+                         and right['x0'] - hole['x1'] <= JOINT_CELL[1] * step
+                         and min(left['area'], right['area']) >= JOINT_CELL[2] * step * step
+                         and hole['area'] <= JOINT_CELL[0] * min(left['area'], right['area'])
+                         for left in kept for right in kept)]
+        kept = [hole for hole in kept if not any(hole is joint for joint in joints)]
+    return [(hole['cx'], hole['cy']) for hole in kept]
 
 
 def head_size(marks: list[dict], space: float) -> tuple[float, float]:
@@ -1260,7 +1289,20 @@ def thick_marks(layers: dict) -> list[dict]:
             line = int(round(layers["staves"][0]["thick"]))
             tail = ROOM_SOLID and not by_holes and _loop_room(mask & holes, line, wide, high) \
                 and _flag_room(mask, mask & holes, line, wide, high) and max(over, under) >= 1.5 * min(over, under)
-            if max(over, under) >= SOLID_LOOP * high and (min(over, under) <= 0.4 * high or tail):
+            near = min(over, under)
+            if LOOP_FOOT and near > 0.4 * high and LOOP_FOOT[2] * high >= max(over, under) >= SOLID_LOOP * high and not tail:
+                # An eighth whose flag comes back to its head: the foot past the loop is the flag's stroke and the
+                # stem, and no rim (see LOOP_FOOT).
+                foot = mask[:int(inside[0])] if over < under else mask[int(inside[-1]) + 1:]
+                solid = mask[int(inside[-1]) + 1:] if over < under else mask[:int(inside[0])]
+                widths = foot.sum(axis=1)
+                if widths.max() <= LOOP_FOOT[1] * wide \
+                        and int((solid.sum(axis=1) >= LOOP_FOOT[0] * wide).sum()) >= LOOP_FOOT[3] * high:
+                    near = int((widths >= LOOP_FOOT[0] * wide).sum())
+                    if LOOP_SEEN is not None and near <= 0.4 * high:
+                        LOOP_SEEN.append({'box': [int(x), int(y), int(x + own_wide - 1), int(y + own_high - 1)], 'over': over,
+                                          'under': under, 'foot': float(widths.max() / wide), 'space': float(space)})
+            if max(over, under) >= SOLID_LOOP * high and (near <= 0.4 * high or tail):
                 span = (0, int(inside[0])) if over > under else (int(inside[-1]) + 1, own_high)
             own_staff = _staff_of(layers, x + own_wide / 2, y + own_high / 2) if ROOM_SOLID and by_holes else None
             if own_staff is not None and x >= layers['staves'][own_staff]['x0'] + ROOM_SOLID[9] * space:
@@ -3360,6 +3402,19 @@ OPEN_BESIDE = 0.25   # a piece of the rim can lie just outside the box of an ope
 #                      was read as a sign is no sign: the second head of a chord, which hangs on the same stem, is
 #                      asked without them.
 OPEN_PIECE = 0.75    # a piece of a broken rim is lower than this share of the height of the page's heads
+OPEN_FLAT = (0.85, 0.7)   # an open hole is no inside of a head where its top or its bottom is level at a staff line in the
+#                      first share of its columns or more (as FLAT_CELL asks of closed paper) and the paper that mirrors it
+#                      across that line is open in the second share or more (as FLAT_WEDGE asks): the paper over a half
+#                      note that a staff line, the bar of the ison's breve beside it and the note's own stem close (one
+#                      print sets the melody's note against the breve so), the paper between a slur or a beam, a stem and
+#                      a line, between a pencil ring and a head, and in the bowl of a C or of a number of a time signature.
+#                      The inside of a head whose rim broke touches a line at a point; where a line runs through a head,
+#                      the other half of the head lies across it. The heads that were read in the box of a refused
+#                      cell stay as they were read: a filled head that the cell had taken for a piece of its rim is a
+#                      head again, and so are the pieces of what closed the cell (the bar of a natural, the bowl of a
+#                      flat). A whole note on a line whose upper rim is open at one end is refused too, where the lower
+#                      half of its inside is not in the layer of the insides (one place on LitChoir's pages, read as a
+#                      half note before). (None: off)
 HOLE_FIVE = (0.75, 0.12, 0.4, 0.85)   # a hollow head in the first space beside the staff (no ledger line belongs there)
 #                      is a head without a ledger line. A head of a chord that touches the head on the staff's outer
 #                      line is lost so: the other head keeps the stem that goes past this one, and this one takes the
@@ -3487,6 +3542,31 @@ def _lean_halves(layers: dict, holes: np.ndarray, ragged: np.ndarray | None) -> 
                 both[uy + uh:ly, first:last + 1] = 1
                 through[uy + uh:ly, first:last + 1] = 1
     return both, through
+
+
+def _open_flat(layers: dict, part: np.ndarray, left: int, top: int) -> bool:
+    """(OPEN_FLAT) Whether open paper (its piece in its box, whose corner is at column left and row top) is level at a
+    staff line at its top or at its bottom, with open paper across that line, as FLAT_CELL and FLAT_WEDGE measure
+    closed paper."""
+    rows = np.array(sorted(row for staff in layers['staves'] for row in staff['rows']), float)
+    half = max(staff['thick'] for staff in layers['staves']) / 2
+    slack = max(FLAT_CELL[2], half)
+    high = part.shape[0]
+    first, last = part.argmax(axis=0), high - 1 - part[::-1].argmax(axis=0)
+    above = float((first <= 1).mean()) if np.abs(rows - (top - 0.5 - half)).min() <= slack else 0.0
+    below = float((last >= high - 2).mean()) if np.abs(rows - (top + high - 0.5 + half)).min() <= slack else 0.0
+    if max(above, below) < OPEN_FLAT[0]:
+        return False
+    edge = top - 0.5 - half if above >= below else top + high - 0.5 + half
+    line = float(rows[np.abs(rows - edge).argmin()])
+    ys, xs = np.nonzero(part)
+    across = np.round(2 * line - (ys + top)).astype(int)
+    inside = (across >= 0) & (across < layers['ink'].shape[0])
+    across, xs = across[inside], xs[inside] + left
+    if not len(across):
+        return False
+    paper = (layers['ink'][across, xs] == 0) & (layers['lines'][across, xs] == 0) & (layers['holes'][across, xs] == 0)
+    return float(paper.mean()) >= OPEN_FLAT[1]
 
 
 def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[int, list[float]] | None = None,
@@ -3638,6 +3718,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
             head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
                     'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
                     'stems': stems, 'mark': None, 'from_hole': True, 'core': None, 'alt': None}
+            if is_open and OPEN_FLAT is not None and _open_flat(layers, labels[y:y + high, x:x + wide] == index, x, y):
+                continue      # a cell along a staff line (see OPEN_FLAT)
             if is_open:
                 # The pieces of the broken rim: the heads that were read in the box of this one. An open hole with
                 # no such piece is the hook of a rest, or the paper between two signs.
@@ -5276,6 +5358,27 @@ FLAG_BOW = (1.8, 0.7, 1.3, 0.8)   # the flag of a down stem that is a bow: it le
 #                            bulges to the right and comes back to the stem before its end. The ink right of the stem
 #                            is this many staff spaces high, reaches from this to this far from the stem and no
 #                            farther, and paper lies between it and the stem for this many staff spaces (None: off)
+STEEP_FLAG = (2.2, 0.45, 0.4, 0.95, 0.25, 0.5, 0.3, 0.8, 0.25)
+#                            one old engraving draws the flag of an eighth as a thin straight stroke that leaves the
+#                            stem steeply, back toward the head: a Y at the end of a stem down (the stem goes on past
+#                            the fork) and a Λ at the top of a stem up (the stroke hugs the stem first), and the older
+#                            rules look for a flag at the very end of the stem. The stroke is followed in the first
+#                            number of staff spaces from the stem's end; it leaves the stem the second number or more
+#                            from the end, reaches from the third to the fourth number to the right and ends in paper,
+#                            comes back toward the head by the fifth number and by the sixth share of how far it
+#                            reaches, is at most the seventh number wide, touches the stem in one run of rows, on at most
+#                            the eighth share of its height, and only goes away from the stem to its tip; no ink crosses
+#                            the stem within the ninth number of the rows where it leaves it, and the stroke does not go
+#                            on straight at the other side of the stem (a slash across a stem) (None: off). A census of
+#                            every stem that the first form (no limits for where the stroke leaves and how long it
+#                            touches) gave a flag on LitChoir's pages: 104 stems, 24 notes gained and 41 lost, nearly all
+#                            losses on copies by hand, where a stroke that hugs the stem all its way or a thin flag at the
+#                            stem's end is a stem or a mark by hand as often as a flag. The print's flags leave the stem
+#                            0.48 staff spaces or more from its end and touch it on 0.77 of their height at most. The
+#                            rule then takes 21 stems on 13 pages, each looked at: 20 eighths (8 of them were read as
+#                            quarter notes) and the wire of a paperclip, which is no note. A rule for one print, with its
+#                            likes on two copies by hand.
+STEEP_SEEN = None    # a list: every stem that STEEP_FLAG gives a flag, with its measures (a census)
 DOT_REACH = 1.3      # a dot stands at most this many staff spaces right of its head
 DOT_NEAR = 0.3       # and at least this many
 DOT_UNDER = 0.6      # its middle lies at most this many staff spaces under the middle of the head (and 0.7 over it)
@@ -5596,6 +5699,107 @@ def _bow_flag(layers: dict, head: dict, stem: dict, low: float) -> bool:
     return False
 
 
+def _steep_flag(layers: dict, head: dict, stem: dict, last: float) -> dict | None:
+    """The measures of the steep flag at a stem (STEEP_FLAG), or None: a thin straight stroke at the right of the stem
+    that leaves it a little before its end and goes back toward the head. `last` is the middle row of the last head
+    on the stem."""
+    ink, space = layers['bare'], layers['space']
+    zone, from_low, far_low, far_high, back_low, slope, wide_high, hug, across = STEEP_FLAG
+    height, width = ink.shape
+    up = stem['direction'] == 'up'
+    x, end = int(stem['x']), int(stem['end'])
+    inward = int(min(zone * space, max(0.0, abs(last - end) - 1.0 * space)))
+    outward = int(0.3 * space)
+    top, bottom = (end - outward, end + inward) if up else (end - inward, end + outward)
+    top, bottom = max(0, top), min(height, bottom + 1)
+    first, final = max(0, x - int(0.8 * space)), min(width, x + int(1.3 * space) + 1)
+    if bottom - top < 0.5 * space or final - first < space:
+        return None
+    raw = ink[top:bottom, first:final].copy()
+    if stem.get('words'):
+        raw[max(0, int(stem['words'][0]) - top):max(0, int(stem['words'][1]) + 1 - top)] = 0
+    # The stroke is followed as in tail_marks, where a staff line comes back where ink stands over it and under it; what
+    # crosses the stem is asked without the staff lines.
+    window = raw.copy()
+    lines = layers['lines'][top:bottom, first:final]
+    high = int(np.ceil(head['staff_ref']['thick'])) + 3
+    near = cv2.dilate(window, np.ones((1, 5), np.uint8))
+    window |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((high, 1), np.uint8)) & lines
+    if stem.get('words'):
+        window[max(0, int(stem['words'][0]) - top):max(0, int(stem['words'][1]) + 1 - top)] = 0
+    centre = x - first
+    band = max(2, int(round(0.13 * space)))
+    stem_rows = window[:, max(0, centre - band):centre + band + 1].any(axis=1)
+    cut = window.copy()
+    cut[:, max(0, centre - band):centre + band + 1] = 0
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(cut, connectivity=8)
+    edge_right, edge_left = centre + band + 1, centre - band - 1
+    if edge_left < 0 or edge_right >= window.shape[1]:
+        return None
+    bare = raw.copy()
+    bare[:, max(0, centre - band):centre + band + 1] = 0
+    _, left_labels = cv2.connectedComponents(bare, connectivity=8)
+    left_rows = np.nonzero((left_labels[:, edge_left] > 0) & stem_rows)[0]
+    for index in range(1, count):
+        px, py, wide, tall, area = stats[index]
+        if px <= centre:
+            continue
+        touch = np.nonzero((labels[:, edge_right] == index) & stem_rows)[0]
+        if len(touch) == 0:
+            continue
+        from_end = float(np.abs(touch + top - end).min()) / space
+        far = (px + wide - 1 - centre) / space
+        if from_end < from_low or len(touch) > hug * tall or not far_low <= far <= far_high or px + wide >= window.shape[1]:
+            continue
+        part = labels == index
+        ys, xs = np.nonzero(part)
+        tip = float(ys[xs >= xs.max() - 1].mean())
+        back = ((tip - touch.mean()) if up else (touch.mean() - tip)) / space
+        if back < back_low or back < slope * far:
+            continue
+        # How wide the stroke is: its ink for its length from the stem to its tip.
+        length = float(np.hypot(far, back))
+        stroke = area / space ** 2 / max(length, 0.1)
+        if stroke > wide_high:
+            continue
+        # No ink crosses the stem where the stroke leaves it (a slur, the bar of a letter).
+        if len(left_rows) and np.abs(left_rows[:, None] - touch[None, :]).min() <= across * space:
+            continue
+        # A slash across the stem goes on straight at its other side (where it crosses a staff line, the ink without
+        # the lines can show no piece that touches the stem there).
+        rise = (tip - touch.mean()) / max(1.0, float(px + wide - 1 - edge_right))
+        reach = int(0.4 * space)
+        hits = 0
+        for step in range(1, reach + 1):
+            col = edge_left - step
+            row = int(round(touch.mean() - rise * (edge_right - col)))
+            if col < 0 or not 1 <= row < window.shape[0] - 1:
+                break
+            hits += bool(window[row - 1:row + 2, col].any())
+        if hits >= 0.5 * reach:
+            continue
+        # The stroke leaves the stem once and goes away from it to its tip: it touches the stem in one run of rows
+        # (a staff line that it crosses there does not count), and the paper between it and the stem only widens
+        # toward the tip (a letter A comes back to its other leg with its bar).
+        line_rows = lines.any(axis=1)
+        line_rows = line_rows | np.roll(line_rows, 1) | np.roll(line_rows, -1)
+        free = np.array([row for row in touch if not line_rows[row]])
+        if not len(free) or np.diff(free).max(initial=0) > 0.2 * space:
+            continue
+        step = 1 if (tip > free.mean()) else -1
+        lefts = []
+        for row in range(int(free.max() if step > 0 else free.min()), int(round(tip)) + step, step):
+            if 0 <= row < part.shape[0] and not line_rows[row]:
+                cols = np.nonzero(part[row])[0]
+                if len(cols):
+                    lefts.append(int(cols.min()))
+        if any(later < earlier - 2 for number, earlier in enumerate(lefts) for later in lefts[number + 1:]):
+            continue
+        return {'from_end': round(from_end, 2), 'far': round(far, 2), 'back': round(back, 2), 'stroke': round(stroke, 2),
+                'touch': round(len(touch) / space, 2), 'tall': round(tall / space, 2)}
+    return None
+
+
 def _is_beam(piece: dict) -> bool:
     return bool(piece['thick'] >= TAIL_THICK and piece['far'] >= BEAM_FAR)
 
@@ -5868,6 +6072,16 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 if _bow_flag(layers, head, stem, head['y1'] + last - head['cy']):
                     head['tails']['down'] = 1
                     stem['bow'] = True
+            if STEEP_FLAG and not head['tails'][stem['direction']] and not any(piece['beam'] for piece in pieces):
+                # A thin flag that leaves the stem steeply (see STEEP_FLAG).
+                last = _last_head([other for other in staffs[head['staff']] if not other['hollow']], head, stem, space)
+                steep = _steep_flag(layers, head, stem, last)
+                if steep is not None:
+                    head['tails'][stem['direction']] = 1
+                    stem['steep'] = True
+                    if STEEP_SEEN is not None:
+                        STEEP_SEEN.append(dict(steep, staff=head['staff'], x=float(head['cx']), y=float(head['cy']),
+                                               direction=stem['direction'], sx=int(stem['x']), end=int(stem['end'])))
         if ROOM_HEADS and head.get('room'):
             # The room at such a head is closed by a flag or by a beam: the stem that goes along the room has one.
             x0, y0, x1, y1 = head['loop']
@@ -7995,9 +8209,41 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
         over = column[max(0, int(mark['y0']) - reach):int(mark['y0'])]
         under = column[int(mark['y1']) + 1:int(mark['y1']) + 1 + reach]
         if not len(over) or not len(under) or min(over.mean(), under.mean()) < BAR_MARK[3]:
-            continue
+            if not (BAR_END and _bar_end(layers, mark, column, staff, top, bottom, reach)):
+                continue
         out.append(mark)
     return out
+
+
+BAR_END = (2, 0.2)   # and such a mark is no head either at an end of a bar line, where a slur that crosses the line meets
+#   the staff's outer line: the mark touches that line (its edge within half the line's thickness and the first number of
+#   px), the column of its stem has no ink beyond that line (at most the second share of the rows over half a staff space
+#   past it), fills the staff from the mark to the other outer line (BAR_MARK's second share) and ends there as the
+#   staff does (within the same px, and at most the second share past it). A stem ends at its head, not at a staff
+#   line: a head in the first space with a stem of three and a half staff spaces reaches the far line too, but it is as
+#   high as a head (BAR_MARK's first share). A census of every low hollow mark whose stem fills the staff and that
+#   BAR_MARK leaves because the line stops at one side (12 on LitChoir's scan pages and 3 on the fresh set, each looked
+#   at): the true notes (the upper or lower head of a chord, a half note on the bottom line) stand off the outer line or
+#   their stem leaves the staff, and the rule takes the slur at a bar line of two scans of one hymn and, on the fresh
+#   set, a slur that meets a bar line at the bottom line. (None: off)
+
+
+def _bar_end(layers: dict, mark: dict, column: np.ndarray, staff: dict, top: int, bottom: int, reach: int) -> bool:
+    """Whether a low hollow mark with one stem sits at an end of a bar line (BAR_END): at the top line with the line
+    going down to the bottom line and ending there, or the other way round."""
+    half = staff['thick'] / 2 + BAR_END[0]
+    def share(lo: float, hi: float) -> float:
+        part = column[max(0, int(round(lo))):max(0, int(round(hi)))]
+        return float(part.mean()) if len(part) else 0.0
+    if mark['y0'] <= top + half:            # at the top line, the line going down
+        return share(top - half - reach, top - half) <= BAR_END[1] \
+            and share(mark['y1'] + 1, bottom + 1) >= BAR_MARK[1] \
+            and share(bottom + half + 1, bottom + half + 1 + reach) <= BAR_END[1]
+    if mark['y1'] >= bottom - half:         # at the bottom line, the line going up
+        return share(bottom + half + 1, bottom + half + 1 + reach) <= BAR_END[1] \
+            and share(top, mark['y0']) >= BAR_MARK[1] \
+            and share(top - half - reach, top - half) <= BAR_END[1]
+    return False
 
 
 BAR_FAINT = (0.38, 0.55, 0.02, 0.6, 0.3)   # a bar line of a faint print, broken into dashes: an upright line with ink
