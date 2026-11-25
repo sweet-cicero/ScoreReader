@@ -1759,6 +1759,18 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A parameter can share its name with a local of its function, and the local overwrites it without a word: a flag
   `near` of `_mend` met the set of the near words, and a copy of a narrowed rule read as the wide one. Search the
   function for a name before it is given to a parameter, as a helper is searched for in its module.
+- A level row through the middle of a filled head beside the staff can be the ink of another head that touches it at
+  one side at the same height, and the head was read as sitting on a ledger line that is not there
+  (`symbols.LEDGER_BESIDE`). A row with ink at one side of the head only is also a short ledger line that a hand or a
+  typewriter ends at its head, and a true line at a head's rim beside a neighbour: the first form lost 4 notes on
+  copies by hand and 4 on the fresh set. The row in the head's middle with a neighbour as high as a head glued to it
+  parts them, and two ledger lines one over the other are as high as a head too: the neighbour's columns must be solid
+  ink. Look at every place where a census at the rule's own step acts, with the note before and after, also where the
+  count does not move: the stacked lines cost one note, and the rows of letters, of pencil and of a hand's marks that the
+  second form also took moved only notes that are not there.
+- A block that a trial pastes into a function for a census takes the function's names. The trial of the rule above set
+  `top` and `bottom` inside `ledger_lines`, which a later step of the same function reads (`WINGS`). Write the rule as
+  a function of its own, as main has it, and read its pages again with main's code before the full pass.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

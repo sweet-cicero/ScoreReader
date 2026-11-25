@@ -134,6 +134,18 @@ SHORT_STEM = (0.9, 0.45)   # a head on a ledger line may have a stem this short:
 SHORT_SLIM = 0.15    # such a short stem is slim for this share of its way past the head
 RIM_WINGS = (0.25, 0.3)  # a ledger line at the rim of a hollow head: in this many staff spaces past the head, at both
                          # sides, it has ink in at least this share of the columns
+LEDGER_BESIDE = (0.3, 0.7, 1.4, 0.6, 1.6, 0.5, 0.7)
+#   A level run that ledger_lines finds through the middle of a filled head beside the staff can be the ink of another
+#   head that touches it at one side at the same height (two voices a second apart, set side by side), and the head is
+#   then read as sitting on a ledger line that is not there. Such a row is no ledger line where it lies within (0) of
+#   the head's height from the head's middle, the head is a head's size (at least (1) of the page's head height, at
+#   most (2) of its width), the row has ink in less than RIM_WINGS[1] of the columns past the head at one side, and at
+#   the other side, in one head width past the head, at least (5) of the columns hold solid ink ((6) of the column's
+#   run or more) from (3) to (4) of the head's height, one of them among the first three. Two ledger lines one over the
+#   other are as high as a head and not solid. A census of every such row of LitChoir's pages (5,402 rows of filled
+#   heads on 420 pages; 2,345 on the fresh set) took 44 rows on 36 pages and 5 on the fresh set; without the solid ink
+#   it took two stacked ledger lines beside a head of samaritan-megalynarion and pencil, words and a hand's marks.
+LEDGER_BESIDE_SEEN = None    # a list: a census of every row that LEDGER_BESIDE asks
 PLACE_MASS = None    # off. (0.35, 0.08): a head in the staff whose middle was measured this far or more from the middle
 #   of its place (in places: the border of two places lies at 0.5) takes the place of the middle of all its ink, when
 #   that lies in the place next to it at that side, this far or more past the border. The middle of a hollow head is
@@ -1861,6 +1873,41 @@ def _foot_dashes(layers: dict, staff: dict, mark: dict, up: bool) -> bool:
         and LEDGER_DASH[3][0] * space <= abs((rows[0] + rows[1]) / 2 - edge) <= LEDGER_DASH[3][1] * space
 
 
+def _ledger_beside(layers: dict, head: dict, row: float, space: float) -> bool:
+    """Whether the level row through a filled head is the ink of another head that touches it at one side
+    (LEDGER_BESIDE)."""
+    rule, free = LEDGER_BESIDE, layers['free']
+    wide, high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
+    if abs(row - (head['y0'] + head['y1']) / 2) > rule[0] * high:
+        return False
+    head_wide, head_high = layers.get('head') or (space, space)
+    fits = rule[1] * head_high <= high and wide <= rule[2] * head_wide
+    reach = int(round(RIM_WINGS[0] * space))
+    band = free[max(0, int(row) - 2):int(row) + 3]
+    wings = (band[:, max(0, head['x0'] - reach):max(0, head['x0'] - 1)].max(axis=0, initial=0),
+             band[:, head['x1'] + 2:head['x1'] + reach + 1].max(axis=0, initial=0))
+    shares = [float(wing.mean()) if wing.size else 1.0 for wing in wings]
+    window = free[max(0, int(head['y0'] - 0.5 * space)):int(head['y1'] + 0.5 * space) + 1]
+    span = int(round(head_wide))
+    sides = (window[:, max(0, head['x0'] - span):head['x0']][:, ::-1], window[:, head['x1'] + 1:head['x1'] + 1 + span])
+    same, glued = [], []
+    for side in sides:
+        columns = []
+        for column in side.T:
+            ink = np.nonzero(column)[0]
+            extent = int(ink[-1] - ink[0] + 1) if ink.size else 0
+            columns.append((extent, ink.size / extent if extent else 0.0))
+        same.append(sum(1 for extent, fill in columns
+                        if rule[3] * high <= extent <= rule[4] * high and fill >= rule[6]) / max(1, span))
+        glued.append(any(extent >= rule[3] * high for extent, _ in columns[:3]))
+    drop = fits and any(shares[1 - side] < RIM_WINGS[1] and same[side] >= rule[5] and glued[side] for side in (0, 1))
+    if LEDGER_BESIDE_SEEN is not None:
+        LEDGER_BESIDE_SEEN.append({'box': [int(head['x0']), int(head['y0']), int(head['x1']), int(head['y1'])],
+                                   'row': float(row), 'place': head.get('place'), 'wings': shares, 'same': same,
+                                   'glued': glued, 'size': [wide / head_wide, high / head_high], 'drop': bool(drop)})
+    return drop
+
+
 def ledger_lines(layers: dict, staff: dict, head: dict, half: float | None = None) -> list[float]:
     """The rows of the ledger lines between a staff and a head beside it, the line through the head too. A ledger
     line is a level run of ink that reaches past the head on both sides and is thinner than a head."""
@@ -1898,6 +1945,8 @@ def ledger_lines(layers: dict, staff: dict, head: dict, half: float | None = Non
             if len(run) <= 0.6 * space:
                 rows.append(top + (run[0] + run[-1]) / 2)
             run = []
+    if LEDGER_BESIDE and not (head.get('hollow') or head.get('hole', 0.0) >= HOLLOW):
+        rows = [row for row in rows if not _ledger_beside(layers, head, row, space)]
     if RIM_WINGS and (head.get('hollow') or head.get('hole', 0.0) >= HOLLOW):
         # The upper and the lower rim of a wide hollow head are level ink too. A ledger line at the edge of such a
         # head goes on past the head at both sides.
