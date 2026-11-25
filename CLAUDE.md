@@ -1712,6 +1712,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   that is not there, and the score lost what the chord gained. A room that a sign closes with its chord is no flag
   either: the chord's stems took a flag from it and were read as eighths. Look at what stands beside a new head in its
   own mark before the count of the first form is read.
+- Before a rule gives a sign to a note, find on the page which note each sign of the mark stands for. Of two heavy
+  sharps that one print joins into one mark before a chord, the lower stands on the E line: the page prints E#4, and
+  the typed hymn has E4, which the reading without the sign had matched. The note goes on the list of the notes by the
+  page first, looked at on every scan, and the reading before the round is scored again with it; counted against the
+  old list, the rule's true sign would have been a note lost.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
