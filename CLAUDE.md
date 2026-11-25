@@ -1669,6 +1669,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A milder form of a test is measured against every mark that the milder limit takes, with the scorer's verdicts,
   before it is written for one false mark: a point test that took the blunt wedge of a false F5 (0.17) would take a
   true half note by hand (0.2). No rule.
+- A beam ends at the outer stems of its run; a slur that touches the ends of the stems goes on past them
+  (`symbols.BEAM_PAST`). By the ink that hangs on past both outer stems alone, the first form took two true beams that
+  lie along a staff line and go on to stems that the reader did not read (4 notes lost), the band of a marker over a
+  label and a staff line under three stem ends. Where the hanging ink ends tells: a slur ends free, and the others end
+  at a stem or a bar line. Follow such ink to its end before a rule asks only that it is there. A rule that changes a
+  copy by hand in a stretch that the count's window leaves out moves no count: look at the page for it too.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

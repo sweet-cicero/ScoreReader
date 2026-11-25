@@ -5409,6 +5409,15 @@ BEAM_CROSS = 0.5     # a slur that passes the end of a stem hangs on both sides 
 #                      middle note does, and the flag of the next note can be its witness. At both sides it is at
 #                      most this share as thick as the page's beams (20 such stems of LitChoir's pages, each looked
 #                      at, all slurs and ties; the slimmest true beam that hangs so is 0.52) (0: off)
+BEAM_PAST = 0.5      # a beam ends at the outer stems of its run. Where the ink that joins a run of stems also hangs on
+#                      past both of its outer stems, at the level where it joins them, and ends free at both sides (no
+#                      stem within this many staff spaces of its end), it is a slur under or over the run, and no beam:
+#                      a slur that touches the ends of two stems was read as their beam, and a dotted quarter as a
+#                      dotted eighth (nativity-troparion, two scans). By the hanging ink alone, the first form took 16
+#                      runs on LitChoir's pages, each looked at: 11 slurs, the ledger dashes of a copy by hand, two true
+#                      beams that lie along a staff line and go on to stems that the reader did not read (4 notes
+#                      lost), the band of a marker over a label and a staff line under the stem ends of flagged notes.
+#                      The last four end at a stem or a bar line. None on the fresh set (0: off)
 BEAM_SECOND = 0.6    # a second beam or flag at a stem is one of its own when it is at least this share as thick as the
 #                    page's usual beam (None: off): slimmer ink beside a beam is a bow that lies on the beam
 BEAM_SIDES = 0.8     # a piece of a beam at the left of a stem and one at its right are one beam when their rows are
@@ -5972,6 +5981,90 @@ def broken_stems(layers: dict, heads: list[dict]) -> int:
     return count
 
 
+def _ends_at(layers: dict, x: float, row: float, right: bool) -> tuple[float, float | None] | None:
+    """Follows the ink that leaves a stem at (x, row) to one side as _bow does, as far as it goes: (how far it goes,
+    how far its last column lies from the nearest column where the ink is high, a stem that it ends at; None when
+    no such column is near), in px. None when the ink cannot be followed at all."""
+    ink, space = layers['bare'], layers['space']
+    reach, step = max(2, int(round(0.3 * space))), 1 if right else -1
+    y, gap, last, highs = float(row), 0, None, []
+    column = int(round(x)) + step * int(round(0.3 * space))
+    while 0 <= column < ink.shape[1] and abs(column - x) <= 3 * BEAM_NEXT * space:
+        top = max(0, int(round(y)) - reach)
+        rows = np.nonzero(ink[top:int(round(y)) + reach + 1, column])[0]
+        if len(rows) and rows[-1] - rows[0] + 1 == len(rows) and len(rows) <= 2 * reach - 1:
+            y = top + (rows[0] + rows[-1]) / 2
+            last, gap = column, 0
+        elif len(rows) == 0:
+            gap += 1
+            if gap > 0.3 * space:
+                break
+        else:
+            highs.append(column)
+        column += step
+    if last is None:
+        return None
+    near = [abs(high - last) for high in highs if abs(high - last) <= 1.0 * space]
+    return float(abs(last - x)), (float(min(near)) if near else None)
+
+
+def _beam_past(layers: dict, group: list[dict], space: float, usual) -> None:
+    """A run of stems that witnessed beams join, whose ink hangs on past both outer stems at its level and ends free at
+    both sides, is joined by a slur and not by a beam (BEAM_PAST): its pieces are no beam. The stems of a chord stand
+    as one stem at one column."""
+    columns: list[list[dict]] = []
+    for stem in sorted(group, key=lambda one: one['x']):
+        if columns and abs(stem['x'] - columns[-1][0]['x']) <= 0.5 * space and abs(stem['end'] - columns[-1][0]['end']) <= 0.5 * space:
+            columns[-1].append(stem)
+        else:
+            columns.append([stem])
+
+    def pieces(column: list[dict], right: bool, witnessed: bool) -> list[dict]:
+        return [piece for stem in column for piece in stem['marks']
+                if piece['right'] == right and piece['beam'] and bool(piece['witness']) == witnessed]
+
+    def nearest(index: int, right: bool):
+        stem = columns[index][0]
+        side = [other for other in range(len(columns))
+                if 0.5 * space < (columns[other][0]['x'] - stem['x'] if right else stem['x'] - columns[other][0]['x']) <= BEAM_NEXT * space]
+        return min(side, key=lambda other: abs(columns[other][0]['x'] - stem['x'])) if side else None
+
+    after = {}
+    for index in range(len(columns)):
+        if pieces(columns[index], True, True):
+            other = nearest(index, True)
+            if other is not None and pieces(columns[other], False, True):
+                after[index] = other
+    for index in range(len(columns)):
+        if index not in after or index in after.values():
+            continue
+        run = [index]
+        while run[-1] in after and len(run) < len(columns):
+            run.append(after[run[-1]])
+        first, last = columns[run[0]], columns[run[-1]]
+        level_first = min(piece['row'] for piece in pieces(first, True, True))
+        level_last = min(piece['row'] for piece in pieces(last, False, True))
+        before = [piece for piece in pieces(first, False, False) if abs(piece['row'] - level_first) <= 0.35 * space]
+        past = [piece for piece in pieces(last, True, False) if abs(piece['row'] - level_last) <= 0.35 * space]
+        ends = [_ends_at(layers, first[0]['x'], before[0]['row'], False) if before else None,
+                _ends_at(layers, last[0]['x'], past[0]['row'], True) if past else None]
+        if CENSUS is not None and (before or past):
+            CENSUS.append({'rule': 'PAST', 'run': [(columns[i][0]['x'], columns[i][0]['end']) for i in run],
+                           'before': [(piece['thick'], piece['far'], piece['row']) for piece in before],
+                           'past': [(piece['thick'], piece['far'], piece['row']) for piece in past],
+                           'levels': (level_first, level_last), 'usual': usual, 'space': space,
+                           'inner': [piece['thick'] for i in run for piece in pieces(columns[i], True, True) + pieces(columns[i], False, True)],
+                           'ends': ends})
+        if before and past and all(end is not None and (end[1] is None or end[1] > BEAM_PAST * space) for end in ends):
+            for i in run:
+                for piece in pieces(columns[i], True, True) + pieces(columns[i], False, True):
+                    piece['beam'] = piece['witness'] = False
+                    piece['past'] = True
+            for piece in before + past:
+                piece['beam'] = piece['witness'] = False
+                piece['past'] = True
+
+
 def count_tails(layers: dict, heads: list[dict]) -> None:
     """Sets head['tails'] for every head: for each of its stems ('up', 'down'), the number of flags or beams at the
     far end: 0 for a quarter or half note, 1 for an eighth, 2 for a sixteenth.
@@ -6086,6 +6179,9 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                     for piece in beams:
                         piece['beam'] = piece['witness'] = False
                         piece['cross'] = True
+    if BEAM_PAST:
+        for group in groups.values():
+            _beam_past(layers, group, space, usual)
     for head in heads:
         head['tails'] = {}
         for stem in head['stems']:
