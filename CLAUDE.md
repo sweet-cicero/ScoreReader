@@ -1771,6 +1771,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A block that a trial pastes into a function for a census takes the function's names. The trial of the rule above set
   `top` and `bottom` inside `ledger_lines`, which a later step of the same function reads (`WINGS`). Write the rule as
   a function of its own, as main has it, and read its pages again with main's code before the full pass.
+- A pencil ring, or a long arc by hand, that passes the side of a filled head leaves the head's mark upward and
+  downward at that side, and the test for a beam took the ring's upper half and the head's own stem for a beam's two
+  stems: the head was no head (`symbols.RING_SIDE`). How far a beam's stems lean does not part them (most marks that
+  the test takes for a beam have a stem that leans); the two ways at one side that lean the same way, one of them the
+  arc of a ring by `STEM_ARC`, do. A census of every side whose ways up and down are both stems named what else has
+  that shape: the belly of a treble clef and the curl of a flag, where no note is read.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
