@@ -1717,6 +1717,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the typed hymn has E4, which the reading without the sign had matched. The note goes on the list of the notes by the
   page first, looked at on every scan, and the reading before the round is scored again with it; counted against the
   old list, the rule's true sign would have been a note lost.
+- A long word that a print sets in small letters can be misread in every syllable, and no word of the list is near it
+  as a whole. Its neighbours name it: the list's text holds one word between them with as many syllables, and each
+  piece that was read is near one syllable of the list's way (`ocr.MEND_WAY`). The neighbours choose, not how often the
+  list holds the word (once). The list's own way keeps the rule to misreads: a form that took any cut of the word near
+  the pieces read two more rows of LitChoir and turned a true word that the list lacks into another on the fresh set.
+  A word that a rule writes into the middle of a word takes no capital that a misread letter carried ("Na- I- vi- ty").
 - `experiments/` holds the record of the first tests.
 
 ## Rules
