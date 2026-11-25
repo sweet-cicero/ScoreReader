@@ -1734,6 +1734,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   another reading's word where the list lacks the word as read put a misread back in its place. The replay from the
   stored rows does not show a rule on a row that is read with a second look the stored rows lack: read the rule's own
   row in the full pass.
+- A weak copy joins a thin stroke over small gaps, so a column of ink specks over a printed mark is followed as a stem,
+  and `thin_heads` reads a head at its end. A stem has ink of its own outside the staff lines and the rows of its head
+  (`symbols.THIN_SPECKS`): of LitChoir's 2,908 thin heads the one false note has it in 0.24 of those rows and the true
+  ones from 0.43 on, the fresh set's from 0.8. A rule for one case.
+- A picture that a rule makes for its case is read last, and only where no other reading of the row is a row of words.
+  Read in the place of an older second look, the picture of a row of Alleluias without its dashes (`ocr.FEW_DASHES`)
+  took a hand's dashes too, Tesseract read the words around them otherwise, and a row of words of a copy by hand was
+  lost. A reader of a row that is made in a loop and called after it takes the values of its own row as default
+  arguments: a first copy read the dashes of the page's last row for every row.
+- A syllable that every reading of a row holds with the same letters is not therefore right: kept from the mending
+  ("spi-nts" for "spi-rits"), such syllables gained 6 and lost 58 on all scan pages.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

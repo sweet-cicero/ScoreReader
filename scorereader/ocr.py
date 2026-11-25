@@ -305,6 +305,15 @@ CROSS_LIST = True        # on a page whose words do not fit the list of words (a
 #                          second look is kept only where it holds more letters in words of the list than the best
 #                          reading of the picture as it is: there the list holds few words of either reading, and
 #                          how sure Tesseract is does not choose between two pictures
+FEW_DASHES = (0.25, 0.25, 1.5, 0.3, 0.85)   # a row of few words (words.SPARSE) that holds a word spread under a long
+#                          melody, with runs of hyphens between its syllables ('Al - - - le - - - lu - - - i - - - a'):
+#                          Tesseract reads each run as signs and letters ('-Ww-', '+Je«#'), and no reading is a row of
+#                          words. A last look reads the picture without the dashes, where no other reading of the row is
+#                          a row of words, and a hyphen stands between two words that a dash stood between. A dash is at
+#                          most [0] of the band high, [1] to [2] of it wide, with its middle from [3] to [4] of the band
+#                          down. Read in the place of the second look, the picture without a hand's dashes was read
+#                          otherwise around them, and a row of words was lost (None: off)
+FEW_SIZE = 500             # the sizes of that last look are coded under -FEW_SIZE (-540: 40 px high)
 HELD = (1.2, 0.25, 0.35)   # the line of a held syllable is taken out of the picture before Tesseract
 #                          reads the row: a level line this many times as long as the band is high or longer, this
 #                          share of the band's height thick at most, that lies this near the band's lower edge
@@ -1346,6 +1355,36 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
     return found
 
 
+def _no_dashes(crop: np.ndarray, top: float, bottom: float, first: int) -> tuple[np.ndarray, list[tuple[float, float]]]:
+    """The picture of a row of few words without its dashes, and the columns of each dash in the page (see
+    FEW_DASHES). `top` and `bottom` are the band's edges in the picture, which begins at the page's column `first`."""
+    high = max(1.0, bottom - top)
+    flat, narrow, wide, upper, lower = FEW_DASHES
+    count, _, stats, _ = cv2.connectedComponentsWithStats((crop < 128).astype(np.uint8), connectivity=8)
+    out, dashes = crop, []
+    for label in range(1, count):
+        x, y, w, h = stats[label][:4]
+        if h <= flat * high and narrow * high <= w <= wide * high and upper * high <= y + h / 2 - top <= lower * high:
+            if out is crop:
+                out = crop.copy()
+            out[max(0, y - 2):y + h + 2, max(0, x - 2):x + w + 2] = 255
+            dashes.append((float(first + x), float(first + x + w)))
+    return out, sorted(dashes)
+
+
+def _dashed(words: list[tuple[str, float, float, float]], dashes: list[tuple[float, float]]) -> list[tuple[str, float, float, float]]:
+    """A reading of a row without its dashes, with a hyphen between two words that a dash stood between (see
+    FEW_DASHES)."""
+    out = []
+    for at, word in enumerate(words):
+        out.append(word)
+        if at + 1 < len(words):
+            between = [dash for dash in dashes if word[2] <= (dash[0] + dash[1]) / 2 <= words[at + 1][1]]
+            if between and any(sign.isalpha() for sign in word[0]) and any(sign.isalpha() for sign in words[at + 1][0]):
+                out.append(('-', between[0][0], between[-1][1], 90.0))
+    return out
+
+
 def _no_held(crop: np.ndarray, top: float, bottom: float) -> np.ndarray:
     """The picture of a row without the lines of held syllables. `top` and `bottom` are the band's edges in the
     picture. Tesseract reads such a line as a row of signs, and the word beside it wrongly."""
@@ -1930,7 +1969,9 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
     With `ways` the words are parted into syllables as the list of words parts them. `more` are the sizes of a
     second look, read after the others where no reading is whole (a size under 0: the picture without the ink that
-    crosses the row, see CROSS and CROSS_LIST; a size from SECOND on: the second language file, see SECOND)."""
+    crosses the row, see CROSS and CROSS_LIST; a size from SECOND on: the second language file, see SECOND; a size
+    under -FEW_SIZE: the picture without the dashes of a row of few words, last and only where no reading is a row,
+    see FEW_DASHES)."""
     best: tuple[list[dict], float] | None = None
     rows: list[list[dict]] = []
     firsts: set[str] = set()       # the words that the list lacks, as the first file read them
@@ -1958,6 +1999,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
                        for other, first, last, _ in read(size)) for size in sizes)
 
     for size in (HIGH,) + tuple(AGAIN or ()) + tuple(more):
+        if FEW_DASHES and size < -FEW_SIZE and best is not None and best[1] >= 0:
+            break             # a row without its dashes is read only where no other reading is a row (see FEW_DASHES)
         again = size < 0 or bool(SECOND and size >= SECOND)      # a second look: another picture or another file
         second = again and size > 0
         row, fit, whole = _text_row(read(size), grey, band, known, mend, again and (best is None or best[1] < 0),
@@ -2037,13 +2080,21 @@ def read_rows(layers: dict, page: int = 0, lex=None, before: dict | None = None)
                 bare = _no_cross(part, grey[over:under, first:last], top - over, band['top'] - top, band['bottom'] - top, space)
                 if bare is part:
                     bare = None
+            clear, dashes = None, []
+            if FEW_DASHES and band.get('few'):
+                clear, dashes = _no_dashes(part if bare is None else bare, band['top'] - top, band['bottom'] - top, first)
+                if not dashes:
+                    clear = None
             seen: dict[int, list] = {}
 
-            def read(size: int, part=part, bare=bare, first=first, band=band, number=number, seen=seen) -> list[tuple[str, float, float, float]]:
+            def read(size: int, part=part, bare=bare, first=first, band=band, number=number, seen=seen, clear=clear,
+                     dashes=dashes) -> list[tuple[str, float, float, float]]:
                 if size not in seen:                   # a size under 0: the picture without the ink that crosses the row
                     files = None
                     if SECOND and size >= SECOND:      # a size from SECOND on: the picture as it is, a further file
                         picture, tall, files = part, size % SECOND, others[size // SECOND - 1]
+                    elif size < -FEW_SIZE:             # the picture without the dashes of a row of few words
+                        picture, tall = clear, -size - FEW_SIZE
                     else:
                         picture, tall = (part, size) if size > 0 else (bare, -size)
                     scale = tall / max(1.0, band['bottom'] - band['top'])
@@ -2053,11 +2104,14 @@ def read_rows(layers: dict, page: int = 0, lex=None, before: dict | None = None)
                     crop = cv2.copyMakeBorder(crop, edge, edge, edge, edge, cv2.BORDER_CONSTANT, value=255)
                     seen[size] = [(text, first + (left - edge) / scale, first + (right - edge) / scale, sure)
                                   for text, left, right, sure in _line(crop, folder, f'{page}_{number}_{size}', files)]
+                    if size < -FEW_SIZE:
+                        seen[size] = _dashed(seen[size], dashes)
                 return seen[size]
 
             readers.append((read, (() if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ())))
                             + (tuple(SECOND * (file + 1) + size for file in range(len(others))
-                                     for size in (HIGH,) + tuple(AGAIN or ())) if known else ())))
+                                     for size in (HIGH,) + tuple(AGAIN or ())) if known else ())
+                            + (() if clear is None else tuple(-FEW_SIZE - size for size in (HIGH,) + tuple(AGAIN or ())))))
         if CLEF:
             # Each row knows the columns of the clef of the staff over it (see CLEF).
             staves = layers.get('staves') or []
