@@ -153,6 +153,16 @@ MEND_TWIN = (('m', 'rn'),)   # with a list of words: a word of three letters or 
 #                          the list's word that has the two letters where the one letter was read ('bom' is 'born':
 #                          an r and an n that touch are an m for Tesseract at every size and with every file, and it
 #                          is sure of the m), where the list holds one such word (None: off)
+MEND_WAY = (3, 2, 1, 2)  # (syllables, letters, count, words) a word of this many syllables or more by the hyphens
+#                          that were read, which the list does not hold and Tesseract is not sure of, becomes the list's
+#                          word that stands with both of its neighbours in the list's text, begins with the same letter
+#                          and has as many syllables by the list's way, each syllable at most this many letters from the
+#                          piece that was read, where there is one such word only of the list (held this many times or
+#                          more: the neighbours choose, not the count). A first syllable whose hyphen was not read is a
+#                          word of its own, so the word may be this many read words ('thy New t- wvi- ty, O', the small
+#                          letters of one print between the stems of the bass, is 'Na-ti-vi-ty'). The cut follows the
+#                          pieces that were read, each syllable with a vowel. 5 rows of LitChoir's scan pages, each
+#                          looked at, none of the fresh set (None: off)
 MEND_PAIR = 7            # two words side by side that the list does not hold, of this many letters or more together,
 #                          become the one word of the list that they are with one letter read otherwise: the end
 #                          of a word under a long melody stands far from its start, with no hyphen that was read
@@ -678,6 +688,80 @@ def _ways(lex, known: dict[str, int]) -> dict[str, tuple[str, ...]]:
 class _Ways(dict):
     """How the list parts its words (see _ways), with `parted`: every word that the list parts in any way."""
     parted: set = set()
+
+
+def _apart(one: str, two: str) -> int:
+    """How many letters two words are apart: letters added, taken away or read otherwise."""
+    last = list(range(len(two) + 1))
+    for row, sign in enumerate(one, 1):
+        now = [row]
+        for column, other in enumerate(two, 1):
+            now.append(min(last[column] + 1, now[-1] + 1, last[column - 1] + (sign != other)))
+        last = now
+    return last[-1]
+
+
+def _by_way(syllables: list[dict], known: dict[str, int], ways: dict[str, tuple[str, ...]]) -> list[dict]:
+    """A word of several syllables that the list does not hold becomes the list's word that its neighbours and its
+    syllables name (MEND_WAY); a word whose first hyphen was not read is the word before it with it. A capital stays
+    where it was read at the start of the word, and a word that was read in capitals stays in capitals."""
+    pairs = getattr(known, 'pairs', None) or frozenset()
+
+    def letters(word: list[dict]) -> str:
+        return ''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
+
+    words = _read_words(syllables)
+    texts = [letters(word) for word in words]
+    done: set[int] = set()
+    for number, word in enumerate(words):
+        if number in done or not texts[number] or texts[number] in known or min(part.get('sure', 0.0) for part in word) >= MEND[2]:
+            continue
+        for span in range(1, MEND_WAY[3] + 1):
+            first = number - span + 1
+            if first < 1 or number + 1 >= len(words) or any(at in done for at in range(first, number)):
+                continue
+            parts = [part for at in range(first, number + 1) for part in words[at]]
+            if len(parts) < MEND_WAY[0] or any(len(words[at]) != 1 for at in range(first, number)):
+                continue        # the words before it in the span are single pieces whose hyphen was not read
+            pieces = [letters([part]) for part in parts]
+            read, before, after = ''.join(pieces), texts[first - 1], texts[number + 1]
+            if not all(pieces) or not before or not after:
+                continue
+            meant = [new for new, way in ways.items() if len(way) == len(parts) and new[0] == read[0]
+                     and known.get(new, 0) >= MEND_WAY[2] and (before, new) in pairs and (new, after) in pairs
+                     and all(_apart(piece, syllable) <= MEND_WAY[1] for piece, syllable in zip(pieces, way))]
+            if len(meant) != 1:
+                continue
+            # The page's own hyphens say where the syllables end: the list's word is cut where it is nearest to the
+            # pieces that were read, and the list's way wins a tie.
+            # Each syllable holds a vowel, and of cuts as near, the one whose syllables begin with a consonant before a
+            # vowel ('na-ti-vi-ty', not 'nat-i-vi-ty').
+            whole, cut = meant[0], ways[meant[0]]
+
+            def cost(way: tuple[str, ...]) -> tuple[int, int]:
+                return (sum(_apart(piece, syllable) for piece, syllable in zip(pieces, way)),
+                        -sum(len(syllable) > 1 and syllable[0] not in VOWELS and syllable[1] in VOWELS for syllable in way[1:]))
+
+            best = cost(cut)
+            for ends in itertools.combinations(range(1, len(whole)), len(parts) - 1):
+                bounds = (0,) + ends + (len(whole),)
+                way = tuple(whole[bounds[at]:bounds[at + 1]] for at in range(len(parts)))
+                if all(any(sign in VOWELS for sign in syllable) for syllable in way) and cost(way) < best:
+                    best, cut = cost(way), way
+            capitals = False
+            for at, (part, syllable) in enumerate(zip(parts, cut)):
+                text = part['text']
+                spots = [place for place, sign in enumerate(text) if sign.isalpha()]
+                start, end = spots[0], spots[-1]
+                capitals = capitals or sum(sign.isupper() for sign in text) > max(1, sum(sign.islower() for sign in text))
+                # A capital inside a word is a misread small letter ('Na- I- vi- ty'), unless the word is read in capitals.
+                new = syllable.upper() if capitals else syllable.capitalize() if at == 0 and text[start].isupper() else syllable
+                part['text'] = text[:start] + new + text[end + 1:]
+            for part in parts[:-1]:
+                part['join'] = True
+            done.update(range(first, number + 1))
+            break
+    return syllables
 
 
 def _between(syllables: list[dict], known: dict[str, int], others: list[list[dict]] = ()) -> list[dict]:
@@ -1850,6 +1934,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         row = _other_pair(row, [other for other in rows if other is not row], known)
     if PAIR and known and mend and getattr(known, 'pairs', None):
         row = _between(row, known, [other for other in rows if other is not row])
+    if MEND_WAY and known and mend and ways and getattr(known, 'pairs', None):
+        row = _by_way(row, known, ways)
     if SMALL_I and known and mend:
         # After the reading is chosen: a stray word that goes must not change which reading is kept (see CLEF).
         row = [syllable for number, syllable in enumerate(row)
