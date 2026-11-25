@@ -87,6 +87,11 @@ TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff l
 #                         staff spaces; at most this share of the columns is crossed by a stem or a bar line; the
 #                         run is this many staff spaces long or more; this share of its columns is fat; the line lies
 #                         at most this many staff spaces from the middle of the heads
+TIE_BESIDE = 2.0         # (TIE_LINE) and the lens is fatter than the same line beside the two heads (this many staff
+#                          spaces at each side, the fatter side) by as much as it must be fatter than the staff's lines:
+#                          a scan that prints one line thick all along has no lens. Of the 33 flat ties of LitChoir's
+#                          pages, the 8 where no bow is printed are no fatter than the line beside them, and the others 3
+#                          to 9 pixels fatter; the fresh set's 5 are 3 or 4 (None: off)
 TIE_WORD = (5, 0.5, 6.5, 2.0, 0.3, 0.7, 0.45, 0.4)   # a page whose bows join the syllables of a word (None: off). A tied note
 #                         takes no syllable. Where at least [0] ties of a page end over the beginning of a syllable (the
 #                         ties of a chord count once), and these are at least this share [1] of its ties that have words,
@@ -574,8 +579,21 @@ def _in_line(layers: dict, one: dict, two: dict, space: float) -> bool:
             continue
         if len(outside) >= 6 and np.median(outside) >= 0.5 * least:
             continue      # a line that is fat all the way is no bow
+        if TIE_BESIDE and np.median(inside) - _beside(ink, row, reach, thick, one, two, TIE_BESIDE * space) < least:
+            continue      # nor is a line that is as fat beside the two heads
         return True
     return False
+
+
+def _beside(ink: np.ndarray, row: int, reach: int, thick: float, one: dict, two: dict, wide: float) -> float:
+    """How much fatter than its staff's lines a staff line is beside two heads: the median of the ink in a band around
+    the line, in the columns at the left of the first head and at the right of the second, the fatter side."""
+    sides = []
+    for begin, end in ((int(one['x0']) - int(wide), int(one['x0'])), (int(two['x1']) + 1, int(two['x1']) + 1 + int(wide))):
+        begin, end = max(0, begin), min(ink.shape[1], end)
+        if end - begin >= 4:
+            sides.append(float(np.median((ink[max(0, row - reach):row + reach + 1, begin:end] > 0).sum(axis=0))) - thick)
+    return max(sides) if sides else 0.0
 
 
 def _syllable(layers: dict, head: dict) -> bool | None:

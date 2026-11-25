@@ -1723,6 +1723,17 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   list holds the word (once). The list's own way keeps the rule to misreads: a form that took any cut of the word near
   the pieces read two more rows of LitChoir and turned a true word that the list lacks into another on the fresh set.
   A word that a rule writes into the middle of a word takes no capital that a misread letter carried ("Na- I- vi- ty").
+- A flat tie that lies in a staff line is told by its lens: the line between the two heads is fatter than the staff's
+  lines. A scan can print one line thick all along, and the line beside the two heads is then as fat as between them
+  (`ties.TIE_BESIDE`). The guard for a line that is fat all the way asked only the columns between the heads, and two
+  quarters close together leave too few of them. A census of every flat tie (33 on LitChoir's pages, 5 on the fresh set)
+  parted the 8 where no bow is printed from the true ties by 3 pixels at least.
+- A short word that Tesseract is not sure of and that the list lacks is named by its two neighbours only where it has
+  two letters or more and the word after it is whole in its row (`ocr.SURE_PAIR`): the first form made "of" of a letter
+  of the dynamics before an open word. A word that a rule spares is mended where it is spared: a later step that takes
+  another reading's word where the list lacks the word as read put a misread back in its place. The replay from the
+  stored rows does not show a rule on a row that is read with a second look the stored rows lack: read the rule's own
+  row in the full pass.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

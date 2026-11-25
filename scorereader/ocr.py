@@ -49,6 +49,12 @@ ROUND = (('Q', 'QO', 'OQ', 'Qo', 'Oo'), '©', 0.7)   # with a list of words that
 #                          number follows it (the sign of a copyright line). (None: off)
 SURE = (20, True)        # a word that Tesseract is less sure of than this (of 100) and that has under three letters is
 #                          left out; with a list of words it stays when the list holds it (True)
+SURE_PAIR = True         # and it stays as the list's word one letter away where it has two letters and the list holds one
+#                          such word that stands between the word before and the word after it in the list's text, and
+#                          those two do not follow each other there: 'the Sun ‘or! Righ-teous-ness' is 'Sun of'. Not where
+#                          the word after goes on in the next row, and where a hyphen was read before it only where the
+#                          word before is a whole word of the list that makes no word with it. Such a word speaks for no
+#                          reading of the row, as SURE_ALIKE's words do (False: off)
 SURE_JOIN = True         # and it stays where the list holds the word that it makes with the pieces beside its hyphens: the
 #                          hyphen was read, so a syllable stands there ('Bless-' and an unsure 'ed', an unsure 'el-'
 #                          before 'der') (False: off)
@@ -431,6 +437,50 @@ def _joined(found: list[dict], words: list[tuple[str, float, float, float]], num
     return ''.join(sign for sign in (before + text + after).lower() if sign.isalpha()) if before or after else ''
 
 
+def _pair_spared(found: list[dict], words: list[tuple[str, float, float, float]], number: int, text: str,
+                 known: dict[str, int]) -> str | None:
+    """The list's word one letter away from a short unsure word that the list does not hold, where that word stands
+    between the word before and the word after in the list's text and is the only one (see SURE_PAIR)."""
+    pairs = getattr(known, 'pairs', None)
+    read = ''.join(sign for sign in text.lower() if sign.isalpha())
+    if not pairs or not PAIR or len(read) < 2 or len(read) > PAIR or read in known or not found \
+            or any(sign in JOINS for sign in text):
+        return None       # a single letter is a stroke, a dot or a letter of the dynamics as often as a word
+    at = len(found) - 1
+    while at > 0 and found[at - 1]['join']:
+        at -= 1
+    before = ''.join(sign for part in found[at:] for sign in part['text'].lower() if sign.isalpha())
+    after = ''
+    for later in range(number + 1, len(words)):
+        other = words[later][0].replace('|', '').strip(LINES)
+        if other and any(sign.isalpha() for sign in other):
+            after = _joined([], words, later, other) or ''.join(sign for sign in other.lower() if sign.isalpha())
+            rest = [word[0].replace('|', '').strip(LINES) for word in words[later:]]
+            rest = [word for word in rest if word]
+            if rest and all(all(sign in JOINS + LINES + '.,' for sign in word) or not any(sign.isalpha() for sign in word)
+                            for word in rest[1:]) and (rest[0][-1] in JOINS or any(sign in JOINS for word in rest[1:] for sign in word)):
+                return None   # the word after goes on in the next row: its letters here are no word
+            break
+    if not before or not after or (before, after) in pairs:
+        return None
+    near = set()
+    for place in range(len(read) + 1):
+        near.update(read[:place] + sign + read[place:] for sign in ABC)
+        if place < len(read):
+            near.add(read[:place] + read[place + 1:])
+            near.update(read[:place] + sign + read[place + 1:] for sign in ABC)
+    meant = [new for new in near if new and new != read and new in known and (before, new) in pairs and (new, after) in pairs]
+    if len(meant) != 1:
+        return None
+    if found[-1]['join']:
+        # A hyphen was read between the word before and this piece: the piece is a word of its own only where the word
+        # before is a whole word of the list and neither the piece nor the list's word makes a word of the list with it.
+        if before not in known or before + read in known or before + meant[0] in known:
+            return None
+        found[-1]['join'] = False
+    return meant[0]
+
+
 def _in_word(found: list[dict], words: list[tuple[str, float, float, float]], number: int, text: str,
              known: dict[str, int]) -> bool:
     """Whether a piece of a line stands in a word of the list with the pieces that hyphens join it to (see
@@ -512,6 +562,15 @@ def _syllables(words: list[tuple[str, float, float, float]], known: dict[str, in
                 SURE[1] and known and ''.join(sign for sign in text.lower() if sign.isalpha()) in known) \
                 and not (SURE_JOIN and known and _in_word(found, words, number, text, known)):
             spared = short is not None and short(text, left, right)
+            if not spared and short is not None and SURE_PAIR and known:
+                meant = _pair_spared(found, words, number, text, known)
+                if meant:
+                    # It stays as the list's word: a step after the choice of the reading would take another reading's
+                    # word at its place, where the list lacks the word as it was read (OTHER_SIZE took 'lo!').
+                    places = [at for at, sign in enumerate(text) if sign.isalpha()]
+                    new = meant.upper() if len(places) > 1 and all(text[at].isupper() for at in places) \
+                        else meant.capitalize() if text[places[0]].isupper() else meant
+                    text, spared = text[:places[0]] + new + text[places[-1] + 1:], True
             if not spared:
                 continue
         # The pieces between hyphens, each with its share of the word's width.
