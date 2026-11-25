@@ -4067,6 +4067,15 @@ LOST_OWN = 0.35            # a stroke is another head's own stem where it stands
 #                            head at each of its ends (a flag that was read as a head) the stem says nothing. (0: off)
 
 
+LOST_PAST = 0.25           # a stroke that no head has is the stem of the head whose rows hold its near end, where it passes that
+#                            head on its way to the head that lost_stems() chose: two voices a third apart whose heads touch,
+#                            the upper with its stem up at its right and the lower with its stem down at its left. Each head
+#                            followed the other's stem through the ink of both, and the stroke that was left went to the
+#                            head past it, so that the two voices crossed. The stroke stands within this many staff spaces
+#                            of the head's sides, and the head has no stem that way. A census at the step on every page of
+#                            LitChoir and of the fresh set: 7 strokes and 4, each looked at, all of that shape. (None: off)
+
+
 def _across(heads: list[dict], x: float, top: float, bottom: float, space: float) -> bool:
     """Whether an upright stroke is the stem of two heads that overlap across their stems (PAIR_OVER). The stem up
     and the stem down of such a pair are one stroke through both heads, and each head followed its own stem from
@@ -4132,6 +4141,15 @@ def lost_stems(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     far = abs(aside) + max(0.0, apart)
                     if best is None or far < best[0]:
                         best = (far, head, direction, end)
+        if best and LOST_PAST:
+            _, head, direction, end = best
+            past = [other for other in heads if other is not head and other['staff'] == staff and not other.get('thin')
+                    and not any(stem['direction'] == direction for stem in other['stems'])
+                    and other['x0'] - LOST_PAST * space <= x <= other['x1'] + LOST_PAST * space
+                    and ((direction == 'up' and other['cy'] < head['cy'] and top < other['y0'] <= bottom <= other['y1'])
+                         or (direction == 'down' and other['cy'] > head['cy'] and other['y0'] <= top <= other['y1'] < bottom))]
+            if len(past) == 1:
+                best = (best[0], past[0], direction, end)
         if best and best[1]['stems'] and any(abs(x - other) <= LOST_OWN * space and first - 0.5 * space <= bottom
                                              and top <= last + 0.5 * space and way == best[2] for other, first, last, way in own):
             stroke['owned'] = True                     # the stem of the head between: thin_heads() leaves it too
@@ -8493,11 +8511,17 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
     """The marks that are no heads but the place where a tie crosses a bar line: the tie, the bar line and a staff
     line close in a little paper, which was read as a low hollow head with the bar line as its stem. The line goes
     through the staff from its top line to its bottom line and goes on above the mark and below it (a stem ends at its
-    head), and the mark is lower than a head."""
+    head), and the mark is lower than a head. A low hollow mark with no stem is asked for a line at its side
+    (BAR_SIDE)."""
     if not BAR_MARK:
         return []
     ink, high, out = layers['ink'], layers['head'][1], []
     for mark in heads:
+        if BAR_SIDE and mark['hollow'] and not mark.get('thin') and not mark['stems'] \
+                and mark['y1'] - mark['y0'] + 1 <= BAR_MARK[0] * high:
+            if _bar_side(layers, mark):
+                out.append(mark)
+            continue
         if not mark['hollow'] or mark.get('thin') or len(mark['stems']) != 1 \
                 or mark['y1'] - mark['y0'] + 1 > BAR_MARK[0] * high:
             continue
@@ -8549,6 +8573,52 @@ def _bar_end(layers: dict, mark: dict, column: np.ndarray, staff: dict, top: int
             and share(top, mark['y0']) >= BAR_MARK[1] \
             and share(top - half - reach, top - half) <= BAR_END[1]
     return False
+
+
+BAR_SIDE = (0.3, 0.2)   # a low hollow mark with no stem is no head either at an end of an upright line beside it, at a
+#   column within the first number of staff spaces outside the mark's box or the second inside it: the mark touches an
+#   outer line of the staff, the column has no ink beyond that line and fills the staff from the mark to the other outer
+#   line (BAR_END's measures). The paper that a slur closes with an outer line where it crosses a bar line has no stem
+#   where the line stands just past its box, and a bar line through a system goes on past the far line, so the line is
+#   not asked to end there as a stem is. A true whole note at an outer line is as high as a head (BAR_MARK's first
+#   share). A census of every low hollow mark with no stem at the rule's own step, on every page of LitChoir and of the
+#   fresh set: one on LitChoir (a slur over a bar line at the top line, read as a whole note: a rule for one case), and
+#   on the fresh set four cells that a tie closes with an outer line beside a stem through the staff, each read as a
+#   whole note. (None: off)
+
+
+def _bar_side(layers: dict, mark: dict) -> bool:
+    """Whether a low hollow mark with no stem sits at an end of an upright line at its side (BAR_SIDE)."""
+    if not BAR_END:
+        return False
+    ink, staff = layers['ink'], layers['staves'][mark['staff']]
+    space = staff['space']
+    top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
+    half = staff['thick'] / 2 + BAR_END[0]
+    reach = max(1, int(round(BAR_MARK[2] * space)))
+    at_top, at_bottom = mark['y0'] <= top + half, mark['y1'] >= bottom - half
+    out, inside = int(round(BAR_SIDE[0] * space)), int(round(BAR_SIDE[1] * space))
+    best = None
+    if at_top or at_bottom:
+        x0, x1 = int(mark['x0']), int(mark['x1'])
+        for x in list(range(x0 - out, x0 + inside + 1)) + list(range(x1 - inside, x1 + out + 1)):
+            if x < 1 or x + 2 > ink.shape[1]:
+                continue
+            column = ink[:, x - 1:x + 2].any(axis=1)
+            def share(lo: float, hi: float) -> float:
+                part = column[max(0, int(round(lo))):max(0, int(round(hi)))]
+                return float(part.mean()) if len(part) else 0.0
+            if at_top:      # the slur at the top line, the line going down
+                fill, past = share(mark['y1'] + 1, bottom + 1), share(top - half - reach, top - half)
+            else:           # at the bottom line, the line going up
+                fill, past = share(top, mark['y0']), share(bottom + half + 1, bottom + half + 1 + reach)
+            if best is None or (fill, -past) > (best[0], -best[1]):
+                best = (fill, past, x)
+    found = best is not None and best[0] >= BAR_MARK[1] and best[1] <= BAR_END[1]
+    if CENSUS is not None:
+        CENSUS.append({'rule': 'SIDE', 'box': [mark['x0'], mark['y0'], mark['x1'], mark['y1']], 'staff': mark['staff'],
+                       'best': best, 'found': bool(found)})
+    return bool(found)
 
 
 BAR_FAINT = (0.38, 0.55, 0.02, 0.6, 0.3)   # a bar line of a faint print, broken into dashes: an upright line with ink

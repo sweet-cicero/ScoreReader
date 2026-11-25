@@ -163,6 +163,10 @@ PAIR = 3                 # with a list of words that tells which words follow ea
 #                          the word after it ('Lord tq have' is 'Lord to have'), where there is one such word
 #                          only. A short word is not mended by the list alone: too many words are one letter
 #                          away. None: off
+PAIR_SEEN = 0.7          # (PAIR) and where no word one letter away stands between the neighbours, the word may be one
+#                          letter away from a short word that another reading of the row holds at its place (they
+#                          share this much of their width) and that the list does not hold either ('HO-LY cot, HO-LY',
+#                          where another reading holds 'cod', is 'god'). None: off
 PAIR_OTHER = 0.7         # and a word that does not stand with both of its neighbours in the list's text becomes
 #                          the word that another reading of the row holds at its place (they share this much of
 #                          their width), where that word stands with both ('at thy night hand' is 'right' in
@@ -676,25 +680,45 @@ class _Ways(dict):
     parted: set = set()
 
 
-def _between(syllables: list[dict], known: dict[str, int]) -> list[dict]:
+def _between(syllables: list[dict], known: dict[str, int], others: list[list[dict]] = ()) -> list[dict]:
     """A short word that the list of words does not hold becomes the list's word one letter away that stands
-    between its two neighbours in the list's text (see PAIR). Capitals and signs stay as they were read."""
+    between its two neighbours in the list's text (see PAIR), or one letter away from the short word that another
+    reading of the row holds at its place (`others`, see PAIR_SEEN). Capitals and signs stay as they were read."""
     pairs = getattr(known, 'pairs', None) or frozenset()
+
+    def letters(word: list[dict]) -> str:
+        return ''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
+
     words = _read_words(syllables)
-    texts = [''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha()) for word in words]
+    texts = [letters(word) for word in words]
     for number in range(1, len(words) - 1):
         read = texts[number]
         if len(words[number]) != 1 or not read or len(read) > PAIR or read in known:
             continue
         before, after = texts[number - 1], texts[number + 1]
-        near = set()
-        for at in range(len(read) + 1):
-            near.update(read[:at] + sign + read[at:] for sign in ABC)
-            if at < len(read):
-                near.add(read[:at] + read[at + 1:])
-                near.update(read[:at] + sign + read[at + 1:] for sign in ABC)
-        meant = [new for new in near if new and new != read and new in known
-                 and (before, new) in pairs and (new, after) in pairs]
+
+        def meant_by(seen: set[str]) -> list[str]:
+            near = set()
+            for word in seen:
+                for at in range(len(word) + 1):
+                    near.update(word[:at] + sign + word[at:] for sign in ABC)
+                    if at < len(word):
+                        near.add(word[:at] + word[at + 1:])
+                        near.update(word[:at] + sign + word[at + 1:] for sign in ABC)
+            return [new for new in near if new and new != read and new in known
+                    and (before, new) in pairs and (new, after) in pairs]
+
+        meant = meant_by({read})
+        if not meant and PAIR_SEEN and others:
+            # Only where the word itself is one letter from no such word: the others' words are asked after it.
+            left, right, seen = words[number][0]['x0'], words[number][-1]['x1'], set()
+            for other in others:
+                for there in _read_words(other):
+                    text, first, last = letters(there), there[0]['x0'], there[-1]['x1']
+                    if len(there) == 1 and text and len(text) <= PAIR and text not in known \
+                            and min(right, last) - max(left, first) >= PAIR_SEEN * max(right - left, last - first, 1e-6):
+                        seen.add(text)
+            meant = meant_by(seen) if seen else []
         if len(meant) != 1:
             continue
         part = dict(words[number][0])
@@ -1825,7 +1849,7 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     if PAIR_OTHER and known and mend and len(rows) > 1 and getattr(known, 'pairs', None):
         row = _other_pair(row, [other for other in rows if other is not row], known)
     if PAIR and known and mend and getattr(known, 'pairs', None):
-        row = _between(row, known)
+        row = _between(row, known, [other for other in rows if other is not row])
     if SMALL_I and known and mend:
         # After the reading is chosen: a stray word that goes must not change which reading is kept (see CLEF).
         row = [syllable for number, syllable in enumerate(row)

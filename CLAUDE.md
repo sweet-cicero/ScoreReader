@@ -1675,6 +1675,25 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   label and a staff line under three stem ends. Where the hanging ink ends tells: a slur ends free, and the others end
   at a stem or a bar line. Follow such ink to its end before a rule asks only that it is there. A rule that changes a
   copy by hand in a stretch that the count's window leaves out moves no count: look at the page for it too.
+- A test that an older rule asks of its own mark is asked of the new case before it is borrowed. `BAR_END` asks that the
+  line end at the staff's far line, because a stem that reaches the far line ends at its head there; the bar line beside
+  the false whole note of trisagion-arabic goes on through its system, and the borrowed test left the one mark that the
+  new rule was written for (`symbols.BAR_SIDE`). The line beside a low mark with no stem can also be the stem of a note
+  through the staff: on the fresh set the cells that a tie closes with an outer line there were read as whole notes, and
+  the rule takes them too.
+- A rule that widens the candidates of an older choice that needs one candidate makes that choice ambiguous where it
+  had acted. Asked together with the word itself, the words that the other readings of a row hold turned "our" back into
+  "olr" between "Christ" and "God" (two words stood with both neighbours). The wider candidates are asked only where the
+  word itself gives none (`ocr.PAIR_SEEN`: 6 syllables gained and none lost on all scan pages, none moved on the fresh
+  set).
+- Two voices a third apart whose heads touch, the upper with its stem up at its right and the lower with its stem down
+  at its left, each follow the other's stem through the ink of both, and the stroke that is left goes to the head past
+  the one that holds its end: the voices cross. The count by the top and the bottom note of a column does not see it,
+  and the count by parts loses both notes where the stems name the voices. The end of the stroke tells
+  (`symbols.LOST_PAST`; 7 places on LitChoir's pages and 4 on the fresh set, one shape). A head that gets a stem toward
+  a mark at the stem's far end lets that mark stand where `FAR_MARK` took it (the flag of a hand, read as a head):
+  marks whose head has a stem back to them are mostly true pairs (52 on LitChoir's pages), so the worklog names the note
+  and the rule stays.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
