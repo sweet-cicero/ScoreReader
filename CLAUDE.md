@@ -1694,6 +1694,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   a mark at the stem's far end lets that mark stand where `FAR_MARK` took it (the flag of a hand, read as a head):
   marks whose head has a stem back to them are mostly true pairs (52 on LitChoir's pages), so the worklog names the note
   and the rule stays.
+- The place of a hollow head is the middle of its hole, and a staff line through a half note hides the half of the
+  inside that it crosses: on a heavy print the hole that is left lies at one side of the line, its middle half a place
+  off, and the box of the head says which line the head sits on (`symbols.LINE_HOLE`). The same case beside the staff,
+  a hollow head whose box ends at its ledger line, did not part by any measure of its census: one print's C4 (an oval
+  over the line with a stroke under it) stood 0.27 to 0.29 staff spaces past the line, and half notes by hand that sit
+  on their line 0.31 to 0.45. No rule. A census from the stored notes misses a head that a later step changed (an
+  eighth whose flag fills it is hollow at the rule's step): the full pass changed one page more than the census named.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
