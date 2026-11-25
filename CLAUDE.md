@@ -1745,6 +1745,20 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   arguments: a first copy read the dashes of the page's last row for every row.
 - A syllable that every reading of a row holds with the same letters is not therefore right: kept from the mending
   ("spi-nts" for "spi-rits"), such syllables gained 6 and lost 58 on all scan pages.
+- Where the list holds two or more words one letter away from a word that it lacks, the word's two neighbours in the
+  list's text choose, where only one near word stands with both (`ocr.MEND_NEAR`). The census of every place where its
+  first form mended, labelled by the typed hymn, showed what it must leave: a word that Tesseract is sure of or that
+  every reading holds alike is a true word that the list lacks as often as a misread ("of gold in", and "we wish you"
+  on the fresh set), and the neighbours then name a common word. The three words of the list's text in a row did not
+  part the cases.
+- A further language file's reading is chosen by its letters outside the list (`ocr.SECOND`), so a rule that mends a
+  word changes that choice where it mends in such a reading: a second file's reading with one word mended won a row
+  whose first reading was right in two other words (2 syllables of a copy by hand). The replay of the stored rows
+  holds the first file only and cannot show it: a new rule of the mending acts in the first file's readings unless the
+  full pass shows it right in the further ones.
+- A parameter can share its name with a local of its function, and the local overwrites it without a word: a flag
+  `near` of `_mend` met the set of the near words, and a copy of a narrowed rule read as the wide one. Search the
+  function for a name before it is given to a parameter, as a helper is searched for in its module.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

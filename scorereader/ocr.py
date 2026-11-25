@@ -155,6 +155,15 @@ MEND = (4, 2, 80, 50, 0.2)   # with a list of words: a word of this many letters
 #                          sure of it than the fourth number. And only on a page of whose letters this share or more
 #                          stands in words that the list holds: else the page is in another language than the list
 #                          (None: off)
+MEND_NEAR = True         # (MEND) where the list holds two or more words one letter away, the one that stands with both
+#                          of the word's neighbours in the list's text, where only one does: 'the Sunt of' is 'the Sun
+#                          of' ('sun' and 'sent' are one letter away, and 'the sun' and 'sun of' are pairs of the
+#                          list). Not for a word that Tesseract is sure of or that every reading holds alike (firm):
+#                          such a word is a true word that the list lacks as often as not ('of gold in', 'we wish
+#                          you'), and the neighbours then name a common word ('god', 'with'). And only in a reading
+#                          of the first language file: a further file's reading is chosen by its letters outside the
+#                          list (SECOND), and a word mended there made a reading win that had misread two others.
+#                          False: off
 MEND_TWIN = (('m', 'rn'),)   # with a list of words: a word of three letters or more that the list does not hold becomes
 #                          the list's word that has the two letters where the one letter was read ('bom' is 'born':
 #                          an r and an n that touch are an m for Tesseract at every size and with every file, and it
@@ -1241,7 +1250,8 @@ def _framed(carried: str, parts: list[dict], known: dict[str, int]) -> str | Non
 
 
 def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = None,
-          agreed: frozenset[str] | set[str] = frozenset(), alike=None, carried: str = '') -> list[dict]:
+          agreed: frozenset[str] | set[str] = frozenset(), alike=None, carried: str = '',
+          first_file: bool = True) -> list[dict]:
     """Mends the words that the list of words does not hold. Tesseract reads a letter of a word wrongly here and
     there ('tnose', 'orlent', 'trinty'); the hymns of one church use the same words again and again, and the list
     tells which word was meant. A word is the syllables that hyphens join. Only letters count: capitals, commas and
@@ -1250,7 +1260,8 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
     syllable is never taken away (it is a word of its own whose hyphen was read wrongly: 'O-joy'). A vowel that is
     missing between two syllables becomes a syllable of its own ('Trin-ty' is 'Trin-i-ty'), unless the syllable
     before it has no vowel yet ('Gl-ry' is 'Glo-ry'). `mended` takes each word that was mended, as it was read.
-    `carried` are the letters of the word that the row before leaves open (see MEND_BEFORE)."""
+    `carried` are the letters of the word that the row before leaves open (see MEND_BEFORE). `first_file`: the
+    reading is one of the first language file (see MEND_NEAR)."""
     found: list[dict] = []
     word: list[dict] = []
     ahead = ''
@@ -1305,6 +1316,15 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
                 near.add((at, 'less', read[:at] + read[at + 1:]))
                 near.update((at, 'other', read[:at] + sign + read[at + 1:]) for sign in ABC if sign != read[at])
         meant = {new: (at, how) for at, how, new in sorted(near, reverse=True) if known.get(new, 0) >= MEND[1]}
+        after = ''        # the letters of the next word
+        for other in syllables[number + 1:]:
+            after += ''.join(sign for sign in other['text'].lower() if sign.isalpha())
+            if not other['join']:
+                break
+        if len(meant) > 1 and MEND_NEAR and first_file and not firm and getattr(known, 'pairs', None):
+            both = [new for new in meant if (before, new) in known.pairs and (new, after) in known.pairs]
+            if len(both) == 1:
+                meant = {both[0]: meant[both[0]]}
         if len(meant) != 1:
             continue
         (new, (at, how)), = meant.items()
@@ -1320,11 +1340,6 @@ def _mend(syllables: list[dict], known: dict[str, int], mended: list | None = No
             often = False
         if often:
             # A piece of a word whose hyphen was not read ('glori ous') is no misread word.
-            after = ''
-            for other in syllables[number + 1:]:
-                after += ''.join(sign for sign in other['text'].lower() if sign.isalpha())
-                if not other['join']:
-                    break
             often = before + read not in known and read + after not in known
         if firm and not often and not (odd and not last and known[new] >= MEND_OFTEN[1] * _RUNS[2]):
             continue
@@ -1692,7 +1707,8 @@ def _words_row(words: list[tuple[str, float, float, float]]) -> bool:
 
 def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, band: dict,
               known: dict[str, int], mend: bool = True, alone: bool = False, mending: bool = True,
-              agreed: frozenset[str] | set[str] = frozenset(), alike=None, short=None) -> tuple[list[dict], float, bool]:
+              agreed: frozenset[str] | set[str] = frozenset(), alike=None, short=None,
+              first_file: bool = True) -> tuple[list[dict], float, bool]:
     """What one reading of a row gives: its syllables, how well the reading fits, and whether the list of words
     holds each of its words. The fit is the number of letters in words that the list holds, and among readings
     that are level there, or with no list, how sure Tesseract is of the letters. `alone`: the reading is a second
@@ -1741,7 +1757,7 @@ def _text_row(words: list[tuple[str, float, float, float]], grey: np.ndarray, ba
                 row = _mend_twin(row, known, mended)
             if MEND_PAIR:
                 row = _mend_pair(row, known, mended, band.get('carried', '') if MEND_BEFORE else '')
-            row = _mend(row, known, mended, agreed, alike, band.get('carried', ''))
+            row = _mend(row, known, mended, agreed, alike, band.get('carried', ''), first_file)
         held, total = _held(row, known)
         if unsure and (total < ROW_HELD[1] or _held(row, known, ROW_HELD[2])[0] < ROW_HELD[0] * total):
             return [], -1.0, False, spared
@@ -2005,6 +2021,7 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         second = again and size > 0
         row, fit, whole = _text_row(read(size), grey, band, known, mend, again and (best is None or best[1] < 0),
                                     mending=bool(SECOND_MEND) or not second, agreed=firsts if second else frozenset(),
+                                    first_file=not second,
                                     alike=alike if MEND_ALIKE and known else None,
                                     short=short if SURE_ALIKE and known and (SURE_ALIKE > 1 or not second) else None)
         lacking = _lacking(row, known)
