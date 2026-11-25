@@ -96,6 +96,16 @@ JOINED_ENDS = True              # ... and its ends are the first and the last ro
                                 # stroke of a sign is followed into a staff line past its end, over a gap of paper. Such
                                 # a sign lies before its head, not in its box (SHARP_JOINED[4], with a stem too)
                                 # (False: the rows of the stroke)
+STACKED = (1.2, 2.0, 0.6, 0.35, 0.5)   # two heavy sharps of a chord a third apart, the upper one at the right as a print
+                                # staggers them, whose strokes are one mark: from this to this wide (staff spaces); each
+                                # sharp is this share of the mark's width, in the rows of the outer band of the mark of
+                                # this width, and the right one stands at least this much higher at both ends. Each part
+                                # is a joined sharp (SHARP_JOINED), and the paper that the mark closes is no head. A
+                                # census of every such mark at this step (6,665 on LitChoir's pages, 3,267 on the fresh
+                                # set) took the one chord of nativity-troparion on its three scans and nothing else: a
+                                # rule for one case (None: off)
+STACK_TOUCH = 0.15              # ... and two strokes this close (staff spaces), one of them heavier than a sharp's
+                                # (PAIR_WIDE), are one such mark: a scan parts it at the middle stroke that both sharps share
 JOINED_HEAD = True              # the middle of a joined sharp (SHARP_JOINED) that was taken for a head is no head: a mark whose
                                 # middle and stems lie in the columns of the one wide stroke (False: off)
 NATURAL_OWN = True              # the paper that the strokes and the bars of a natural close in is no hollow head: a mark whose
@@ -390,6 +400,24 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                                                  'bottom': stroke['bottom']}, space) == 'sharp':
                 ghosts.extend(inside)
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
+    stacks = []
+    if STACKED:
+        # Two heavy sharps of a chord set one over the other, whose strokes are one mark (or two marks that a scan
+        # parted): each part is a joined sharp, and the paper that the mark closes, read as heads, is no head.
+        ordered = sorted(strokes, key=lambda stroke: stroke['x0'])
+        boxes = [stroke for stroke in ordered if stroke['wide'] > STACKED[0]]
+        if STACK_TOUCH:
+            boxes += [{'x0': left['x0'], 'x1': right['x1'], 'top': min(left['top'], right['top']),
+                       'bottom': max(left['bottom'], right['bottom'])}
+                      for left, right in zip(ordered, ordered[1:])
+                      if right['x0'] - left['x1'] <= STACK_TOUCH * space and max(left['wide'], right['wide']) > PAIR_WIDE]
+        for box in boxes:
+            two = _stacked_sharps(layers, box, space)
+            if two:
+                stacks.append((box, two))
+                ghosts.extend(head for head in full if box['x0'] <= head['cx'] <= box['x1'] and box['top'] <= head['cy'] <= box['bottom']
+                              and all(box['x0'] - 1 <= stem['x'] <= box['x1'] + 1 for stem in head['stems']))
+        full = [head for head in full if not any(head is ghost for ghost in ghosts)]
     if NATURAL_OWN:
         # The middle of a natural, closed in by its strokes and bars, read as a hollow head with the right stroke as its
         # stem. A head stands beside its sign, not between its strokes.
@@ -466,6 +494,12 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             kind = _joined_sharp(layers, sign, space)
             if kind:
                 signs.append(dict(sign, kind=kind))
+    for box, two in stacks:
+        if any(x0 - 2 <= box['x0'] <= x1 + 2 or x0 - 2 <= box['x1'] <= x1 + 2 for x0, x1 in taken):
+            continue
+        for part in two:
+            middle = (part['top'] + part['bottom']) / 2
+            signs.append(dict(part, kind='sharp', joined=True, stacked=True, place=4 - 2 * (middle - staff['rows'][0]) / space))
     out = []
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
@@ -629,6 +663,34 @@ def faded_sharp(layers: dict, staff: dict, head: dict, heads: list[dict]) -> dic
                     'place': 4 - 2 * (middle - staff['rows'][0]) / space, 'faded': True, 'parts': parts,
                     'bars': [(bar[2] / space, bar[3] / space, bar[4], bar[5]) for bar in (upper, lower)]}
     return None
+
+
+def _stacked_sharps(layers: dict, stroke: dict, space: float) -> list[dict] | None:
+    """The two sharps of a mark that is two joined sharps one over the other, the upper one at the right (STACKED): each
+    part is a joined sharp in its own rows, those of its outer band. None when the mark is not so."""
+    x0, x1 = int(stroke['x0']), int(stroke['x1'])
+    wide = x1 - x0 + 1
+    if not STACKED[0] * space < wide <= STACKED[1] * space:
+        return None
+    top, bottom = int(stroke['top']), int(stroke['bottom']) + 1
+    bare = layers['bare'][top:bottom, x0:x1 + 1]
+    band = max(2, int(round(STACKED[3] * space)))
+
+    def rows(part: np.ndarray) -> tuple[int, int] | None:
+        found = np.nonzero(part.any(axis=1))[0]
+        return (top + int(found[0]), top + int(found[-1])) if len(found) else None
+
+    left, right = rows(bare[:, :band]), rows(bare[:, -band:])
+    if left is None or right is None or left[0] - right[0] < STACKED[4] * space or left[1] - right[1] < STACKED[4] * space:
+        return None
+    part = int(round(STACKED[2] * wide))
+    out = []
+    for (a, b), (high, low) in (((x0, x0 + part - 1), left), ((x1 - part + 1, x1), right)):
+        sign = {'x0': float(a), 'x1': float(b), 'top': float(high), 'bottom': float(low)}
+        if _joined_sharp(layers, sign, space) != 'sharp':
+            return None
+        out.append(sign)
+    return out
 
 
 def _joined_sharp(layers: dict, sign: dict, space: float) -> str | None:
