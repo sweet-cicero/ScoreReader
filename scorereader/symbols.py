@@ -144,6 +144,13 @@ WORD_MARKS = True    # a thick mark in a band of words is a letter: no head and 
 LEDGER_WORDS = True  # a ledger line is looked for up to the words, not in them
 HEAD_NEAR = 1.5      # the page's head size comes from the marks at most this many staff spaces over or under a staff
 HOLE_PLACE = True    # the place of a hollow head is the middle of its hole; else the middle of its ink
+LINE_HOLE = (0.38, 0.3)   # a hollow head whose hole stands this near the border of two places (from this share of a
+#                    place to one less it) and whose box has its middle at most this many places from a staff line sits
+#                    on that line: the line hides the half of the inside that it crosses, so the hole that is left has
+#                    its middle half a step off. A census of the stored notes of every page of LitChoir: 30 such heads,
+#                    8 read a step off by the typed hymn (2 on the clean copies) and 2 read right (a thick copy and a head
+#                    by hand); the other 20 are marks that are no notes (the paper that a beam or a slur closes with a
+#                    line) or a pitch far from the typed one. (None: off)
 LEDGER_INK = True    # a ledger line is ink: the filled inside of a hollow head does not count for it
 HAND_FLAT = 1.25     # the bowl of a flat that a hand drew is at most this wide, in staff spaces (0: off)
 SHARP_SLIM = 0.3     # the strokes of a sharp are slim for this many staff spaces where they leave its mark
@@ -3322,6 +3329,13 @@ def read_symbols(layers: dict) -> dict:
             if abs(place - near) >= PLACE_MASS[0] and round(mass) == near + (1 if place > near else -1) \
                     and abs(mass - round(mass)) <= 0.5 - PLACE_MASS[1]:
                 head['place'] = place = mass
+        if LINE_HOLE and hollow and HOLE_PLACE and abs(place) <= 4.6 and mark.get('line_place') is None:
+            # A staff line through the middle of a hollow head: the head sits on the line, and the line hides one half
+            # of its inside, so that the middle of the hole stands at the border of the next place (LINE_HOLE).
+            box, part = head['alt']['box'], abs(place) - int(abs(place))
+            line = 2 * round(box / 2)
+            if LINE_HOLE[0] <= part <= 1 - LINE_HOLE[0] and abs(box - line) <= LINE_HOLE[1] and round(place) != line:
+                head['place'] = place = float(line)
         if slit:
             head['speck'], head['speck_place'] = slit, slit_place
         if mark.get('loop'):
