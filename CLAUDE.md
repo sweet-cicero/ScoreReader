@@ -1706,6 +1706,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   said that the loops by hand would stay, and a reading of the first form's pages lost 8 notes by them. Whose stem it is
   parts them (`symbols.WEDGE_ROUND`: the cell lies at the far end of another head's stem). A guard that a census of the
   stored notes chose is read on the pages of the first form before the full pass.
+- A rule that reads a lost note does not mend its score where a false head beside it held that note's line-up. A core
+  of two heads a third apart, dropped by the step for the room of a flag, was cut into its heads (`symbols.ROOM_CHORD`),
+  and the core of the heavy sharps before it stayed a false head: the count moved that head from a wrong pitch to a note
+  that is not there, and the score lost what the chord gained. A room that a sign closes with its chord is no flag
+  either: the chord's stems took a flag from it and were read as eighths. Look at what stands beside a new head in its
+  own mark before the count of the first form is read.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

@@ -101,6 +101,18 @@ ROOM_HEADS = (0.75, 4.0, 3)   # a mark larger than a head with a room that a lar
 #                     the staff lines: its heads are the pieces that are left when an oval of this share of a head
 #                     is pushed through its ink; the mark is at most this many heads wide and high, and holds at
 #                     most this many heads (None: off)
+ROOM_CHORD = (1.5, 2.3, 0.9, 0.3)   # (ROOM_HEADS) two heads a third apart, one over the other, that the oval leaves as one
+#                     core: as wide as a head, from the first to the second number of heads high, with ink on at least
+#                     the third share of a head's box; it is cut evenly into its two heads. A core of a head's size in
+#                     the same mark that ends before such a chord (within the last share of a head's width past the
+#                     chord's left edge) is the chord's sign, no head, and the room is closed by that sign, not by a
+#                     flag. A sharp and a chord close a cell with the staff lines: the core of the chord was too high for
+#                     one head and was dropped, and the core of two heavy sharps was read as a head (nativity-troparion
+#                     and its --s3 scan, triodion-meatfare). (A census at this step on every page of LitChoir and of the
+#                     fresh set: 20 and 33 such cores. The cut changes notes at 7 of LitChoir's and 3 of the fresh
+#                     set's, each a chord of two voices or of one stem; the 3 sign cores beside a chord are two heavy
+#                     sharps (two scans of one print) and a sign by hand. Two such cores in one mark, chords under one
+#                     beam, make more heads than the mark may hold and stay as they were.) None: off
 ROOM_SOLID = (1.6, 1.5, 0.9, 0.55, 0.5, 0.4, 0.4, 0.6, 1.3, 4.5)   # a mark this many heads high or more with the room of a flag:
 #                     the solid ink over or under the room is its head, cut out of the mark (the stem runs along the
 #                     room, inside the mark); solid ink this many heads high or more is two heads of two voices that
@@ -1392,11 +1404,14 @@ def thick_marks(layers: dict) -> list[dict]:
                         mark['solid_cy'] = float(first + y + np.nonzero(part)[0].mean())
                         named = True
             if ROOM_HEADS and not named and len(parts) < 2:
-                found = [_mark(part, np.zeros_like(part), x, y, mark['blob']) for part in _heads_at_room(mask, mask & holes, wide, high)]
+                cores, signed = _heads_at_room(mask, mask & holes, wide, high)
+                found = [_mark(part, np.zeros_like(part), x, y, mark['blob']) for part in cores]
                 found = [part for part in found if part]
                 for number, part in enumerate(found):
                     part['loop'] = (mark['x0'], mark['y0'], mark['x1'], mark['y1'])
                     part['room'] = True
+                    if signed:
+                        part['room_sign'] = True    # the room is closed by the chord's sign, not by a flag (ROOM_CHORD)
                     if number:
                         # Two notes under one beam are no heads of two voices on one line of ink: each is a blob of its own.
                         part['blob'] = -(1000 * len(marks) + number)
@@ -1454,24 +1469,40 @@ def _flag_room(mask: np.ndarray, room: np.ndarray, line: int, wide: float, high:
     return reach - found[0] <= ROOM_SOLID[6] * wide and found[1] >= ROOM_SOLID[8] * found[0]
 
 
-def _heads_at_room(mask: np.ndarray, room: np.ndarray, wide: float, high: float) -> list[np.ndarray]:
+def _heads_at_room(mask: np.ndarray, room: np.ndarray, wide: float, high: float) -> tuple[list[np.ndarray], bool]:
     """The filled heads in a mark that a large flag or a short beam makes with them: on a short stem the flag comes
     back to a staff line at the head, and the head, the stem, the flag and the staff lines close in a room; two heads,
     their stems, a beam and a staff line do the same. The mark is larger than a head, and it is no hollow head. An
     oval nearly as large as a head goes through the ink of a head, and not through a stem, a flag or a beam: what it
-    leaves are the heads. Returns the part of the mask of each head."""
+    leaves are the heads. Returns the part of the mask of each head, and whether a sign of a chord closes the room
+    (ROOM_CHORD)."""
     if mask.shape[1] > ROOM_HEADS[1] * wide or mask.shape[0] > ROOM_HEADS[1] * high:
-        return []
+        return [], False
     ink = (mask.astype(bool) & ~room.astype(bool)).astype(np.uint8)
     oval = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(ROOM_HEADS[0] * wide) | 1, int(ROOM_HEADS[0] * high) | 1))
     cores = cv2.morphologyEx(np.pad(ink, 1), cv2.MORPH_OPEN, oval)[1:-1, 1:-1]
     count, labels, stats, _ = cv2.connectedComponentsWithStats(cores, connectivity=8)
-    found = []
+    found, ones, chords = [], [], []
     for label in range(1, count):
-        _, _, own_wide, own_high, area = (int(value) for value in stats[label])
+        left, top, own_wide, own_high, area = (int(value) for value in stats[label])
         if ROOM_HEADS[0] * wide <= own_wide <= 1.3 * wide and own_high <= 1.3 * high and area >= 0.45 * wide * high:
             found.append(labels == label)
-    return found if len(found) <= ROOM_HEADS[2] else []
+            ones.append((len(found) - 1, left + own_wide))
+        elif ROOM_CHORD and ROOM_HEADS[0] * wide <= own_wide <= 1.3 * wide \
+                and ROOM_CHORD[0] * high <= own_high <= ROOM_CHORD[1] * high and area >= ROOM_CHORD[2] * wide * high:
+            # Two heads a third apart, one over the other: the core is as wide as a head and two heads high, and it is
+            # cut evenly into its heads (ROOM_CHORD).
+            upper, lower = labels == label, labels == label
+            upper[top + own_high // 2:] = False
+            lower[:top + own_high // 2] = False
+            found += [upper, lower]
+            chords.append(left)
+    signs = set()
+    if chords and ROOM_CHORD:
+        # The core of a head's size that ends before such a chord is the chord's sign, no head.
+        signs = {index for index, right in ones if right <= min(chords) + ROOM_CHORD[3] * wide}
+        found = [part for index, part in enumerate(found) if index not in signs]
+    return (found, bool(signs)) if len(found) <= ROOM_HEADS[2] else ([], False)
 
 
 def _staff_of(layers: dict, x: float, y: float) -> int | None:
@@ -3342,6 +3373,8 @@ def read_symbols(layers: dict) -> dict:
             head['loop'] = mark['loop']
         if mark.get('room'):
             head['room'] = True
+        if mark.get('room_sign'):
+            head['room_sign'] = True
         if mark.get('across'):
             head['across'] = True
         if mark.get('side_two'):
@@ -6295,7 +6328,7 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                     if STEEP_SEEN is not None:
                         STEEP_SEEN.append(dict(steep, staff=head['staff'], x=float(head['cx']), y=float(head['cy']),
                                                direction=stem['direction'], sx=int(stem['x']), end=int(stem['end'])))
-        if ROOM_HEADS and head.get('room'):
+        if ROOM_HEADS and head.get('room') and not head.get('room_sign'):
             # The room at such a head is closed by a flag or by a beam: the stem that goes along the room has one.
             x0, y0, x1, y1 = head['loop']
             for stem in head['stems']:
