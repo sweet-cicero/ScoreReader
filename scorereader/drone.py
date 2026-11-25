@@ -49,6 +49,12 @@ BREVE = (3.5, 1.0, 1.0, 0.12, 0.9, 2.4, 1.05, 2.0, 0.4)
 #                       0.4, and take that one breve more.
 
 
+LINE_FOOT = True        # a heavy letter that sits on the staff's top line keeps the line's ink under it (the layer without
+#                       the lines leaves a line where other ink touches it), and the letter is taller and joined to that
+#                       ink: where no letter is named, the piece is named again without the rows from the line's top edge
+#                       on, when it ends in the line's rows (pascha-hypakoe--s2, a heavy print. False: off)
+LINE_FOOT_SEEN = None   # census
+
 BREVE_BARE = (2, 0.3, 0.7, 2.8, 1.4, 0.3)
 #                       on a page that names the ison by letters (the first number of letters or more) a breve is the ison
 #                       written out once more, also where no letter stands over it (a print restates the ison at the start
@@ -172,6 +178,26 @@ def name_letter(piece: np.ndarray) -> str | None:
     return None
 
 
+def _line_foot(labels: np.ndarray, head: dict, first: int, staff: dict, space: float) -> str | None:
+    """The letter that a piece names without the rows of the staff's top line, where the piece ends in those rows: a
+    letter that sits on the line (LINE_FOOT)."""
+    row, half = staff['rows'][0], staff['thick'] / 2
+    edge = int(np.floor(row - half)) - first
+    if not edge - 1 <= head['y1'] <= row + half + 1 - first or edge <= head['y0']:
+        return None
+    piece = labels[head['y0']:edge, head['x0']:head['x1'] + 1] == head['label']
+    rows, columns = np.flatnonzero(piece.any(axis=1)), np.flatnonzero(piece.any(axis=0))
+    if len(rows) == 0:
+        return None
+    high, wide = rows[-1] - rows[0] + 1, columns[-1] - columns[0] + 1
+    if not (HIGH[0] * space <= high <= HIGH[1] * space and WIDE[0] * high <= wide <= WIDE[1] * high):
+        return None
+    letter = name_letter(piece)
+    if LINE_FOOT_SEEN is not None and letter is not None:
+        LINE_FOOT_SEEN.append({'x': head['x0'], 'y': head['y0'] + first, 'letter': letter})
+    return letter
+
+
 def letter_marks(layers: dict, index: int, clef: str, after: float = 0.0, trace: list | None = None) -> list[dict]:
     """The ison marks over staff `index`: events as music.staff_columns() gives them ({'x', 'place', 'voice', 'head',
     'length', 'stem_x'}, and 'unison' for "Un."), from the left. Only marks right of the column `after` count (the
@@ -212,6 +238,8 @@ def letter_marks(layers: dict, index: int, clef: str, after: float = 0.0, trace:
         letter = None
         if HIGH[0] * space <= high <= HIGH[1] * space and WIDE[0] * high <= wide <= WIDE[1] * high:
             letter = name_letter(labels[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] == head['label'])
+        if LINE_FOOT and letter is None:
+            letter = _line_foot(labels, head, first, staff, space)
         rest = [piece for piece in word[1:] if piece['y1'] - piece['y0'] + 1 >= FLAT * space]
         if letter == 'U':
             # "Un.": the n is lower than the U and stands on its line; after it only the full stop, or a stroke that

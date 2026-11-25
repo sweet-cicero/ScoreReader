@@ -1777,6 +1777,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the test takes for a beam have a stem that leans); the two ways at one side that lean the same way, one of them the
   arc of a ring by `STEM_ARC`, do. A census of every side whose ways up and down are both stems named what else has
   that shape: the belly of a treble clef and the curl of a flag, where no note is read.
+- The layer without the staff lines keeps a line where other ink touches it. A heavy letter of the ison that sits on
+  the top line is then a few pixels taller and its foot a block, and no letter was named: where no letter is named
+  and the piece ends in the rows of the top line, it is named again without those rows (`drone.LINE_FOOT`). A census
+  of the ison marks of every one-staff page, with the rule off and on in one reading, named the letters that it
+  changes (2, both true). A milder limit of the naming of every letter for the other heavy letters of that page was
+  not tried.
+- A slur that is read as the last beam of a run is thinner at its neighbour than the beam at the neighbour's other
+  side (0.54), and true beams of a thick copy are as thin there (0.5 to 0.62, the next stem the end of its run): the
+  census of every middle stem of a beam at the reader's step showed it, and the slur has no rule.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
