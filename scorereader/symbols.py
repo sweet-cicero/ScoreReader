@@ -146,6 +146,17 @@ LEDGER_BESIDE = (0.3, 0.7, 1.4, 0.6, 1.6, 0.5, 0.7)
 #   heads on 420 pages; 2,345 on the fresh set) took 44 rows on 36 pages and 5 on the fresh set; without the solid ink
 #   it took two stacked ledger lines beside a head of samaritan-megalynarion and pencil, words and a hand's marks.
 LEDGER_BESIDE_SEEN = None    # a list: a census of every row that LEDGER_BESIDE asks
+RING_SIDE = True
+#   A pencil ring, or a long arc by hand, that passes the side of a filled head leaves the head's mark upward and downward
+#   at that side, and the test for a beam took its upper half with the head's own stem for the two stems of a beam: the
+#   head was no head. The two ways at one side are one ring where both are stems, both lean the same way from the mark
+#   (the stroke bows past it), one of them is the arc of a ring (STEM_ARC), and the test for a beam would take one of
+#   them: then neither is a stem. A census at the reader's own step of every side of a head's mark whose ways up and down
+#   are both stems (9,891 on LitChoir's pages, 8,699 on the fresh set): 3,312 and 2,840 lean the same way, 177 of those on
+#   LitChoir have an arc and none on the fresh set, and the test for a beam takes one of them at 11: the belly of 8 treble
+#   clefs, the curl of a flag, and 3 heads that a ring or an arc by hand passes (an F4 of holy-saturday-koinonikon and a
+#   chord of st-basil-in-thee-rejoiceth). The clefs and the curl stand where no note is read, and their pages read as before.
+RING_SIDE_SEEN = None    # a list: a census of every side that RING_SIDE takes
 PLACE_MASS = None    # off. (0.35, 0.08): a head in the staff whose middle was measured this far or more from the middle
 #   of its place (in places: the border of two places lies at 0.5) takes the place of the middle of all its ink, when
 #   that lies in the place next to it at that side, this far or more past the border. The middle of a hollow head is
@@ -3075,6 +3086,27 @@ def _whole_beside(layers: dict, marks: list[dict], limit: float) -> int:
     return count
 
 
+def _ring_side(layers: dict, mark: dict, space: float) -> None:
+    """Takes the two ways at one side of a head's mark out of its ways where they are one ring that passes that side
+    and the test for a beam would take one of them for a beam's stem (RING_SIDE)."""
+    ways = mark['ways']
+    pairs = (('down_left', 'down_right'), ('up_left', 'up_right'))
+    for side in ('left', 'right'):
+        up, down = ways['up_' + side], ways['down_' + side]
+        if not (is_stem(up, space) and is_stem(down, space) and up['lean'] * down['lean'] > 0):
+            continue
+        if not any(is_stem(ways[left], space) and is_stem(ways[right], space) and ways[right]['x'] - ways[left]['x'] >= space
+                   and side in (left.split('_')[1], right.split('_')[1]) for left, right in pairs):
+            continue
+        if not (_stem_arc(layers, up['mid'], up['end'], mark['cy']) or _stem_arc(layers, down['mid'], down['end'], mark['cy'])):
+            continue
+        if RING_SIDE_SEEN is not None:
+            RING_SIDE_SEEN.append({'box': [int(mark['x0']), int(mark['y0']), int(mark['x1']), int(mark['y1'])], 'side': side,
+                                   'leans': [up['lean'], down['lean']]})
+        ways['up_' + side] = ways['down_' + side] = None
+        mark['ring_side'] = side
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -3120,6 +3152,8 @@ def read_symbols(layers: dict) -> dict:
         # A beam hangs on two stems that leave it the same way, one at each end. (Right over the words, the two are
         # letters under a head. Under the words a slur hangs on two letters, and that is no head.)
         ways = mark['ways']
+        if RING_SIDE and mark['kind'] == 'head':
+            _ring_side(layers, mark, space)
         for left, right in (('down_left', 'down_right'), ('up_left', 'up_right')):
             if is_stem(ways[left], space) and is_stem(ways[right], space) and ways[right]['x'] - ways[left]['x'] >= space \
                     and not (WORD_STEM and left == 'down_left' and _into_words(layers, mark, ways[left])
