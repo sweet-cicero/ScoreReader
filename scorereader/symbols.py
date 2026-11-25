@@ -7060,12 +7060,22 @@ FLAT_WEDGE = (0.85, 0.35, 0.1, 0.7)   # a lower cell along a staff line (under F
 #   at most at the 58 true heads among them, which a hand drew as a loop from the stem on a line, and in 0.54 or more
 #   at the others. The 24 from 0.7 on were each looked at: cells at beams, slurs, flags, a pencil ring, a sharp and
 #   strokes by hand, no head.) None: off
+WEDGE_ROUND = (0.6, 0.15, 0.3)   # (FLAT_WEDGE) a wedge whose high end a stroke rounds off where it meets a stem: the end
+#   is the first share of its highest column on the mean, and the highest columns end within the second share of its
+#   width of that end. The heavy beam of one print meets the stem of the next note so, and the cell that it closes with
+#   the stem and the top line was read as a whole note (nativity-troparion--s3). A hand draws a head as such a loop at
+#   its own stem: the cell must lie at the far end of the stem of another head, within the last number of staff spaces
+#   of its box. (A census at this step on every page of LitChoir: of the 61 cells that the milder shape alone takes,
+#   with open paper across the line, 7 are heads by hand that a hand drew as a loop at the stem, and the first form lost
+#   8 notes by them; at the end of another note's stem the rule acts at 6 cells of 5 pages, each a mark that is no note:
+#   the cell that a beam, a slur or a flag closes with the stem and a line.) None: off
 
 
 def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, height: int, line: float, space: float,
-                cut: bool = False) -> bool:
+                cut: bool = False, stem_ends: tuple = ()) -> bool:
     """Whether the closed paper of a hollow mark that lies in this box, level at the staff line in this row, is a wedge
-    with open paper across the line (FLAT_WEDGE). `cut`: only the rows of the box count (FLAT_RAGGED)."""
+    with open paper across the line (FLAT_WEDGE). `cut`: only the rows of the box count (FLAT_RAGGED). `stem_ends`: the
+    column and the far end of the stems of the other heads (WEDGE_ROUND)."""
     reach = int(round(1.2 * space))
     y0, x0 = max(0, int(head['y0']) - reach), max(0, int(head['x0']) - reach)
     window = (slice(y0, int(head['y1']) + reach + 1), slice(x0, int(head['x1']) + reach + 1))
@@ -7090,7 +7100,15 @@ def _flat_wedge(layers: dict, head: dict, left: int, top: int, width: int, heigh
         most = float(tops[0]) if tops[0] <= 1 - tops[-1] else float(tops[-1])
     if not (max(first, last) >= FLAT_WEDGE[0] and min(first, last) <= FLAT_WEDGE[1]
             and (most <= FLAT_WEDGE[2] or most >= 1 - FLAT_WEDGE[2])):
-        return False
+        # A wedge whose high end a stroke rounds off, at the far end of another note's stem (WEDGE_ROUND).
+        tops = np.nonzero(high == high.max())[0] / max(1, len(high) - 1)
+        if not (WEDGE_ROUND and max(first, last) >= WEDGE_ROUND[0] and min(first, last) <= FLAT_WEDGE[1]
+                and min(tops[0], 1 - tops[-1]) <= WEDGE_ROUND[1]):
+            return False
+        reach = WEDGE_ROUND[2] * space
+        if not any(head['x0'] - reach <= x <= head['x1'] + reach and head['y0'] - reach <= end <= head['y1'] + reach
+                   for x, end in stem_ends):
+            return False
     across = np.zeros(part.shape, bool)
     for y, x in zip(ys, xs):
         row = int(round(2 * (line - y0) - y))
@@ -7184,7 +7202,9 @@ def without_flat_cells(layers: dict, heads: list[dict]) -> list[dict]:
                             # A low cell: only a wedge with open paper across its line (FLAT_WEDGE).
                             edge = top - 0.5 - half if above >= FLAT_CELL[1] and above >= below else bottom - 0.5 + half
                             line = float(rows[np.abs(rows - edge).argmin()])
-                            if not _flat_wedge(layers, head, x0 + x, top, width, height, line, space, ragged):
+                            stem_ends = [(stem['x'], stem['end']) for other in heads if other is not head
+                                         for stem in other['stems'] if isinstance(stem, dict) and 'end' in stem]
+                            if not _flat_wedge(layers, head, x0 + x, top, width, height, line, space, ragged, stem_ends):
                                 out.append(head)
                                 continue
                         own = np.ascontiguousarray(layers['ink'][y0:int(head['y1']) + 2, x0:int(head['x1']) + 2])

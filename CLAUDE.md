@@ -1701,6 +1701,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   over the line with a stroke under it) stood 0.27 to 0.29 staff spaces past the line, and half notes by hand that sit
   on their line 0.31 to 0.45. No rule. A census from the stored notes misses a head that a later step changed (an
   eighth whose flag fills it is hollow at the rule's step): the full pass changed one page more than the census named.
+- A cell that a stroke closes with a stem and a staff line has one shape where a hand drew a head as a loop at its own
+  stem and where a heavy beam closes it at the stem of the next note. A guard by the fatness that the stored notes keep
+  said that the loops by hand would stay, and a reading of the first form's pages lost 8 notes by them. Whose stem it is
+  parts them (`symbols.WEDGE_ROUND`: the cell lies at the far end of another head's stem). A guard that a census of the
+  stored notes chose is read on the pages of the first form before the full pass.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
