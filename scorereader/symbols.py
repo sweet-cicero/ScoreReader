@@ -4049,6 +4049,12 @@ THIN_INSIDE = 0.5          # when the stem runs inside the piece of ink of a thi
 THIN_BACK = 0.25           # the middle of a thin head lies at most this many staff spaces before the end of its stem
 LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
+THIN_SPECKS = 0.3          # and it has ink of its own in at least this share of its rows outside the staff lines and the
+#                            rows of the head: a weak copy joins a thin stroke over small gaps, and so a column of ink
+#                            specks over a printed mark, which was read as a head with a stem (a flat block in the bass
+#                            staff of a scan of nativity-troparion, 0.24). Of the 2,908 thin heads of LitChoir's pages
+#                            that a stroke of its own gives, that one is under 0.4, the next two have 0.41 (no note) and
+#                            0.43 (a true note); the fresh set's 166 have 0.8 or more. A rule for one case (None: off)
 STEM_THROUGH = None        # off. (0.7, 1.5, 0.2): a mark with no stem, from this to this many times as wide and as high as the
 #                            heads of the page, has the stem of the head right over or under it that was cut from the
 #                            same piece of ink (a piece of two marks, one column), when it lies between that head and
@@ -4958,11 +4964,24 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         if head is not None and stroke is not None and not owners and abs(head['place']) > 4.6 and not head.get('ledgers') \
                 and _f_stroke(stroke, space):
             continue        # the hook of the letter f
+        if head is not None and THIN_SPECKS and stroke is not None and not owners \
+                and _own_ink(stroke, head, staves[staff]) < THIN_SPECKS:
+            continue        # a column of specks is no stem
         if head is not None:
             found.append(head)
             if not owners:
                 asked[id(head)] = (x, top, bottom, direction)
     return found
+
+
+def _own_ink(stroke: dict, head: dict, staff: dict) -> float:
+    """The share of a stroke's rows, outside the staff lines and the rows of its head, where the stroke has ink of its
+    own (see THIN_SPECKS)."""
+    half = staff['thick'] / 2 + 1
+    own = [bool(stroke['left'][step] > 0 or stroke['right'][step] > 0) for step in range(stroke['y1'] - stroke['y0'] + 1)
+           if all(abs(stroke['y0'] + step - row) > half for row in staff['rows'])
+           and not head['y0'] <= stroke['y0'] + step <= head['y1']]
+    return float(np.mean(own)) if own else 1.0
 
 
 def ring_heads(heads: list[dict]) -> list[dict]:
