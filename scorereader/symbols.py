@@ -1929,17 +1929,24 @@ LEDGER_NARROW = (0.25, 0.25, 2)   # a print that draws its ledger lines short (e
 LEDGER_NARROW_SEEN = None   # census: a dict for each head that LEDGER_NARROW gives its ledger lines
 
 
-def _narrow_ledgers(layers: dict, staff: dict, head: dict) -> list[float]:
-    """The ledger lines of a head far beside the staff whose print draws them short (LEDGER_NARROW), or [] where not
-    every line between the staff and the head is found at its step."""
+def _step_rows(staff: dict, head: dict, rows: list[float], fewest: int) -> list[float]:
+    """The rows when they are every ledger line between the staff and the head, each within LEDGER_NARROW[1] staff
+    spaces of its step from the staff, and at least the fewest; else []."""
     space = staff['space']
-    rows = sorted(ledger_lines(layers, staff, head, (head['x1'] - head['x0'] + 1) / 2 + LEDGER_NARROW[0] * space))
+    rows = sorted(rows)
     count = int((abs(head['place']) - 4 + 0.5) // 2)
     up = head['cy'] < staff['rows'][0]
     steps = sorted(staff['rows'][0] - k * space if up else staff['rows'][4] + k * space for k in range(1, count + 1))
-    if count < LEDGER_NARROW[2] or len(rows) != count or any(abs(row - step) > LEDGER_NARROW[1] * space for row, step in zip(rows, steps)):
+    if count < fewest or len(rows) != count or any(abs(row - step) > LEDGER_NARROW[1] * space for row, step in zip(rows, steps)):
         return []
     return rows
+
+
+def _narrow_ledgers(layers: dict, staff: dict, head: dict, fewest: int | None = None) -> list[float]:
+    """The ledger lines of a head far beside the staff whose print draws them short (LEDGER_NARROW), or [] where not
+    every line between the staff and the head is found at its step."""
+    rows = ledger_lines(layers, staff, head, (head['x1'] - head['x0'] + 1) / 2 + LEDGER_NARROW[0] * staff['space'])
+    return _step_rows(staff, head, rows, LEDGER_NARROW[2] if fewest is None else fewest)
 
 
 def ledger_lines(layers: dict, staff: dict, head: dict, half: float | None = None) -> list[float]:
@@ -3654,6 +3661,39 @@ HOLE_BIG = None      # (2.5, 4): the hole of a mark that is this many times the 
 #                    LitChoir the rule gained 87 notes and lost 229; counted by the largest piece of paper of each
 #                    head and only after the clefs, it gained 65 and lost 271.
 HOLE_THROUGH = True  # a hollow head on a staff line: the two halves of its inside, over and under the line, are one hole
+HOLE_FAR = 8.5       # a hole past HOLE_HEADS[5], the space past the first ledger line, up to this place, is a hollow head
+#                    where it has a stem, every ledger line between the staff and the head is found at its step (by
+#                    ledger_lines, or in LEDGER_NARROW's narrow window, where one line is enough), the head stands beside
+#                    its last line (an odd place, not on a line), and its middle lies in no row of the words. A half note
+#                    over a bass staff sits on its first ledger line and the line cuts the lower rim: its inside lies past
+#                    6.5, and the pieces of the rim were read as a filled C#4 or C4 under the true D4, or not at all. A
+#                    census of every such hole at the reader's step (54 on LitChoir's pages, none on the fresh set), each
+#                    looked at: 42 D4 half notes over a bass staff on 19 scores, 9 B3 half notes under a treble staff and
+#                    an F#4 over two ledger lines; and two that the guards take, the bowl of a g in a word that stands on
+#                    the first ledger line of a head under it (on the second line, an even place), and the paper that the
+#                    closing of the ink shuts in between a head that hangs under the staff and the letters under it (in
+#                    the row of the words). A typewriter print of the pascha canon sets its B3 under the dash, and the
+#                    rule reads two heads there as B3 that are typed as C4 at one place and were lacking at another: the
+#                    heads stand as the print's typed B3s stand. (None: off)
+HOLE_FAR_SEEN = None   # census: a dict for each head that HOLE_FAR reads
+HOLE_SHARE = 1.0     # two voices a third apart, one over the other, the upper with its stem up and the lower with its stem
+#                    down: the strokes run along the sides of both heads, and a hollow head read from its hole found both
+#                    stems. Where another hollow head 0.7 to 1.3 staff spaces over or under it has one of those stems
+#                    only (the same way, within 0.2 staff spaces), the two share them: where the other head's stem passes
+#                    this head on its way, it is this head's, and the other head takes this head's other stem; else this
+#                    head leaves the other head's stem to it. On extra-come-bless a G3 under a B3 whose stems cross
+#                    (pg0630) was a head of both voices, and a B3 under a D4 (pg0631) a head of the upper voice. 36 acts
+#                    on LitChoir's pages and none on the fresh set; most take away the copy of a head that both voices had
+#                    been given. The other head is a hollow head of its own and no piece of this head's rim: a filled
+#                    piece of a worn chord took the head's stem down, and the head that kept its stem up passed as a mark
+#                    at a bar line, whose test asks only the heads read from holes for the other voice (bar_marks; one
+#                    note of pascha-angel-cried-believers). The number is the most ink, in staff spaces, that stands
+#                    straight past this head's inside at the side away from the other head: a hollow head has its rim
+#                    there (0.10 to 0.48 at the 36 true acts), and the cell that two filled heads close with their stem
+#                    down, the flag that the print draws back up to the stem and a staff line has the two heads there
+#                    (1.81 and 1.90: a false half note of triodion-meatfare pg0424, and pg0169); the cell of that flag
+#                    under the line was the other head. (None: off)
+HOLE_SHARE_SEEN = None
 OPEN_THROUGH = True  # the two halves that a staff line cuts out of the open inside of a half note whose rim the copy broke
 #                    are one inside too, as HALVES_ACROSS joins closed halves that lean apart. The ink between the
 #                    halves is asked with the small breaks of the rim closed, as the open insides are found
@@ -3794,6 +3834,19 @@ def _open_flat(layers: dict, part: np.ndarray, left: int, top: int) -> bool:
     return float(paper.mean()) >= OPEN_FLAT[1]
 
 
+def _ink_past(ink: np.ndarray, x: int, y: int, wide: int, high: int, up: bool) -> int:
+    """The ink that stands straight over (up) or under a hole whose box is x, y, wide, high: the middle one of the runs of
+    ink in the hole's three middle columns, in pixels (HOLE_SHARE)."""
+    runs = []
+    for column in range(max(0, x + wide // 2 - 1), min(ink.shape[1], x + wide // 2 + 2)):
+        row, step, run = (y - 1, -1, 0) if up else (y + high, 1, 0)
+        while 0 <= row < ink.shape[0] and ink[row, column]:
+            row += step
+            run += 1
+        runs.append(run)
+    return sorted(runs)[len(runs) // 2]
+
+
 def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[int, list[float]] | None = None,
                signs: list[dict] | None = None) -> list[dict]:
     """Hollow heads that the marks did not give: two half notes or whole notes, one over the other, grow together
@@ -3928,7 +3981,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
             if staff is None or cx < ends[staff] + 0.3 * space:
                 continue
             place = pitch_place(layers['staves'][staff], cy)
-            if abs(place) > HOLE_HEADS[5]:
+            beyond = abs(place) > HOLE_HEADS[5]
+            if beyond and not (HOLE_FAR and abs(place) <= HOLE_FAR):
                 continue
             # A cell of the staff is as high as the gap between two staff lines. The hole of a head has its own rim there.
             # (A broken head that fills the gap has its hole open and round: the test of its box is enough for it.)
@@ -3962,6 +4016,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
             head = {'x0': mark['x0'], 'y0': mark['y0'], 'x1': mark['x1'], 'y1': mark['y1'], 'cx': cx, 'cy': cy,
                     'staff': staff, 'place': place, 'hollow': True, 'hole': area / ((wide + 2 * rim) * (high + 2 * rim)),
                     'stems': stems, 'mark': None, 'from_hole': True, 'core': None, 'alt': None}
+            if beyond and not stems:
+                continue      # past the first ledger line only a head with a stem (HOLE_FAR)
             if is_open and OPEN_FLAT is not None and _open_flat(layers, labels[y:y + high, x:x + wide] == index, x, y):
                 continue      # a cell along a staff line (see OPEN_FLAT)
             if is_open:
@@ -4043,7 +4099,22 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
             if abs(place) > 4.6:
                 # Beside the staff a head lies on its ledger lines. The letter p of the words has a bowl and a stem too.
                 head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
+                if beyond:
+                    # Every line between the staff and the head, at its step (HOLE_FAR).
+                    lines = _step_rows(layers['staves'][staff], head, head['ledgers'], 1) \
+                        or _narrow_ledgers(layers, layers['staves'][staff], head, 1)
+                    if not lines:
+                        continue
+                    head['ledgers'] = lines
                 found = ledger_place(layers, layers['staves'][staff], head)
+                if beyond and found is not None and (round(found) % 2 == 0 or any(
+                        band['x0'] <= cx <= band['x1'] and band['top'] <= cy <= band['bottom'] for band in layers.get('words') or [])):
+                    continue      # on its second ledger line, or in the row of the words (see HOLE_FAR)
+                if beyond and HOLE_FAR_SEEN is not None and found is not None:
+                    HOLE_FAR_SEEN.append({'cx': cx, 'cy': cy, 'place': place, 'found': found, 'lines': head['ledgers'], 'open': is_open,
+                                          'area': area, 'wide': wide, 'high': high, 'staff': staff,
+                                          'stems': [(way['direction'], way['x'], way['end']) for way in stems],
+                                          'replaces': [(o['cx'], o['cy']) for o in head.get('replaces', [])]})
                 if found is None or not head['ledgers']:
                     if abs(place) > 5.5:
                         continue
@@ -4099,6 +4170,34 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                         for other in touching:
                             if len(other['stems']) >= 2:
                                 other['stems'] = [stem for stem in other['stems'] if stem['direction'] != outer]
+            if HOLE_SHARE and {way['direction'] for way in stems} == {'up', 'down'}:
+                # Two voices a third apart, one over the other: the upper with its stem up at its right, the lower with
+                # its stem down at its left. A stroke runs along the sides of both heads, so each head finds the other's
+                # stem too, and a head that was read first kept the wrong one (HOLE_SHARE).
+                same = lambda stem, way: stem['direction'] == way['direction'] and abs(stem['x'] - way['x']) <= 0.2 * space
+                rim_pieces = {id(piece) for piece in head.get('replaces', [])} | pieces
+                for other in heads + out:
+                    if other is head or id(other) in rim_pieces or not other.get('hollow') or len(other['stems']) != 1 \
+                            or abs(other['cx'] - cx) > 0.5 * space \
+                            or not 0.7 * space <= abs(other['cy'] - cy) <= 1.3 * space:
+                        continue
+                    one = other['stems'][0]
+                    if not any(same(one, way) for way in stems):
+                        continue
+                    if _ink_past(ink, x, y, wide, high, other['cy'] > cy) > HOLE_SHARE * space:
+                        break      # paper under a filled head, closed by a flag (see HOLE_SHARE)
+                    if one['direction'] == ('down' if other['cy'] < cy else 'up'):
+                        # The other head's one stem passes this head on its way: it is this head's, and the other way
+                        # is the other head's.
+                        other['stems'] = [dict(way) for way in stems if way['direction'] != one['direction']]
+                        stems = head['stems'] = [way for way in stems if way['direction'] == one['direction']]
+                    else:
+                        # The other head's one stem leaves it away from this head: this head passed it on its way.
+                        stems = head['stems'] = [way for way in stems if way['direction'] != one['direction']]
+                    if HOLE_SHARE_SEEN is not None:
+                        HOLE_SHARE_SEEN.append({'cx': cx, 'cy': cy, 'other': (other['cx'], other['cy'], other.get('thin', False),
+                                                bool(other.get('from_hole'))), 'staff': staff})
+                    break
             out.append(head)
             if paper is open_lean and OPEN_THROUGH_LOG is not None:
                 OPEN_THROUGH_LOG.append((round(cx), round(cy), area, wide, high, staff))

@@ -1883,6 +1883,21 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   hundredth (`symbols.OPEN_THROUGH`). A rule that finds a head's ledger lines in a narrower window takes any level
   stroke where one line is asked (the end of a slur, a smudge, the crossbar of a sharp): it asks every line at its step,
   two or more (`symbols.LEDGER_NARROW`).
+- A hollow head past the first ledger line is read from its inside only with a stem, with every line between it and
+  the staff at its step, in a space and outside the rows of the words (`symbols.HOLE_FAR`): the bowl of a g that stands
+  on a head's ledger line and the paper that a closing shuts in under a hanging head passed otherwise. A new head can end
+  a bow that the page prints as a tie where the typed hymn strikes the note again: the first pass lost a note there. The
+  place goes on the list of the notes by the page after it is looked at on each scan, and the reading before the round
+  is scored again with it (a clean scan whose bar the reader reads a beat too long, so that its tie is not joined, went
+  from 261 of 266 to 259 of 265).
+- Two hollow heads a third apart whose stems run along both heads share the stems (`symbols.HOLE_SHARE`). A head that is
+  left one stem meets the steps for one stem: a mark at a bar line asks only the heads read from insides for the other
+  voice, and a filled piece of the head's own rim that took its stem made the head such a mark. The cell that two filled
+  heads close with their stem, a staff line and a flag drawn back up to the stem has the same stems, with the flag's own
+  cell as the other head: the ink straight past the inside, away from the other head, is a rim at the true heads (0.48
+  staff spaces at most) and the two filled heads at the cell (1.8 and more). A false head that lines up with a typed note
+  that is lacking moves no count: read every new head of a clean copy on the page. Three new locals of `hole_heads`
+  (`far`, `rim`, `own`) were older names of the function in one round: search the function for every new name.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
