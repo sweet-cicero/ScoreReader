@@ -80,11 +80,21 @@ BREVE_BARE = (2, 0.3, 0.7, 2.8, 1.4, 0.3)
 #                       note: the notes of a chord are of one kind. On a page without letters the breves are the ison's
 #                       only notes, and they stay. (None: off)
 
-BREVE_TAIL = 0.3        # the stem of the melody's note over a breve can end in the breve's bar, and the breve's oval at
+BREVE_TAIL = 0.5        # the stem of the melody's note over a breve can end in the breve's bar, and the breve's oval at
 #                       the one side of that stem was counted as its flag or beam: a stem that ends in the box of a breve
 #                       that was taken (this many staff spaces around it) has no flag or beam there. (A census of the
 #                       breves that are taken on LitChoir's chant pages: one such stem, the B4 over pascha-hypakoe's
-#                       breve on pg0536, a quarter note read as an eighth. None: off)
+#                       breve on pg0536, a quarter note read as an eighth. None: off) The heavy scan of that hymn
+#                       (pg0537) joins the bar to the breve's rim, and the stem stands 0.42 staff spaces past the box of
+#                       the head: of the stems with a tail within 1.5 staff spaces of a breve that was taken, on every
+#                       page that names the ison by letters, the three true ones stand at 0.14, 0.19 and 0.42, and no
+#                       other (0.3 before).
+BREVE_FILLED = True     # a heavy scan fills the inside of a breve, and the head is read as a filled one: a head that is no
+#                       hollow head is a breve too where the layer of the insides holds paper in its box and the bars (or
+#                       the strokes of a breve under no letter) stand at both sides of that paper. On every page that names
+#                       the ison by letters (16 of LitChoir, 2 of the fresh set) it takes two heads, both breves of the
+#                       heavy scan pascha-hypakoe--s2 (pg0537), each read as a note that is not there. (False: off)
+BREVE_SEEN = None       # census
 
 
 def _holes(piece: np.ndarray) -> list[tuple[float, float, float]]:
@@ -403,11 +413,16 @@ def without_breves(layers: dict, heads: list[dict], letters: dict[int, list[dict
 
     out = []
     for head in heads:
-        if head['hollow'] and any(not mark.get('unison') and -BREVE[0] * space <= head['cx'] - mark['x'] <= BREVE[1] * space
-                                  and abs(head['place'] - mark['place']) <= BREVE[2] for mark in letters.get(head['staff'], [])) \
+        inside = head['hollow'] or BREVE_FILLED
+        if inside and any(not mark.get('unison') and -BREVE[0] * space <= head['cx'] - mark['x'] <= BREVE[1] * space
+                         and abs(head['place'] - mark['place']) <= BREVE[2] for mark in letters.get(head['staff'], [])) \
                 and is_breve(layers, head):
+            if BREVE_SEEN is not None:
+                BREVE_SEEN.append({'kind': 'letter', 'hollow': head['hollow'], 'x': head['cx'], 'y': head['cy'], 'staff': head['staff']})
             continue
-        if named and head['hollow'] and (not head['stems'] or filled_mate(head)) and is_bare_breve(layers, head):
+        if named and inside and (not head['stems'] or filled_mate(head)) and is_bare_breve(layers, head):
+            if BREVE_SEEN is not None:
+                BREVE_SEEN.append({'kind': 'bare', 'hollow': head['hollow'], 'x': head['cx'], 'y': head['cy'], 'staff': head['staff']})
             continue
         out.append(head)
     if BREVE_TAIL is not None:
