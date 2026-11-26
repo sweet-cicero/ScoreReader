@@ -1824,6 +1824,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   found 8 such pages on LitChoir and none on the fresh set: 3 of music, each with systems of the hymn's staves, and 5
   pages of text whose false staves stand alone or in other numbers, where the first form read false notes. The guard is
   the system's shape (as many staves as the clefs of the page before, two or more), not the page's kind.
+- A flat is a stroke with a bowl at the right of its lower part, and two other marks have that shape. The stem up of an
+  eighth whose head kept only the other voice's stem down, with its flag at the top, was read as a flat before the next
+  chord: no head had that stem for the test of a flag to ask. A flat stands before its head, and its foot is free; a
+  stroke that begins at the right edge of a filled head with no stem up, its foot in that head's lower half, is that
+  head's stem (`signs.FLAT_RISE`). And a heavy flat whose bowl the ink filled is one wide stroke, which the test for a
+  sharp whose two strokes are joined took: a sharp's top holds its two strokes, a flat's top is one bare stroke
+  (`starts.FLAT_HEAVY`). A census of every flat with a head at its foot (9) and of every joined mark with a flat's sides
+  (12), each looked at, named the cases. A wider limit for a glued flat took a half-flat of an Arabic copy by hand (a
+  flat with a slash, which the hymn types as a natural): look at what else has the shape before a limit is widened.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
