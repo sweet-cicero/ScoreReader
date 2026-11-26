@@ -1791,6 +1791,10 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   a piece of the staff line first in the word. A census of every word that the naming looks at, with its measures, named
   one letter for each milder test and no other piece. Each test is written for its own shape (`drone.HEAVY_SLIT`,
   `ROUND_FOOT`, `FLAT_HEAD`). A fourth letter, whose arms the ink joined, has no shape of its own and gets no rule.
+- A test that asks only hollow heads misses what a heavy scan fills. The breve of the ison was read as a filled head
+  that took the melody's stem, and its own inside, in the layer of the insides, and its bars still stood
+  (`drone.BREVE_FILLED`). The census of every head that the wider test takes on the pages that name the ison by letters
+  held those two breves only.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
