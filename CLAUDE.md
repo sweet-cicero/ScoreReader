@@ -1862,6 +1862,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   page's usual start, it moved the starts of staves that the rule does not touch. Its own key alone is no shield
   from the page's usual start either: staves that show the page's key and that the page moves hold true first notes
   between the two starts on three pages.
+- A way that is followed over a gap of paper takes what stands past the gap as its own. A stem that ends three pixels
+  under a staff line was followed into the line, which the bare ink keeps where a slur lies along it, and the line
+  with the slur was read as a beam at the stem's end (`symbols.LINE_GAP`). A gap alone is no sign (true beams by hand
+  show one), and no measure of the beam parted the slur (round 129). What stands past the gap does: the rows of a
+  staff line with less than a beam beside them are the line. When a mark gives no measure, look at the step that
+  led to it.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

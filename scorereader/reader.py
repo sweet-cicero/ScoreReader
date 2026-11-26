@@ -23,7 +23,7 @@ from . import headnet
 from .rests import block_rests, in_rest, quarter_rests
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
-from .symbols import arc_pairs, arc_wholes, open_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
+from .symbols import line_gap_stems, arc_pairs, arc_wholes, open_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
     ring_heads, slit_page, thin_heads, without_bar_pieces, without_end_marks, without_flag_curls, without_flag_loops, without_flag_strokes, without_flag_trails, without_flat_cells, without_clip_cells, without_grey_marks, without_f_marks, without_line_marks, without_p_bowls, without_beam_pieces, without_bow_middles, without_stem_end_marks, without_top_loops, without_far_marks, without_stem_meets, without_dot_columns, without_stem_spans, without_joints, without_upright_holes, chord_wholes, dotless_wholes, grace_notes
 from .ties import read_ties
 from .triplets import mark_triplets
@@ -351,6 +351,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         head['staff_ref'] = staves[head['staff']]
     # A stem ends where the words begin.
     cut_stems(layers, heads, words)
+    # A stem that stops short of a staff line, which a slur along it keeps in the ink, ends before the line.
+    line_gap_stems(layers, heads)
     # A stem that breaks off before its beam ends at the beam.
     broken_stems(layers, heads)
     count_tails(layers, heads)
