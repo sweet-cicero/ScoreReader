@@ -4286,6 +4286,21 @@ THIN_INSIDE = 0.5          # when the stem runs inside the piece of ink of a thi
 #                            share of the piece's height before the stem's end (0: off)
 THIN_BACK = 0.25           # the middle of a thin head lies at most this many staff spaces before the end of its stem
 LOOP_BACK = 0.5            # the middle of an open oval lies up to this share of its height before the end of its stem
+LINE_HALF = (0.25, 0.05, 1.5)   # a printed half note on a staff line whose rim the copy broke where the line crosses
+#                            it and once more at that side: the inside under (or over) the line is open to the paper,
+#                            and only the half at the other side is an open hole, too small for OPEN_HOLE. The piece of
+#                            the rim reaches this many staff spaces past the line at each side; the open paper in its
+#                            box lies at one side of the line only and along it, is this many staff spaces squared at
+#                            least, and is this many times as wide as high; and the stem stands beside the piece, not
+#                            in it. The piece is then an open oval (LOOP_BACK) and hollow. A census of every head that
+#                            the rule's first form gave on LitChoir's pages (22, each looked at): the hook of a quarter
+#                            rest, whose own stroke runs through the piece (9), a hand's flag beside its stem, whose
+#                            paper lies along the next line, filled heads with a stem through them, and a worn filled
+#                            head of a grey copy whose speck stands upright (0.88 as wide as high; the true insides
+#                            1.6 and 1.86, and 1.0 at a half note that a later step reads hollow anyway). The rule acts
+#                            at the one printed half note that no finder read (memorial-troparia pg0284) and at one
+#                            half note that a later step read hollow too. A rule for one case. (None: off)
+LINE_HALF_SEEN = None      # a list: each head that a piece of LINE_HALF gives
 THIN_STEM = 1.6            # the stem of such a head is at least this many staff spaces long
 THIN_SPECKS = 0.3          # and it has ink of its own in at least this share of its rows outside the staff lines and the
 #                            rows of the head: a weak copy joins a thin stroke over small gaps, and so a column of ink
@@ -4817,6 +4832,31 @@ def _thin_ring(layers: dict, ink: np.ndarray, piece: dict, space: float) -> dict
     return ring
 
 
+def _line_half(layers: dict, piece: dict) -> float:
+    """(LINE_HALF) The share of open paper in the box of a piece of ink that a staff line crosses in its middle rows, when
+    that paper lies at one side of the line only; 0.0 otherwise."""
+    space = layers['space']
+    staff = _staff_of(layers, piece['cx'], piece['cy'])
+    if staff is None:
+        return 0.0
+    reach, least, flat = LINE_HALF
+    lines = [row for row in layers['staves'][staff]['rows']
+             if row - piece['y0'] >= reach * space and piece['y1'] - row >= reach * space]
+    if len(lines) != 1:
+        return 0.0
+    line = lines[0]
+    box = layers['open_holes'][piece['y0']:piece['y1'] + 1, piece['x0']:piece['x1'] + 1] > 0
+    rows = np.nonzero(box.any(axis=1))[0] + piece['y0']
+    if not len(rows) or box.sum() < least * space * space or (rows[0] < line < rows[-1]):
+        return 0.0
+    if min(abs(line - rows[-1]), abs(rows[0] - line)) > layers['staves'][staff]['thick'] / 2 + 2:
+        return 0.0      # the paper is the half that this line leaves: it lies along the line
+    columns = np.nonzero(box.any(axis=0))[0]
+    if columns[-1] - columns[0] + 1 < flat * (rows[-1] - rows[0] + 1):
+        return 0.0      # and lies on its side, as the inside of a printed half note does
+    return float(box.sum()) / (piece['area'] + float(box.sum()))
+
+
 def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], ends: list[float]) -> list[dict]:
     """The heads that the thick marks do not show: a quick hand draws a head as one thin slanted stroke, and a weak
     copy loses the place where the stem meets it. Such a head is found from its stem. Every upright stroke that is
@@ -4949,6 +4989,8 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                        'cx': cx, 'cy': cy,
                        'hole': max(float((layers['holes'][y:y + high, x:x + wide] > 0)[part].sum()) / area, loop),
                        'opened': opened})
+        if LINE_HALF and max(pieces[-1]['hole'], opened) < THIN_HOLLOW:
+            pieces[-1]['half'] = _line_half(layers, pieces[-1])
     # A thick head with a stem up and a stem down can be two notes: a thin head of the other voice lies right over
     # it or under it, and its stem passed through the thick head. So the stems of such a head are asked too.
     if two and OPEN_HOLE:
@@ -5052,6 +5094,12 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
         if piece.get('opened', 0.0) >= THIN_HOLLOW > piece['hole']:
             # The same head, with the place that its ink gave it: only its inside was not seen before.
             head['hollow'], head['hole'] = True, piece['opened']
+        if piece.get('half') and not piece['x0'] <= x <= piece['x1']:
+            # The half of an inside that a staff line leaves, with the stem beside the rim (LINE_HALF).
+            head['hollow'], head['hole'] = True, piece['half']
+            if LINE_HALF_SEEN is not None:
+                LINE_HALF_SEEN.append({'cx': piece['cx'], 'cy': piece['cy'], 'box': (piece['x0'], piece['x1'], piece['y0'], piece['y1']),
+                                       'half': piece['half'], 'dir': direction, 'x': x, 'end': end, 'staff': staff})
         if THIN_RING and arc and not piece.get('open') and max(piece['hole'], piece.get('opened', 0.0)) < THIN_HOLLOW:
             if 'ring' not in piece:
                 piece['ring'] = _thin_ring(layers, ink, piece, space)
@@ -5135,7 +5183,9 @@ def thin_heads(layers: dict, heads: list[dict], bars: dict[int, list[float]], en
                     if whole:
                         continue
                     # The stem of an open oval runs along its side, so the oval's middle lies before the stem's end.
-                    back = THIN_BACK * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1) if piece['hole'] >= THIN_HOLLOW else 0.0)
+                    half = piece.get('half') and not piece['x0'] <= x <= piece['x1']
+                    back = THIN_BACK * space + (LOOP_BACK * (piece['y1'] - piece['y0'] + 1)
+                                                if piece['hole'] >= THIN_HOLLOW or half else 0.0)
                     if THIN_INSIDE and reach <= 0 and piece['hole'] < THIN_HOLLOW:
                         # The stem runs along the side of the head, inside its piece of ink: the middle of the
                         # head lies before the stem's end, as with a thick head.
