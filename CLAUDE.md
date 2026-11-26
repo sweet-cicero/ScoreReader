@@ -1811,6 +1811,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the two clips of LitChoir pass and nothing else, and the fresh set has no crossing). The print is led across the band
   where black stands at both sides of a row. A head that the wire half hides stays lost: the half that shows is too
   small for a head, and its middle lies a step off.
+- A print can end a tie at the bar line that it crosses: the way that is followed runs into the bar line, goes on down
+  it, and is no bow, and the held note was lost (`ties.TIE_BAR`: the way is cut at the bar line, and the part before
+  it is asked). An engraving draws a slur between two notes of one pitch over a bar line in the same shape, and the
+  fresh set's answers count those as two notes: the first form joined 14 bows there, each a bow on the page, and lost
+  10 notes for 3. The engraver's meaning is not on the page; where the bow ends is. The print's ties stop at the bar
+  line, and the engraving's bows go on past it to the second head (`TIE_BAR_PAST`, set by LitChoir's ties). A bow
+  that goes on in the rows of a staff line is not seen: say so where it acts.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
