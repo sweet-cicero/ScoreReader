@@ -75,6 +75,10 @@ EIGHT = (0.7, 1.7, 4.6, 0.008, 0.3, 0.2, 0.9, 1.4, 0.13)    # the small 8 under 
 FLAT_GLUED = (0.25, 0.2, 0.8, 0.25, 1.0, 0.4)   # a flat whose bowl touches a ledger line or its head: the paper inside the
 #                     bowl begins at most this far right of the stroke, is from this to this wide and from this to this
 #                     high (staff spaces), and begins under this share of the stroke's height (None: off)
+FLAT_HEAVY = 0.4    # a heavy flat whose bowl the ink filled is one wide stroke, and the test for a sharp whose two strokes
+#                     are joined takes it: where the top of such a mark is one bare stroke no wider than this (staff
+#                     spaces; a sharp's top holds its two strokes, 0.51 or more on LitChoir's pages), with the ink of a
+#                     bowl at the right of its lower part, it is a flat (signs.note_signs; None: off)
 JOINING = 2.5       # an upright line that crosses a staff and goes on this many staff spaces towards the next staff of its
 #                     system is the line that opens the system or a bar line, also where a clef touches it (0: off)
 JOINED = (3.1, -0.5)   # the reading without such a line counts where the plain reading shows no clef or a mark that
@@ -354,6 +358,14 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
             # Two strokes that the ink of a small hand joined.
             signs.append({'kind': 'sharp', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'place': stroke['place'],
                           'joined': True, 'top': stroke['top'], 'bottom': stroke['bottom']})
+            if FLAT_HEAVY and beams and sides and sides['top'] <= FLAT_HEAVY and sides['bulge'] > 1.0 \
+                    and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] and sides['foot'] <= 0.3:
+                # The top of a sharp holds its two strokes; a bare stroke there, with the ink of a bowl at the right of
+                # its lower part, is a heavy flat whose bowl the ink filled (see signs.note_signs).
+                signs[-1]['heavy'] = {'kind': 'flat', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'heavy': True,
+                                      'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
+                                      'bowl_place': pitch_place(staff, sides['bowl']) if sides['bowl'] is not None else None,
+                                      'top': stroke['top'], 'bottom': stroke['bottom']}
     return sorted(signs, key=lambda sign: sign['x0'])
 
 

@@ -39,6 +39,11 @@ FLAT_FLAG = 0.2          # the flag of an eighth is no flat: a flat whose stroke
 #                          (the flag's reach and this many staff spaces more, right of the stem) and stands between
 #                          that stem's end and its head is the flag's own stroke and hook. A stem in a beam has
 #                          no flag, and a flat can stand close behind it, under the beam (None: off)
+FLAT_RISE = (0.3, 0.05)  # the stem up of an eighth whose head kept only the other voice's stem down is no flat, with the
+#                          flag at its top: a flat whose stroke begins at the right edge of a filled head with no stem up
+#                          (from this many head widths inside the head to this many past it) and whose foot lies in the
+#                          lower half of that head is the head's own stem. A flat stands before its head, and its foot
+#                          is free (None: off)
 FLAT_LEG = (0.35, 0.1, 0.4, 0.35)   # a flat whose bowl has a second stroke as its right wall is a natural: the stroke
 #                    stands from this far before the sign's right edge to this far past it, begins this far under the
 #                    sign's top or lower, and ends this far under its bottom (staff spaces; None: off). The right wall of
@@ -352,6 +357,11 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     return True
         return False
 
+    def rises(sign: dict) -> bool:
+        return any(not head.get('hollow') and not head.get('thin') and not any(stem['direction'] == 'up' for stem in head['stems'])
+                   and head['x1'] - FLAT_RISE[0] * wide <= sign['x0'] <= head['x1'] + FLAT_RISE[1] * wide
+                   and head['cy'] <= sign['bottom'] <= head['y1'] + 0.2 * space for head in full)
+
     def lying(sign: dict, group: list[dict]) -> list[dict]:
         return [head for head in group
                 if min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) >= 0.5 * min(sign['x1'] - sign['x0'] + 1, head['x1'] - head['x0'] + 1)
@@ -487,6 +497,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         if sign['kind'] == 'flat':
             if FLAT_FLAG is not None and flag_of_stem(sign):
                 continue
+            if FLAT_RISE and rises(sign):
+                continue
             if FLAT_LEG and any(sign['x1'] - FLAT_LEG[0] * space <= stroke['x'] <= sign['x1'] + FLAT_LEG[1] * space
                                 and sign['top'] + FLAT_LEG[2] * space <= stroke['top'] <= sign['bottom']
                                 and stroke['bottom'] >= sign['bottom'] + FLAT_LEG[3] * space
@@ -497,7 +509,13 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             signs.append(sign)
         elif SHARP_JOINED and sign.get('joined'):
             kind = _joined_sharp(layers, sign, space)
-            if kind:
+            heavy = sign.get('heavy') if kind == 'sharp' else None     # starts.FLAT_HEAVY
+            if heavy and (any(sign['x0'] <= head['cx'] <= sign['x1'] and sign['top'] <= head['cy'] <= sign['bottom'] for head in full)
+                          or FLAT_FLAG is not None and flag_of_stem(heavy) or FLAT_RISE and rises(heavy)):
+                heavy = None      # a head in the mark's box (a sign stands before its head), or the flag of a stem
+            if heavy:
+                signs.append(heavy)
+            elif kind:
                 signs.append(dict(sign, kind=kind))
     for box, two in stacks:
         if any(x0 - 2 <= box['x0'] <= x1 + 2 or x0 - 2 <= box['x1'] <= x1 + 2 for x0, x1 in taken):
