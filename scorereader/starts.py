@@ -33,6 +33,14 @@ STEP = (0.45, 1.7)           # the next sign of a key signature begins this far 
 PRIOR = 1.5                  # the weight of the custom of choir music among the witnesses for a clef (a clef's shape is 1)
 FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef's left edge, in staff spaces
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
+KEY_REACH = 2.4     # the page's key holds on every staff: where a staff shows the first signs of the page's key and its chain
+#                     stops short of the page's number of signs, the next sign may stand up to this many staff spaces from
+#                     the last (STEP allows 1.7). A hand spaces its key signature wide: 32 staves of LitChoir's copies by
+#                     hand and of one pasted slip, steps of 1.71 to 2.28, each looked at, all true signatures; the
+#                     fresh set has none (its marks 2.06 to 2.18 staff spaces after a key's last sign stand where the
+#                     page's key asks for no more signs). The staff's notes begin after its own signs, and it is no
+#                     witness of where the page's other staves begin (USUAL_START), nor moved by them (None: off)
+KEY_REACH_LOG = None   # a list: (staff, the signs' columns, the steps) of every staff where KEY_REACH acts (a census)
 OPENING = 3.0       # a clef begins at most this many staff spaces after the line that opens its system (0: off)
 OPEN_JOINED = 1.5   # (OPENING) also where a clef touches the line that opens its system (joining_lines): the staff lines were
 #                     followed past the system's left end into a punch hole or a paperclip, and its ring was read as a
@@ -438,6 +446,24 @@ def chain(signs: list[dict], kind: str, clef: str, start: float, least: float, s
         if len(found) > len(best) or (len(found) == len(best) and miss < best_miss):
             best, best_miss = found, miss
     return best, best_miss
+
+
+def reach_key(start: dict, staff: dict, clef: str, kind: str, count: int) -> list[list[dict]]:
+    """The page's key holds on every staff (KEY_REACH): where a staff shows the first signs of the page's key under its
+    clef and the chain stops before the page's number of signs, the next signs may stand further from the last
+    one than STEP allows. A hand spaces its key signature wide. [the chain] when it then has `count` signs, else []."""
+    space = staff['space']
+    places = (SHARP_PLACES if kind == 'sharp' else FLAT_PLACES)[clef]
+    found = list((start['chains'].get((clef, kind)) or ([], 0.0))[0])
+    if not found or any(sign.get('gap') for sign in found) or len(found) >= count:
+        return []
+    for sign in start['signs']:
+        if len(found) == count:
+            break
+        if sign['kind'] == kind and STEP[0] * space <= sign['x0'] - found[-1]['x0'] <= KEY_REACH * space \
+                and abs(sign['place'] - places[len(found)]) <= FIT:
+            found.append(sign)
+    return [found] if len(found) == count else []
 
 
 def bare_lines(layers: dict, staff: dict, first: float, last: float) -> list[tuple[float, int, int]]:
@@ -925,7 +951,14 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
         # Where the notes of this staff begin: after its own key signature when it shows the page's key; if not,
         # after the room that the page's key signature takes.
         own = [found for (clef, sort), (found, _) in start['chains'].items() if sort == kind and len(found) >= abs(key)] if key else []
-        if own:
+        reached = reach_key(start, staff, clefs[-1], kind, abs(key)) if not own and key and KEY_REACH else []
+        if reached:
+            if KEY_REACH_LOG is not None:
+                KEY_REACH_LOG.append((len(seen), [round(sign['x0']) for sign in reached[0]],
+                                      [round((two['x0'] - one['x0']) / staff['space'], 2) for one, two in zip(reached[0], reached[0][1:])]))
+            # Its notes begin after its own signs, and it is no witness of where the page's other staves begin.
+            seen.append((max(start['x1'], reached[0][-1]['x1']), 'reach'))
+        elif own:
             found = max(own, key=lambda signs: signs[0]['x0'] >= start['x1'] - 0.25 * staff['space'])
             seen.append((max(start['x1'], found[abs(key) - 1]['x1']), 'key'))
         elif start['clef']:
@@ -947,7 +980,7 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
     guessed = []
     for (end, shown), start, staff in zip(seen, starts, staves):
         left = start['left'] if start['clef'] or staff['system'] not in lefts else float(np.median(lefts[staff['system']]))
-        if usual is not None and (end is None or (end - left) / staff['space'] > usual + USUAL_START):
+        if usual is not None and (end is None or (end - left) / staff['space'] > usual + USUAL_START) and shown != 'reach':
             end, shown = left + usual * staff['space'], None
         elif end is None and NO_CLEF is not None and not rooms and clefs_before and len(clefs_before) >= 2 \
                 and sum(1 for other in staves if other['system'] == staff['system']) == len(clefs_before):
