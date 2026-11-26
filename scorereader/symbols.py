@@ -7629,6 +7629,47 @@ def without_far_marks(layers: dict, heads: list[dict]) -> list[dict]:
     return [head for head in heads if id(head) not in gone]
 
 
+TOP_LOOP = (0.25, 0.5)   # a hollow mark with one stem down at its left, whose stroke runs down into a filled head of
+#   its staff and meets that head at its right side (the middle column of the stroke at least the first number of the
+#   head's half width right of the head's middle), is the loop that the flag of that head's stem up closes at the stem's
+#   top, and no head: a stem up leaves its head at the head's right side, and the flag hangs at its far end; the stem of
+#   a chord or of two voices on one stem line leaves the lower head at its left side or its middle. The lower head must
+#   be a head: at least the second number times as high as the page's heads (where a hand's stem crosses a ledger
+#   line, the crossing is a thin mark), and no letter of the words (the stem of a half note on a ledger line under the
+#   staff runs into the h of the word under it). A census at this step on every page of LitChoir (73 hollow marks whose
+#   one stem down runs into a filled head under them, each looked at): the 18 true half notes meet their head at 0.10
+#   or less, and the marks from 0.25 on are flag loops, the cell of a flag by hand and the d of a "3rd", besides one
+#   true half note by hand whose stem crosses a ledger line and one printed head over a letter (the two guards). The
+#   fresh set holds one such mark, at 0.05. None: off
+
+
+def without_top_loops(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the hollow marks that are the loop of a flag at the top of another head's stem up
+    (TOP_LOOP). It runs after the flags are counted."""
+    if not TOP_LOOP or not layers.get('head'):
+        return heads
+    space, high = layers['space'], layers['head'][1]
+    gone = set()
+    for head in heads:
+        if not head['hollow'] or len(head['stems']) != 1 or head['stems'][0]['direction'] != 'down':
+            continue
+        stem = head['stems'][0]
+        mid = stem.get('mid', stem['x'])
+        if mid >= head['cx']:
+            continue
+        below = [other for other in heads if other is not head and other['staff'] == head['staff'] and not other['hollow']
+                 and other['cy'] > head['cy'] + 0.3 * space and other['y0'] <= stem['end'] + 2
+                 and other['x0'] - 2 <= mid <= other['x1'] + 2]
+        if not below:
+            continue
+        other = min(below, key=lambda mark: mark['cy'])
+        half = max(1.0, (other['x1'] - other['x0']) / 2)
+        if (mid - other['cx']) / half >= TOP_LOOP[0] and other['y1'] - other['y0'] + 1 >= TOP_LOOP[1] * high \
+                and not _in_words(layers, other):
+            gone.add(id(head))
+    return [head for head in heads if id(head) not in gone]
+
+
 STEM_END_SPAN = (1.3, 0.9, 1.2)   # a filled mark that stands between the ends of two stems is the beam or the slur
 #   between them and no head: at least the first number times the page's head wide and at most the second times its
 #   head high (a bow or a beam by its shape), with another head's stem at each of its two sides, standing within the
