@@ -6083,6 +6083,72 @@ STEM_BROKEN = (4.0, 0.3, 1.2, 0.6)   # a stem that breaks off before its beam, w
 #   on over a gap of paper in their own column alone, 3 were right and 81 wrong.) (None: off)
 
 
+LINE_GAP = True     # a stem that stops a little short of a staff line, where a slur lies along the line or crosses it at the
+#   stem, was followed over the gap of paper into the line: the layer of the bare ink keeps a line that a slur thickens,
+#   and the line with the slur was read as a beam at the stem's end. Where the way ends in the rows of a staff line, the
+#   rows before it from that end are ink that is the line with less than a beam beside it (TAIL_THICK), and paper parts
+#   them from the stem in the whole ink as well (at most GAP), the stem ends before the gap. A census of every way that
+#   ends in the rows of a line over such a gap (238 on LitChoir's pages), with the stem ended there in a second reading,
+#   gave the ink beside the line where the length of a note changes: a beam that a hand drew on the top line hangs 0.23
+#   staff spaces past it and the other beams more, the slur along the line of holy-saturday-koinonikon 0.17 and a slur
+#   across a line on a page of a software-made PDF 0.12. The rule acts at 62 stems on 49 pages of LitChoir, each looked
+#   at (each stem stops short of its line in the scan; a few are the strokes of a time signature, a clef or a letter),
+#   and at none of the fresh set; the notes change on two pages. (False: off)
+LINE_GAP_LOG = None  # a list: (head's middle, the stem's direction, its old end, its new end) where LINE_GAP acts (a census)
+
+
+def line_gap_stems(layers: dict, heads: list[dict]) -> int:
+    """Ends each stem whose way was led over a gap of paper into a staff line before the gap (see LINE_GAP): sets its
+    'end' and 'x'. Returns how many stems were ended."""
+    if not LINE_GAP:
+        return 0
+    bare, ink, space = layers['bare'], layers['ink'], layers['space']
+    height, width = bare.shape
+    band = max(2, int(round(0.13 * space)))
+    count = 0
+    for head in heads:
+        staff = head.get('staff_ref') or layers['staves'][head['staff']]
+        thick = float(staff.get('thick') or 3.0)
+        for stem in head['stems']:
+            inward = 1 if stem['direction'] == 'up' else -1
+            end = int(stem['end'])
+            line = min(staff['rows'], key=lambda row: abs(row - end))
+            if abs(end - line) > thick / 2 + 1.5:
+                continue
+            x = int(round(stem.get('mid', stem['x'])))
+            first, last = max(0, x - band), min(width, x + band + 1)
+            # (The way's last column can lie beside the stem's own column where it ran into the wide ink of the line.)
+            row = end
+            while 0 <= row < height and not bare[row, first:last].any() and abs(row - end) <= 0.3 * space:
+                row += inward
+            if not 0 <= row < height or abs(row - end) > 0.3 * space:
+                continue
+            top = row
+            while 0 <= row < height and bare[row, first:last].any() and abs(row - end) <= 0.8 * space:
+                row += inward
+            if not 0 <= row < height or abs(row - end) > 0.8 * space or row == top:
+                continue
+            start = row
+            while 0 <= row < height and not bare[row, first:last].any() and abs(row - start) <= GAP * space + 1:
+                row += inward
+            gap = abs(row - start)
+            if gap < 1 or gap > GAP * space or not 0 <= row < height:
+                continue
+            if ink[min(start, row - inward):max(start, row - inward) + 1, first:last].any():
+                continue      # the stem reaches the line in the whole ink: the gap is the line that the bare ink left out
+            if abs(start - top) - thick >= TAIL_THICK * space:
+                continue      # a beam lies along the line
+            columns = np.nonzero(bare[row, first:last])[0]
+            if LINE_GAP_LOG is not None:
+                LINE_GAP_LOG.append(((round(head['cx']), round(head['cy'])), stem['direction'], end, row))
+            moved = abs(row - end)
+            stem['end'], stem['x'] = row, first + int(round(columns.mean()))
+            stem['length'] = stem.get('length', moved) - moved
+            stem['past'] = stem.get('past', moved) - moved
+            count += 1
+    return count
+
+
 def broken_stems(layers: dict, heads: list[dict]) -> int:
     """Leads each stem that breaks off before its beam on to the beam (see STEM_BROKEN): sets its 'end' and 'x'.
     Returns how many stems were led on."""
