@@ -1868,6 +1868,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   show one), and no measure of the beam parted the slur (round 129). What stands past the gap does: the rows of a
   staff line with less than a beam beside them are the line. When a mark gives no measure, look at the step that
   led to it.
+- A row of words that is too short to be a band of words (one word right over a staff, a heading close over it) is
+  read as notes: the bowl of a letter beside the staff is a hollow mark without a stem, a whole note. Its neighbours
+  in its rows tell, not its shape: a letter stands in a run of marks of its own height, at both of its sides
+  (`symbols.ROW_LETTER`: three or more in all, in the ink without its level lines). The ison's breve has one mark at
+  each side, its bars, and a whole note beside a sign and a stem has one too: a run of three parts them. The census
+  from the stored notes named the shape, and the rule's own code at its step was read on every page before the full
+  pass.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

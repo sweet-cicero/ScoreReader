@@ -8065,6 +8065,72 @@ def without_p_bowls(layers: dict, heads: list[dict]) -> list[dict]:
     return out
 
 
+ROW_LETTER = (3, 0.7, 0.5, 1.8)   # a hollow mark without a stem beside the staff is a letter of a row of words (a heading in
+#   capitals, a short row of words right over the staff, a word by hand), not a whole note, where marks of a letter's
+#   height stand in its rows at both of its sides, one after the other: each at most the second number of the mark's
+#   widths from the mark or from the one before it, as high as the third to the fourth number of the mark's height, and
+#   overlapping at least half of the mark's rows or of their own; the first number of them or more in all. The marks are
+#   counted in the ink opened upright by 0.35 staff spaces, so that the staff lines, the ledger lines and the crossbar of
+#   a letter go. A whole note stands alone in its rows, between the bars of a breve of the ison (one mark at each side),
+#   beside a sign, a dot or another head (no run of three). A census of every hollow mark without a stem beside the
+#   staff on LitChoir's pages (834, with the scorer's verdicts): the 7 with three such marks or more and one at each
+#   side are letters (an e of a row "her / their" right over the staff, an o of "Lord", the O of a heading); 3 of the
+#   marks with three or more at one side only are true notes. None: off
+ROW_LETTER_LOG = None   # a list: (staff, the mark's middle, the marks before it, the marks after it) where ROW_LETTER acts
+
+
+def _row_marks(layers: dict, head: dict) -> tuple[int, int]:
+    """(ROW_LETTER) How many marks of a letter's height stand one after the other in a head's rows, before it and
+    after it."""
+    ink, space = layers['ink'], layers['space']
+    height, width = ink.shape
+    wide, high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
+    size = max(3, int(round(0.35 * space))) | 1
+    left, right = max(0, int(head['cx'] - 12 * space)), min(width, int(head['cx'] + 12 * space) + 1)
+    top, bottom = max(0, int(head['cy'] - 3 * space)), min(height, int(head['cy'] + 3 * space) + 1)
+    window = np.pad((ink[top:bottom, left:right] > 0).astype(np.uint8), size)
+    opened = cv2.morphologyEx(window, cv2.MORPH_OPEN, np.ones((size, 1), np.uint8))[size:-size, size:-size]
+    count, _, stats, _ = cv2.connectedComponentsWithStats(np.ascontiguousarray(opened), connectivity=8)
+    x0, x1, y0, y1 = head['x0'] - left, head['x1'] + 1 - left, head['y0'] - top, head['y1'] + 1 - top
+    marks = []
+    for index in range(1, count):
+        x, y, w, h = (int(value) for value in stats[index][:4])
+        if x < x1 and x + w > x0 and y < y1 and y + h > y0:
+            continue      # the mark's own ink
+        if min(y + h, y1) - max(y, y0) < 0.5 * min(h, high) or not ROW_LETTER[2] * high <= h <= ROW_LETTER[3] * high:
+            continue
+        marks.append((x, x + w))
+    begin, end, before, after = x0, x1, 0, 0
+    used, grew = set(), True
+    while grew:
+        grew = False
+        for number, (a, b) in enumerate(marks):
+            if number in used:
+                continue
+            if b <= begin and begin - b <= ROW_LETTER[1] * wide:
+                begin, before, grew = a, before + 1, True
+                used.add(number)
+            elif a >= end and a - end <= ROW_LETTER[1] * wide:
+                end, after, grew = b, after + 1, True
+                used.add(number)
+    return before, after
+
+
+def without_row_letters(layers: dict, heads: list[dict]) -> list[dict]:
+    """The heads without the letters of a row of words beside the staff that were read as whole notes (ROW_LETTER)."""
+    if not ROW_LETTER:
+        return heads
+    out = []
+    for head in heads:
+        if head['hollow'] and not head['stems'] and not head.get('thin') and abs(head['place']) > 4.6:
+            before, after = _row_marks(layers, head)
+            if before and after and before + after >= ROW_LETTER[0]:
+                if ROW_LETTER_LOG is not None:
+                    ROW_LETTER_LOG.append((head['staff'], round(head['cx']), round(head['cy']), before, after))
+                continue
+        out.append(head)
+    return out
+
 STEM_MEET = (0.5, 0.5, 2.0, 2.5)   # two stems that meet end to end in one column (at most the first number of staff spaces
 #   apart sideways, their ends at most the second number apart), the upper head's stem going down and the lower head's
 #   going up, are one stroke with a head at each end. No chord has one: its stem leaves all of its heads at one end. The
