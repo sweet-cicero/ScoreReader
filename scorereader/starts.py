@@ -34,6 +34,11 @@ PRIOR = 1.5                  # the weight of the custom of choir music among the
 FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef's left edge, in staff spaces
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
 OPENING = 3.0       # a clef begins at most this many staff spaces after the line that opens its system (0: off)
+OPEN_JOINED = 1.5   # (OPENING) also where a clef touches the line that opens its system (joining_lines): the staff lines were
+#                     followed past the system's left end into a punch hole or a paperclip, and its ring was read as a
+#                     clef there. The other staves of the system say where the clefs stand: the mark lies wholly before
+#                     their clefs, and the clef after the line begins at most this many staff spaces from the middle of
+#                     theirs (a clef in the first columns of a system is the clef; a mark after a bar line is not) (None: off)
 LOST_CLEF = 3.4     # the room of a clef that the copy lost, in staff spaces from the staff's left end
 SYSTEM_START = 1.0  # the staves of a system begin in the same columns: a staff that shows no clef and no key of its own
 #                     (the scan cut them off, or its "clef" is a note) is given the room that the page's other staves
@@ -524,6 +529,18 @@ def clef_shape(layers: dict, staff: dict, joining: list | None = None) -> dict:
                 shape = clef_shape(layers, staff, more)
                 if shape['clef'] == 'F' and shape['under'] <= JOINED[1]:
                     return shape
+            if OPEN_JOINED and OPENING and plain['clef']:
+                # A mark before the line that opens the system is no clef where a clef stands right after the line, also
+                # where that clef touches the line (OPENING), and where the other staves of the system show theirs.
+                shape = clef_shape(layers, staff, more)
+                if shape['clef'] and any(plain['x1'] <= begin and 0 <= shape['x0'] - end <= OPENING * space
+                                         for _, begin, end in more if (_, begin, end) not in opening):
+                    theirs = [_plain_clef(layers, other) for other in layers['staves']
+                              if other['system'] == staff['system'] and other is not staff]
+                    theirs = [x for x in theirs if x is not None]
+                    if theirs and plain['x1'] <= min(theirs) \
+                            and abs(shape['x0'] - float(np.median(theirs))) <= OPEN_JOINED * space:
+                        return shape
             return plain
     elif joining is not None:
         opening = joining
@@ -567,6 +584,14 @@ def clef_shape(layers: dict, staff: dict, joining: list | None = None) -> dict:
     left = [end for _, begin, end in opening if 0 <= x0 + x - end <= OPENING * space] if OPENING else []
     return {'clef': clef, 'x0': float(x0 + x), 'x1': float(x0 + x + min(wide, 3.4 * space)), 'over': over, 'under': under,
             'wide': wide / space, 'left': float(max(left)) if left else float(staff['x0'])}
+
+
+def _plain_clef(layers: dict, staff: dict) -> float | None:
+    """Where the clef of a staff begins as its shape shows it with the bare lines only (OPEN_JOINED), or None."""
+    space = staff['space']
+    x0, x1 = max(0, int(staff['x0'] - 0.3 * space)), min(_free(layers).shape[1], int(staff['x0'] + 12 * space))
+    shape = clef_shape(layers, staff, bare_lines(layers, staff, x0, x1))
+    return shape['x0'] if shape['clef'] else None
 
 
 def eight_holes(layers: dict, staff: dict, shape: dict) -> float:
