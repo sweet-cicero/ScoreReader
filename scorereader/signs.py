@@ -113,6 +113,11 @@ NATURAL_OWN = True              # the paper that the strokes and the bars of a n
 NATURAL_LONE = True             # the right stroke of a natural is no stem of a hollow head after it either where it is that
                                 # head's only stem, when another head of its column has a stem (a whole note under a
                                 # half note) (False: only a second stem, as NATURAL_STEM says)
+SIGN_ON_HEAD = 0.35             # a sign stands before its head: a sign whose middle stands less than this many staff spaces
+                                # before the middle of the hollow head that it would change is that head's own rims, with the
+                                # staff line or the ledger line through its inside (a sharp, a flat or a natural). A census of
+                                # every sign that this step gives a hollow head on LitChoir's pages: the 15 from -0.33 on are no
+                                # printed signs, the true ones (glued to their head too) stand at -0.4 or before (None: off)
 SIGN_WORDS = True               # the strokes of a sign are read without the rows of the words (False: with them)
 GLUED_CHORD = True              # a sign glued to the heads of a chord: it lies on all of them and changes the one at
                                 # its place (False: a sign that lies on a head at another place is none)
@@ -538,6 +543,9 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     and min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) + 1 > SHARP_JOINED[4] * (sign['x1'] - sign['x0'] + 1):
                 continue      # a part of the head, no sign before it (a sign whose ends were cut: also a head with a
                 #               stem, two hollow heads one over the other that a faint copy joined)
+        if best and SIGN_ON_HEAD is not None and best[1].get('hollow') \
+                and (sign['x0'] + sign['x1']) / 2 - best[1]['cx'] > -SIGN_ON_HEAD * space:
+            continue      # the rims of the head itself
         if best:
             for right, head, stem in legs:
                 if sign['kind'] == 'natural' and right['x1'] == sign['x1'] and head is best[1]:

@@ -1795,6 +1795,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   that took the melody's stem, and its own inside, in the layer of the insides, and its bars still stood
   (`drone.BREVE_FILLED`). The census of every head that the wider test takes on the pages that name the ison by letters
   held those two breves only.
+- A sign stands before its head. The two rims of a hollow head with a staff line or a ledger line through its inside
+  are read as a sharp, a flat or a natural, and the step gave that sign to the head itself (`signs.SIGN_ON_HEAD`): of
+  every sign given to a hollow head on LitChoir's pages, the true ones stand 0.4 staff spaces or more before the
+  head's middle, glued ones too. Where a false sign of a head goes, the next sign that the head is given decides: the
+  dashes of a pencil ring before a whole note were a sharp. A sign is no test of a misread place either: a hollow head
+  set on the line that its solid shape names took the flat that a breve's bar and the head's rim make, 0.58 staff spaces
+  before it, where a true flat stands.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
