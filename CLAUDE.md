@@ -1840,6 +1840,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   (`starts.OPEN_JOINED`). A joining line is also a bar line through the gap: the first form took a scribble in a first
   bar that a hand crossed out, and the dots of a repeat sign, for the clef, where the true clef stands at the staff's
   left end. The other staves of the system say where the clefs stand: they are the witnesses, not the one staff.
+- One stroke between two marks can be given to both, as the stem up of the lower and the stem down of the upper. Where
+  it meets each mark tells whose it is: a stem up leaves its head at the head's right side and its flag hangs at the far
+  end, and the stem of a chord or of two voices on one stem line leaves the lower head at its left side or its middle.
+  The loop that a flag closes at the top of its stem up was a half note with that stem as its stem down, and the older
+  rule for the loop of a flag asked two stems that go the same way (`symbols.TOP_LOOP`). The mark at the stroke's foot
+  is asked whether it is a head: where a hand's stem crosses a ledger line the crossing is a thin mark, and a letter
+  of the words under the staff takes the stem of the printed head over it.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
