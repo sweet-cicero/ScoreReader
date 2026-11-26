@@ -373,6 +373,137 @@ def clips(grey: np.ndarray, ink: np.ndarray, space: float) -> np.ndarray:
     return out
 
 
+CLIP_CROSS = (0.3, 1.2, 4, 0.15, 2.0, 2, 0.5)   # a wire that lies on the print hides it: where a paperclip crosses a
+#   staff, each staff line is cut by a gap of ink that is not black (BLACK), between black ink at both sides, from the
+#   first to the second number of staff spaces wide, with grey ink in at least the last share of its columns, and the
+#   gaps of at least the third number of the five lines stand on one straight line (each within the fourth number of
+#   staff spaces of it). Pencil, a marker and a shadow lie under the print or are no darker than it, and leave a black
+#   line black. The ink in the band of the gaps, from the fifth number of staff spaces over the staff to as far under
+#   it, and the sixth number of pixels wider at each side, is the print across the wire: a run of it that is not black
+#   is ink where black ink stands at both of its ends along the row, and paper elsewhere. The wire is kept as a band
+#   and not taken out of the picture: with the wire of a darker clip taken out, a sharp that it had cut from its
+#   neighbour stood free and was read as two notes (round 84). None: off
+WIRE_SHAPE = (0.2, 1.5, 0.15, 0.05, 0.15, 0.9)   # the gaps of a wire are one straight band: it leans by the first to the
+#   second number of staff spaces sideways for each staff space down (a stem or a bar line stands upright), its gaps
+#   differ in width by the third number of staff spaces at most and stand within the fourth of the fitted line, and
+#   the wire itself is seen along that line: grey ink (darker than the paper by the fifth number of the way from the
+#   paper to the page's ink) in the band in at least the last share of the rows between the staff lines, and of the
+#   rows over the staff or under it, the reach of CLIP_CROSS. A gap that a scan or a worn print leaves in its lines
+#   has paper between them (of 2,876 crossings on LitChoir's pages, the three of two paperclips pass, and the fresh
+#   set has none; WIRE_SEEN: a census of the crossings that pass)
+WIRE_SEEN = None
+
+
+def _line_gaps(ink: np.ndarray, black: np.ndarray, staff: dict) -> list[tuple[int, float, float]]:
+    """The gaps of ink that is not black in the lines of a staff, between black ink: (line, middle, width)."""
+    low, high = CLIP_CROSS[0] * staff['space'], CLIP_CROSS[1] * staff['space']
+    half = max(1, int(round(staff['thick'] / 2)))
+    x0, x1 = max(0, int(staff['x0'])), min(ink.shape[1], int(staff['x1']) + 1)
+    out = []
+    for line, row in enumerate(staff['rows']):
+        r0, r1 = max(0, int(round(row)) - half), int(round(row)) + half + 1
+        dark = black[r0:r1, x0:x1].any(axis=0)
+        grey = ink[r0:r1, x0:x1].any(axis=0) & ~dark
+        columns = np.nonzero(~dark)[0]
+        if not len(columns):
+            continue
+        breaks = np.nonzero(np.diff(columns) > 1)[0]
+        for start, end in zip(np.r_[columns[0], columns[breaks + 1]], np.r_[columns[breaks], columns[-1]]):
+            if low <= end - start + 1 <= high and start > 0 and end + 1 < len(dark) \
+                    and float(grey[start:end + 1].mean()) >= CLIP_CROSS[6]:
+                out.append((line, x0 + (start + end) / 2, float(end - start + 1)))
+    return out
+
+
+def _wire_seen(grey: np.ndarray, soft: float, a: float, b: float, half: float, y0: float, y1: float, rows: list,
+               space: float) -> float:
+    """The share of the rows from y0 to y1, off the staff lines, where the band around x = a + b * y holds grey ink."""
+    hit = count = 0
+    for y in range(max(0, int(y0)), min(grey.shape[0], int(y1))):
+        if min(abs(y - row) for row in rows) < 0.25 * space:
+            continue
+        left, right = int(round(a + b * y - half)), int(round(a + b * y + half)) + 1
+        if left < 0 or right > grey.shape[1]:
+            continue
+        count += 1
+        hit += int(grey[y, left:right].min()) < soft
+    return hit / count if count else 0.0
+
+
+def wires(ink: np.ndarray, black: np.ndarray, staves: list[dict], grey: np.ndarray | None = None) -> np.ndarray:
+    """A mask of the bands where a wire crosses a staff (CLIP_CROSS, WIRE_SHAPE)."""
+    out = np.zeros_like(ink)
+    if not CLIP_CROSS:
+        return out
+    _, _, need, near, reach, margin, _ = CLIP_CROSS
+    soft = None
+    if WIRE_SHAPE and grey is not None and ink.any():
+        dark, paper = ink_and_paper(grey, ink)
+        soft = paper - WIRE_SHAPE[4] * max(1.0, paper - dark)
+    for index, staff in enumerate(staves):
+        space = staff['space']
+        gaps = _line_gaps(ink, black, staff)
+        rows = staff['rows']
+        taken = set()
+        for i, (line, middle, _) in enumerate(gaps):
+            for j, (other, there, _) in enumerate(gaps):
+                if other <= line or i in taken:
+                    continue
+                slope = (there - middle) / (rows[other] - rows[line])
+                members = [k for k, (n, x, _) in enumerate(gaps)
+                           if abs(x - (middle + slope * (rows[n] - rows[line]))) <= near * space]
+                if len({gaps[k][0] for k in members}) < need:
+                    continue
+                ys = np.array([rows[gaps[k][0]] for k in members]); xs = np.array([gaps[k][1] for k in members])
+                b, a = np.polyfit(ys, xs, 1)
+                wide = max(gaps[k][2] for k in members) / 2 + margin
+                if WIRE_SHAPE:
+                    widths = [gaps[k][2] / space for k in members]
+                    if soft is None or not WIRE_SHAPE[0] <= abs(b) <= WIRE_SHAPE[1] \
+                            or max(widths) - min(widths) > WIRE_SHAPE[2] \
+                            or float(np.abs(xs - (a + b * ys)).max()) > WIRE_SHAPE[3] * space \
+                            or _wire_seen(grey, soft, a, b, wide - margin, rows[0], rows[4], rows, space) < WIRE_SHAPE[5] \
+                            or max(_wire_seen(grey, soft, a, b, wide - margin, rows[0] - reach * space, rows[0], rows, space),
+                                   _wire_seen(grey, soft, a, b, wide - margin, rows[4], rows[4] + reach * space, rows,
+                                              space)) < WIRE_SHAPE[5]:
+                        continue
+                if WIRE_SEEN is not None:
+                    widths = [gaps[k][2] / space for k in members]
+                    half = max(1, int(round(staff['thick'] / 2)))
+                    share = float(np.mean([black[max(0, int(round(row)) - half):int(round(row)) + half + 1,
+                                                 max(0, int(staff['x0'])):int(staff['x1']) + 1].any(axis=0).mean() for row in rows]))
+                    WIRE_SEEN.append({'staff': index, 'x': float(a + b * rows[2]), 'y': float(rows[2]), 'slope': float(b),
+                                      'lines': len({gaps[k][0] for k in members}), 'gaps': len(members),
+                                      'wide': float(2 * wide / space), 'spread': float(max(widths) - min(widths)),
+                                      'share': share, 'fit': float(np.abs(xs - (a + b * ys)).max() / space)})
+                for y in range(max(0, int(rows[0] - reach * space)), min(ink.shape[0], int(rows[4] + reach * space) + 1)):
+                    middle_x = a + b * y
+                    out[y, max(0, int(round(middle_x - wide))):max(0, int(round(middle_x + wide)) + 1)] = 1
+                taken.update(members)
+    return out
+
+
+def across_wire(ink: np.ndarray, black: np.ndarray, band: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The ink and the black ink with the print led across the bands of wires (CLIP_CROSS)."""
+    soft = (band > 0) & (ink > 0) & (black == 0)
+    if not soft.any():
+        return ink, black
+    fill = np.zeros(ink.shape, bool)
+    dark = black > 0
+    for row in np.nonzero(soft.any(axis=1))[0]:
+        columns = np.nonzero(soft[row])[0]
+        breaks = np.nonzero(np.diff(columns) > 1)[0]
+        for start, end in zip(np.r_[columns[0], columns[breaks + 1]], np.r_[columns[breaks], columns[-1]]):
+            if start > 0 and end + 1 < ink.shape[1] and dark[row, start - 1] and dark[row, end + 1]:
+                fill[row, start:end + 1] = True
+    ink = ink.copy()
+    ink[soft] = 0
+    ink[fill] = 1
+    black = black.copy()
+    black[fill] = 1
+    return ink, black
+
+
 BLACK = 0.12   # black ink is ink within this share of the way from the page's ink to its paper (ink_and_paper): the
 #   print of the page. A line in pencil, a marker, the shadow of a slip and a smear are ink by the page's limit and
 #   hold no black; the grey edge of a printed stroke stands beside its black. The mask changes no other layer; later
@@ -712,6 +843,10 @@ def read_layers(grey: np.ndarray, places: list[dict], no_holes: np.ndarray | Non
     ink = ink & (1 - scan_lines(grey, ink, places))
     clip = clips(grey, ink, space)
     black = black_ink(grey, ink)
+    if CLIP_CROSS:
+        band = wires(ink, black, staves, grey)
+        if band.any():
+            ink, black = across_wire(ink, black, band)
     clefs = [(staff['x0'] - space, staff['x0'] + HOLE_SIDE[3] * space, staff['rows'][0] - 2 * space, staff['rows'][4] + 2 * space)
              for staff in staves] if HOLE_SIDE else None
     ledgers = [staff['rows'][end] + side * step * staff['space'] for staff in staves for end, side in ((0, -1), (4, 1))

@@ -1802,6 +1802,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   dashes of a pencil ring before a whole note were a sharp. A sign is no test of a misread place either: a hollow head
   set on the line that its solid shape names took the flat that a breve's bar and the head's rim make, 0.58 staff spaces
   before it, where a true flat stands.
+- A wire that lies on the print hides it: nothing of the print shows under it. A light paperclip is a tube of two grey
+  edges with a pale middle, with no band of grey inside the ink for `layers.CLIP`, and it cut the heads and the stems
+  under it into pieces. Where it crosses a staff it cuts each black line with a gap of grey, and the gaps stand on one
+  straight line (`layers.CLIP_CROSS`). Gaps on one line are also what a worn print, a faded scan, a dashed line and a
+  hand leave (2,876 crossings on LitChoir's pages): the wire is told by its own ink along the line, grey in nearly every
+  row between the staff lines and past the staff, where a worn line has paper between its gaps (`layers.WIRE_SHAPE`:
+  the two clips of LitChoir pass and nothing else, and the fresh set has no crossing). The print is led across the band
+  where black stands at both sides of a row. A head that the wire half hides stays lost: the half that shows is too
+  small for a head, and its middle lies a step off.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
