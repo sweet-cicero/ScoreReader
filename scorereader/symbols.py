@@ -1919,6 +1919,29 @@ def _ledger_beside(layers: dict, head: dict, row: float, space: float) -> bool:
     return drop
 
 
+LEDGER_NARROW = (0.25, 0.25, 2)   # a print that draws its ledger lines short (extra-come-bless: a line 1.3 heads wide, 0.77
+#   of the window that ledger_lines asks): where no ledger line was found 0.95 staff spaces to each side of a head far
+#   beside the staff, the lines are looked for again in the head's own width and this many staff spaces at each side,
+#   and the head is a note where every line between the staff and the head is found there, each within this many staff
+#   spaces of its step from the staff, and there are at least this many of them. One line alone is any level stroke
+#   beside a mark: the census of the one-line form named the end of a slur, a smudge over a word and the crossbar of a
+#   sharp among its new heads. (None: off)
+LEDGER_NARROW_SEEN = None   # census: a dict for each head that LEDGER_NARROW gives its ledger lines
+
+
+def _narrow_ledgers(layers: dict, staff: dict, head: dict) -> list[float]:
+    """The ledger lines of a head far beside the staff whose print draws them short (LEDGER_NARROW), or [] where not
+    every line between the staff and the head is found at its step."""
+    space = staff['space']
+    rows = sorted(ledger_lines(layers, staff, head, (head['x1'] - head['x0'] + 1) / 2 + LEDGER_NARROW[0] * space))
+    count = int((abs(head['place']) - 4 + 0.5) // 2)
+    up = head['cy'] < staff['rows'][0]
+    steps = sorted(staff['rows'][0] - k * space if up else staff['rows'][4] + k * space for k in range(1, count + 1))
+    if count < LEDGER_NARROW[2] or len(rows) != count or any(abs(row - step) > LEDGER_NARROW[1] * space for row, step in zip(rows, steps)):
+        return []
+    return rows
+
+
 def ledger_lines(layers: dict, staff: dict, head: dict, half: float | None = None) -> list[float]:
     """The rows of the ledger lines between a staff and a head beside it, the line through the head too. A ledger
     line is a level run of ink that reaches past the head on both sides and is thinner than a head."""
@@ -3482,6 +3505,16 @@ def read_symbols(layers: dict) -> dict:
             else:
                 head['ledgers'] = ledger_lines(layers, layers['staves'][staff], head)
             found = ledger_place(layers, layers['staves'][staff], head)
+            if LEDGER_NARROW and found is not None and not head['ledgers'] and abs(place) > max(5.6, NO_LEDGER):
+                lines = _narrow_ledgers(layers, layers['staves'][staff], head)
+                if lines:
+                    head['ledgers'] = lines
+                    found = ledger_place(layers, layers['staves'][staff], head)
+                    if LEDGER_NARROW_SEEN is not None:
+                        LEDGER_NARROW_SEEN.append({'cx': head['cx'], 'cy': head['cy'], 'staff': staff, 'place': place, 'found': found,
+                                                   'lines': lines, 'hollow': hollow, 'wide': head['x1'] - head['x0'] + 1,
+                                                   'high': head['y1'] - head['y0'] + 1, 'orphan': orphan,
+                                                   'stems': [(stem['direction'], stem['x'], stem['end']) for stem in mark['stems']]})
             if found is None or (not head['ledgers'] and abs(place) > max(5.6, NO_LEDGER)):
                 # A faint ledger line is lost in the copy. A letter of the words has a bowl and a stem too, but its
                 # stem is short: a head as large as the heads of the page on a long stem is a note.
@@ -3621,6 +3654,13 @@ HOLE_BIG = None      # (2.5, 4): the hole of a mark that is this many times the 
 #                    LitChoir the rule gained 87 notes and lost 229; counted by the largest piece of paper of each
 #                    head and only after the clefs, it gained 65 and lost 271.
 HOLE_THROUGH = True  # a hollow head on a staff line: the two halves of its inside, over and under the line, are one hole
+OPEN_THROUGH = True  # the two halves that a staff line cuts out of the open inside of a half note whose rim the copy broke
+#                    are one inside too, as HALVES_ACROSS joins closed halves that lean apart. The ink between the
+#                    halves is asked with the small breaks of the rim closed, as the open insides are found
+#                    (layers.HOLE_GAP): a break at the line left 0.89 of the line's columns as ink, where 0.9 is asked.
+#                    A G4 half note of extra-come-bless (pg0629); the census at the step found no other place on
+#                    LitChoir's pages (False: off)
+OPEN_THROUGH_LOG = None   # a list: (cx, cy, area, wide, high, staff) of each head that OPEN_THROUGH reads
 HOLE_RIM = 0.2       # the rim of such a head is this thick, in staff spaces
 HOLE_CELL = 0.85     # a hole in a space of the staff that is this share of the gap between two staff lines high is a cell
 HOLE_CLOSED = 0.6    # past its rim, paper shows at the left and at the right within this many staff spaces
@@ -3684,10 +3724,14 @@ HALVES_ACROSS = (1.2, 1.0, 0.5)   # a half note on a staff line whose inside lea
 #   up and the lower head the one that goes down. (None: off)
 
 
-def _lean_halves(layers: dict, holes: np.ndarray, ragged: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+def _lean_halves(layers: dict, holes: np.ndarray, ragged: np.ndarray | None,
+                 ink: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """The insides that a staff line or a ledger line cut into two halves that lean apart (HALVES_ACROSS): the paper
-    of both halves with the ink of the line between them, and that ink alone."""
-    space, ink = layers['space'], layers['ink']
+    of both halves with the ink of the line between them, and that ink alone. The halves of open insides are asked
+    in the ink as the open insides were found, with the small breaks of the rim closed (OPEN_THROUGH)."""
+    space = layers['space']
+    if ink is None:
+        ink = layers['ink']
     paper = (holes > 0).astype(np.uint8)
     if ragged is not None:
         paper |= (ragged > 0).astype(np.uint8)
@@ -3806,6 +3850,16 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
         passes.append((True, ragged, None))
     if OPEN_HEADS and layers.get('open_holes') is not None:
         passes.append((True, layers['open_holes'], None))
+    open_lean = None
+    if OPEN_THROUGH and HALVES_ACROSS and OPEN_HEADS and layers.get('open_holes') is not None:
+        # A hollow head on a staff line whose rim the copy broke: the line cuts its open inside into two halves that
+        # lean apart, each too small for a head (OPEN_THROUGH). They are one inside as HALVES_ACROSS joins closed ones.
+        from .layers import HOLE_GAP
+        size = int(max(3, round(HOLE_GAP * space))) | 1
+        closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((size, 1), np.uint8)) \
+            | cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((1, size), np.uint8))
+        open_lean, open_across = _lean_halves(layers, layers['open_holes'], None, closed)
+        passes.append((True, open_lean, open_across))
     again = {}      # the open holes whose stem a filled mark held, by their paper: asked again at the end (OPEN_ORDER)
     if OPEN_ORDER:
         passes.append(None)
@@ -3842,14 +3896,14 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 # Paper that is not quite round: the inside of a head by its own shape only (RAGGED_SLIT).
                 if area > RAGGED_SLIT[3] * space * space or not _slit(labels[y:y + high, x:x + wide] == index):
                     continue
-            elif paper is lean:
+            elif paper is lean or paper is open_lean:
                 pass          # two halves that lean apart: their shape was asked (HALVES_ACROSS)
             elif wide < HOLE_HEADS[2] * high:
                 # A printed half note with a thin rim fills the gap between two staff lines: its inside is a slanted
                 # oval that is as high as wide, and fills little of its box.
                 if not (is_open and OPEN_ALONE and wide >= OPEN_SLANT[0] * high and area <= OPEN_SLANT[1] * wide * high):
                     continue
-            if paper is not ragged and paper is not lean and not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
+            if paper is not ragged and paper is not lean and paper is not open_lean and not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
                 continue
             inside = [head for head in heads + out
                       if head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2]
@@ -4046,6 +4100,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                             if len(other['stems']) >= 2:
                                 other['stems'] = [stem for stem in other['stems'] if stem['direction'] != outer]
             out.append(head)
+            if paper is open_lean and OPEN_THROUGH_LOG is not None:
+                OPEN_THROUGH_LOG.append((round(cx), round(cy), area, wide, high, staff))
             pieces.update(id(other) for other in head.get('replaces', []))
     if OPEN_BESIDE:
         # Two open heads of a chord, one over the other, found the same two stems, one that goes up and one that
@@ -9053,4 +9109,69 @@ def bar_lines(layers: dict, heads: list[dict]) -> dict[int, list[float]]:
             else:
                 merged.append(x)
         out[index] = merged
+    return out
+
+
+BAR_STEM = (0.2, 0.6, 0.5, 1.1, 0.5, 0.95)   # a bar line that is the stem of a half note: the inside of a head (this many
+# staff spaces squared, wide and high) beside it ...
+BAR_STEM_AT = (1.0, 0.5, 2, 0.85)   # ... within this many staff spaces of the outer line at its end and of the line,
+# the line stopping this many rows of paper short of the other outer line, and filling this share of the staff
+BAR_STEM_SEEN = None   # census: (staff, x, the inside's middle, the way of the stem)
+
+
+def bar_stems(layers: dict, bars: dict[int, list[float]], ends: list[float]) -> dict[int, list[float]]:
+    """The bar lines that are the stem of a half note (BAR_STEM; staff index: the x of each). A head in the space at the
+    top line with its stem down, or in the space at the bottom line with its stem up, has a stem that crosses the
+    staff to the other outer line, and a bare line from line to line was read there as a bar line. The open hole of
+    the head was then refused, because its stem was a bar line. A bar line ends at the other outer line; a stem stops
+    short of it, and the inside of its head stands at its side: at the right of a stem down near the top line, at the
+    left of a stem up near the bottom line (two half notes of extra-come-bless, each looked at; the census of every bar
+    line of LitChoir's pages and of the fresh set found no other)."""
+    if not BAR_STEM:
+        return {}
+    ink = layers['ink']
+    paper = ((layers['holes'] > 0) | (layers['open_holes'] > 0)).astype(np.uint8)
+    count, labels, stats, cents = cv2.connectedComponentsWithStats(paper, connectivity=4)
+    space = layers['space']
+    insides = [n for n in range(1, count) if 0.1 * space * space <= stats[n][4] <= space * space]
+    out = {}
+    for index, staff in enumerate(layers['staves']):
+        top, bottom = staff['rows'][0], staff['rows'][4]
+        sp, thick = staff['space'], staff['thick']
+        for x in bars.get(index, []):
+            if x <= ends[index] + 0.3 * sp:
+                continue
+            xi = int(round(x))
+            column = ink[int(top):int(bottom) + 1, max(0, xi - 2):xi + 3].any(axis=1)
+            if column.mean() < BAR_STEM_AT[3]:
+                continue
+            narrow = ink[:, max(0, xi - 1):xi + 2].any(axis=1)
+            def run(start, step):
+                k, y = 0, start
+                while 0 <= y < len(narrow) and not narrow[y] and k < int(sp):
+                    k += 1
+                    y += step
+                return k
+            gap_top = run(int(np.ceil(top + thick / 2 + 0.5)), 1)
+            gap_bottom = run(int(np.floor(bottom - thick / 2 - 0.5)), -1)
+            for n in insides:
+                bx, by, bw, bh, area = (int(v) for v in stats[n])
+                if not (BAR_STEM[0] * sp * sp <= area <= BAR_STEM[1] * sp * sp and BAR_STEM[2] * sp <= bw <= BAR_STEM[3] * sp
+                        and BAR_STEM[4] * sp <= bh <= BAR_STEM[5] * sp):
+                    continue
+                cy = float(cents[n][1])
+                if bx > xi:
+                    way = 'down' if bx - xi <= BAR_STEM_AT[1] * sp and abs(cy - top) <= BAR_STEM_AT[0] * sp \
+                        and gap_bottom >= BAR_STEM_AT[2] else None
+                elif bx + bw - 1 < xi:
+                    way = 'up' if xi - (bx + bw - 1) <= BAR_STEM_AT[1] * sp and abs(bottom - cy) <= BAR_STEM_AT[0] * sp \
+                        and gap_top >= BAR_STEM_AT[2] else None
+                else:
+                    way = None
+                if way is None:
+                    continue
+                out.setdefault(index, []).append(x)
+                if BAR_STEM_SEEN is not None:
+                    BAR_STEM_SEEN.append((index, x, (round(float(cents[n][0]), 1), round(cy, 1)), way))
+                break
     return out
