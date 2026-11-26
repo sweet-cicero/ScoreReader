@@ -81,6 +81,22 @@ TIE_TO_LINE = (1.5, 3.5)   # a bow may end in a staff line beside its head too: 
 #                         goes on to the head, the bow's last ink may lie this many staff spaces before the head, and the
 #                         way that was followed is this many times as long as the part that the line hides: a short
 #                         stroke beside a head that ends in a line is no bow (None: off)
+TIE_BAR = (1.6, 1.0, 0.35, 0.95, 0.4, 1.7)   # a tie over a bar line that the print ends at the bar line (None: off): an
+#                         upright line that fills the staff from its top line to its bottom line (in the fourth share of
+#                         those rows or more), at no stem (the last number of staff spaces from each), stands at most the
+#                         first number of staff spaces before the second head and at least the second number after the
+#                         first head; the way is cut at the bar line, its ink reaches to within the third number of staff
+#                         spaces of it, and the part before the bar line is a bow that ends at most the last number of staff
+#                         spaces over or under the second head's middle (TIE_BAR_SEEN: a census)
+TIE_BAR_SEEN = None
+TIE_BAR_PAST = (0.4, 1.0, 0.35, 0.2, 0.15, 0.25)   # the bow of TIE_BAR goes on past the bar line in no column (None: off):
+#                         in the columns from the first to the second number of staff spaces past the bar line's right
+#                         edge (and the fifth number before the second head), in the rows the third number around the
+#                         row where the bow meets the bar line, without the fourth number around each staff line, ink
+#                         stands in less than the last share of the columns. One print ends its ties at the bar line
+#                         (communion-lords-prayer: 0.0); the slurs that an engraving draws between two notes of one
+#                         pitch over a bar line go on to the second head (1.0), and the hymn sings them as two notes.
+#                         A bow that goes on in the rows of a staff line is not seen.
 TIE_ROUND = True        # a head between the two heads is of another voice by its place on the staff, not by where its ink lies
 TIE_LINE = (0.4, 0.07, 0.2, 2.0, 0.7, 1.6)   # a flat tie that lies in a staff line (None: off): the line is fatter in a
 #                         run of columns that is this share of the way between the two heads; fatter by this many
@@ -219,7 +235,8 @@ def _follow(thin: np.ndarray, lines: np.ndarray, x: int, y: float, last: int, sp
     if kinds.count('seen') < 2:
         return None
     return {'rows': np.array(rows), 'shown': np.array([kind == 'seen' for kind in kinds]), 'seen': kinds.count('seen'),
-            'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1, 'tail': tail or 0, 'along': alongs}
+            'hidden': kinds.count('hidden'), 'end': x + len(kinds) - 1, 'tail': tail or 0, 'along': alongs,
+            'hide': np.array([kind == 'hidden' for kind in kinds])}
 
 
 def _apart(way: dict, x: int, first: int, last: int, space: float) -> bool:
@@ -311,17 +328,95 @@ def _dips(way: dict, lines: np.ndarray, x: int, space: float) -> bool:
     return float(np.mean(away)) <= TIE_DIP[1] * space
 
 
+def _bar_at(ink: np.ndarray, rows: list[float], low: int, high: int, stems: list[float], space: float) -> int | None:
+    """The last column from `low` to `high` where an upright line fills the staff from its top line to its bottom line
+    and no stem stands (TIE_BAR): a bar line."""
+    top, bottom = int(round(rows[0])), int(round(rows[-1]))
+    low, high = max(1, low), min(ink.shape[1] - 2, high)
+    if high < low:
+        return None
+    band = ink[top:bottom + 1, low - 1:high + 2] > 0
+    filled = (band[:, :-2] | band[:, 1:-1] | band[:, 2:]).mean(axis=0) >= TIE_BAR[3]
+    columns = [low + int(at) for at in np.nonzero(filled)[0]
+               if all(abs(low + int(at) - stem) > TIE_BAR[4] * space for stem in stems)]
+    return max(columns) if columns else None
+
+
+def _past_bar(ink: np.ndarray, staff_rows: list[float], bar: int, row: float, end: int, space: float) -> float:
+    """The share of the columns past the bar line (TIE_BAR_PAST) that hold ink near the row where the bow meets the bar
+    line, outside the rows of the staff lines: a bow that goes on past the bar line to its head. The columns begin the
+    first number of staff spaces past the right edge of the bar line and end the second number past it, or the fifth
+    number before the second head; the rows are the third number of staff spaces around the bow's row, without the
+    fourth number around each staff line."""
+    if TIE_BAR_PAST is None:
+        return 0.0
+    top, bottom = int(round(staff_rows[0])), int(round(staff_rows[-1]))
+    edge = bar
+    while edge + 1 < ink.shape[1] and (ink[top:bottom + 1, edge + 1] > 0).mean() >= 0.5:
+        edge += 1
+    left = edge + 1 + int(round(TIE_BAR_PAST[0] * space))
+    right = min(edge + 1 + int(round(TIE_BAR_PAST[1] * space)), end - int(round(TIE_BAR_PAST[4] * space)), ink.shape[1])
+    if right <= left:
+        return 0.0
+    near = int(round(TIE_BAR_PAST[3] * space))
+    rows = [y for y in range(max(0, int(round(row - TIE_BAR_PAST[2] * space))),
+                             min(ink.shape[0], int(round(row + TIE_BAR_PAST[2] * space)) + 1))
+            if all(abs(y - line) > near for line in staff_rows)]
+    if not rows:
+        return 0.0
+    return float((ink[rows, left:right] > 0).any(axis=0).mean())
+
+
+def _to_bar(way: dict, x: int, first: int, last: int, staff_bar: tuple, layers: dict, one: dict, two: dict,
+            space: float) -> bool:
+    """Is the way that was followed from the column `x` a bow that the print ends at a bar line before the second head
+    (TIE_BAR)? The way is cut at the bar line: what it follows past the bar line (the line itself, a staff line, the
+    stem of the next note) is no part of the bow."""
+    rows_of_staff, stems = staff_bar
+    bar = _bar_at(layers['ink'], rows_of_staff, max(first + int(round(TIE_BAR[1] * space)), last - int(round(TIE_BAR[0] * space))),
+                  last, stems, space)
+    if bar is None:
+        return False
+    shown, rows, hide = way['shown'], way['rows'], way['hide']
+    cut = min(len(shown), bar - x - 1)
+    if cut <= 0:
+        return False
+    seen = np.nonzero(shown[:cut])[0]
+    if not len(seen) or bar - (x + int(seen[-1])) > TIE_BAR[2] * space:
+        return False
+    end = int(seen[-1]) + 1
+    part = {'rows': rows[:end], 'shown': shown[:end], 'seen': int(shown[:end].sum()), 'hidden': int(hide[:end].sum())}
+    if part['seen'] < TIE_SEEN[0] * end or part['seen'] + part['hidden'] < TIE_SEEN[1] * end:
+        return False
+    if abs(part['rows'][-1] - two['cy']) > TIE_BAR[5] * space:
+        return False
+    past = _past_bar(layers['ink'], rows_of_staff, bar, part['rows'][-1], int(two['x0']), space)
+    good = _is_bow(part, space) and (TIE_BAR_PAST is None or past < TIE_BAR_PAST[5])
+    if TIE_BAR_SEEN is not None:
+        TIE_BAR_SEEN.append({'staff': one['staff'], 'one': (round(one['cx']), round(one['cy'])), 'two': (round(two['cx']), round(two['cy'])),
+                             'place': round(one['place'], 2), 'bar': bar, 'start': x, 'reach': round((bar - (x + int(seen[-1]))) / space, 2),
+                             'long': round(end / space, 2), 'seen': round(part['seen'] / end, 2), 'past': round(past, 2), 'row': round(float(part['rows'][-1])),
+                             'bow': bool(good)})
+    return good
+
+
 def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float,
-         core: np.ndarray | None = None, swell: np.ndarray | None = None, layers: dict | None = None) -> bool:
+         core: np.ndarray | None = None, swell: np.ndarray | None = None, layers: dict | None = None,
+         staff_bar: tuple | None = None) -> bool:
     """Is there a bow from the head `one` to the head `two`? `core` is the thin ink for the flat bow (TIE_FLAT).
-    With `layers`, a bow in pencil is no bow (TIE_SOFT)."""
+    With `layers`, a bow in pencil is no bow (TIE_SOFT). `staff_bar`: the staff's rows and the columns of its stems,
+    for a bow that ends at a bar line (TIE_BAR)."""
     if _way(thin, lines, one, two, space, False, None, swell, layers):
+        return True
+    if TIE_BAR and staff_bar is not None and layers is not None \
+            and _way(thin, lines, one, two, space, False, None, None, layers, staff_bar):
         return True
     return bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True, None, None, layers)
 
 
 def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float, low: bool,
-         thick: float | None = None, swell: np.ndarray | None = None, layers: dict | None = None) -> bool:
+         thick: float | None = None, swell: np.ndarray | None = None, layers: dict | None = None,
+         staff_bar: tuple | None = None) -> bool:
     """Is there a way of thin ink from the head `one` to the head `two` that is a bow? `low`: a flat bow counts.
     `thick`: how thick the bow may be, in staff spaces (TIE_THIN when None). With `layers`, a way in pencil is
     left out (TIE_SOFT)."""
@@ -359,6 +454,11 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
             if row not in hidden:       # a way from a staff line may be another bow's: that bow is still followed from its own start
                 tried.add(int(round(way['rows'][min(len(way['rows']) - 1, 2)])))
             count = len(way['rows'])
+            if staff_bar is not None:
+                # Only the cut at a bar line (TIE_BAR): the other tests were asked without it.
+                if _to_bar(way, column, first, last, staff_bar, layers, one, two, space) and not pencil(way, column):
+                    return True
+                continue
             if way['end'] < last - side and not (TIE_TO_LINE and way['end'] + way['tail'] >= last - side
                                                  and way['end'] >= last - TIE_TO_LINE[0] * space
                                                  and count >= TIE_TO_LINE[1] * (last - way['end'])):
@@ -639,6 +739,8 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
     found = []
     for staff in sorted({head['staff'] for head in heads}):
         own = sorted((head for head in heads if head['staff'] == staff), key=lambda head: head['cx'])
+        staff_bar = (layers['staves'][staff]['rows'], [stem['x'] for head in own for stem in head['stems']]) \
+            if TIE_BAR and 'staves' in layers else None
         voices = {}
         for one in own:
             voices[id(one)] = {stem['direction'] for stem in one['stems']}
@@ -675,7 +777,8 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
                     break
             if two is None:
                 continue
-            tied = _bow(thin, lines, one, two, space, core, swell, layers) or bool(TIE_LINE and _in_line(layers, one, two, space)) \
+            tied = _bow(thin, lines, one, two, space, core, swell, layers, staff_bar) \
+                or bool(TIE_LINE and _in_line(layers, one, two, space)) \
                 or (bold is not None and _way(bold, lines, one, two, space, False, TIE_BOLD))
             if tied:
                 one['tie_start'] = True
