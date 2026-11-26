@@ -7643,6 +7643,12 @@ TOP_LOOP = (0.25, 0.5)   # a hollow mark with one stem down at its left, whose s
 #   fresh set holds one such mark, at 0.05. None: off
 
 
+TOP_STEM = True   # and where that head has no stem up and its stem down carries a flag, the stroke is its stem up and the
+#   loop is that stem's flag: a head that two voices share, each an eighth (the print draws the upper voice's flag back
+#   to its stem, and the reader had given the stem to the loop). False: off
+TOP_STEM_LOG = None
+
+
 def without_top_loops(layers: dict, heads: list[dict]) -> list[dict]:
     """The heads without the hollow marks that are the loop of a flag at the top of another head's stem up
     (TOP_LOOP). It runs after the flags are counted."""
@@ -7667,6 +7673,13 @@ def without_top_loops(layers: dict, heads: list[dict]) -> list[dict]:
         if (mid - other['cx']) / half >= TOP_LOOP[0] and other['y1'] - other['y0'] + 1 >= TOP_LOOP[1] * high \
                 and not _in_words(layers, other):
             gone.add(id(head))
+            if TOP_STEM and other['tails'].get('down', 0) >= 1 and not any(own['direction'] == 'up' for own in other['stems']):
+                # The stroke is the lower head's stem up, and the loop its flag (TOP_STEM).
+                up = dict(stem, direction='up', x=mid, end=float(head['y0']), length=float(other['cy'] - head['y0']), marks=[])
+                other['stems'] = other['stems'] + [up]
+                other['tails'] = dict(other['tails'], up=1)
+                if TOP_STEM_LOG is not None:
+                    TOP_STEM_LOG.append((other['staff'], round(other['cx']), round(other['cy'])))
     return [head for head in heads if id(head) not in gone]
 
 

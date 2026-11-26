@@ -1847,6 +1847,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   rule for the loop of a flag asked two stems that go the same way (`symbols.TOP_LOOP`). The mark at the stroke's foot
   is asked whether it is a head: where a hand's stem crosses a ledger line the crossing is a thin mark, and a letter
   of the words under the staff takes the stem of the printed head over it.
+- A rule that takes a false mark away leaves what the mark took from its neighbour where the mark had it. The loop of a
+  flag had the stem of its note as its own stem down; with the loop gone the stem was no one's, and the head under it,
+  which two voices share, kept only the other voice's stem down (`symbols.TOP_STEM`: the head takes the stroke back as
+  its stem up, with the loop as its flag, where its stem down carries a flag too). The false half note had parted the
+  step of that column, and the note that it kept right was lost with it: list what each mark that goes held, its stems
+  and its column, before the rule is closed.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
