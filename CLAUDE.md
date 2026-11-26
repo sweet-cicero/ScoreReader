@@ -1875,6 +1875,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   each side, its bars, and a whole note beside a sign and a stem has one too: a run of three parts them. The census
   from the stored notes named the shape, and the rule's own code at its step was read on every page before the full
   pass.
+- A stem that crosses the whole staff from a head at an outer line is a bar line by its ink alone, and a step that
+  refuses a head whose stem is a bar line then refuses a true half note. Where the line ends tells (a bar line ends at
+  the far outer line, a stem stops short of it), with the inside of its head at the side where a stem leaves its head
+  (`symbols.BAR_STEM`). A test that an older rule asks of closed insides is asked of open ones in the ink in which the
+  open ones were found: the break of the rim lay at the line, and the line's ink between the halves missed 0.9 by a
+  hundredth (`symbols.OPEN_THROUGH`). A rule that finds a head's ledger lines in a narrower window takes any level
+  stroke where one line is asked (the end of a slur, a smudge, the crossbar of a sharp): it asks every line at its step,
+  two or more (`symbols.LEDGER_NARROW`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
