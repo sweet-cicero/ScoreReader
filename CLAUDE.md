@@ -1898,6 +1898,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   staff spaces at most) and the two filled heads at the cell (1.8 and more). A false head that lines up with a typed note
   that is lacking moves no count: read every new head of a clean copy on the page. Three new locals of `hole_heads`
   (`far`, `rim`, `own`) were older names of the function in one round: search the function for every new name.
+- A half note on a staff line whose rim the copy broke at the line and once more at one side keeps only the half of its
+  inside at the other side of the line, too small for an open hole, and the stem runs down the rim past the middle of
+  the piece that is left (`symbols.LINE_HALF`). Open paper at a line is also the hook of a quarter rest, a hand's flag
+  beside its stem and the speck of a worn filled head: the half of an inside lies along the line that cuts its piece,
+  lies on its side, and has the stem beside the piece, not through it. A rule that makes a head hollow early meets the
+  later steps that test hollow heads: a worn filled head that the first form made hollow was taken by the step for a cell
+  along a staff line, where the network had read it later as a half note, and the count called the lost note a gain by
+  its line-up. Read the first form's pages with the whole reader before the full pass.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
