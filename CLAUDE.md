@@ -1786,6 +1786,11 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
 - A slur that is read as the last beam of a run is thinner at its neighbour than the beam at the neighbour's other
   side (0.54), and true beams of a thick copy are as thin there (0.5 to 0.62, the next stem the end of its run): the
   census of every middle stem of a beam at the reader's step showed it, and the slur has no rule.
+- A letter of the ison that is not named lets the ison notes on either side of it run together, and a heavy face fails the
+  naming of each letter in a way of its own. One scan showed three: a bowl that the ink nearly closed, a round corner, and
+  a piece of the staff line first in the word. A census of every word that the naming looks at, with its measures, named
+  one letter for each milder test and no other piece. Each test is written for its own shape (`drone.HEAVY_SLIT`,
+  `ROUND_FOOT`, `FLAT_HEAD`). A fourth letter, whose arms the ink joined, has no shape of its own and gets no rule.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

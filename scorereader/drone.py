@@ -54,6 +54,18 @@ LINE_FOOT = True        # a heavy letter that sits on the staff's top line keeps
 #                       ink: where no letter is named, the piece is named again without the rows from the line's top edge
 #                       on, when it ends in the line's rows (pascha-hypakoe--s2, a heavy print. False: off)
 LINE_FOOT_SEEN = None   # census
+HEAVY_SLIT = 0.015      # a heavy D whose bowl the ink nearly closed: where the paper it closes in lies far to the right and
+#                       an upright stroke stands left of it (HEAVY), a slit of this share of the box is enough for the D test
+#                       (a stem at the left or 0.03 of the box otherwise). Of every word over the one-staff pages of
+#                       LitChoir and the fresh set, the widened test lets in two pieces with a slit from this share to 0.03:
+#                       the D of pascha-hypakoe--s2 pg0537 (0.021) and a slur that is too wide for a letter. (0: off)
+ROUND_FOOT = 0.2        # an E of a heavy face whose lower left corner is round: the foot may begin this share of the width
+#                       in where the top left corner is square (0.1 or less, as both corners otherwise), the stem and the
+#                       three arms as an E has them. A C and a G are round at both corners. The census of those words: one
+#                       E, at 0.13 (pascha-hypakoe--s2 pg0537); no other piece passes up to 0.25. (0: off)
+FLAT_HEAD = True        # the letter of a word is its first piece that is not flat: a piece of the top line that a fermata
+#                       under the line keeps in the layer without the lines stood first in the word of the hymn's last
+#                       letter (pascha-hypakoe--s2 pg0537); the census of those words: that one word. (False: off)
 
 BREVE_BARE = (2, 0.3, 0.7, 2.8, 1.4, 0.3)
 #                       on a page that names the ison by letters (the first number of letters or more) a breve is the ison
@@ -131,14 +143,18 @@ def name_letter(piece: np.ndarray) -> str | None:
     corners = band(left, 0.0, 0.1).min() <= 0.1 and band(left, 0.9, 1.0).min() <= 0.1
     if len(holes) >= 2 and holes[1][0] >= 0.03 and abs(holes[0][1] - holes[1][1]) >= 0.25:
         return 'B' if stem and corners else None
+    def upright() -> bool:
+        """An upright stroke left of the closed-in paper (HEAVY)."""
+        return max((last - first + 1 for column in range(int(holes[0][2] * wide)) for first, last in _runs(piece[:, column])),
+                   default=0) >= HEAVY[1] * high
+
     if len(holes) == 1 and 0.3 <= holes[0][1] <= 0.7 and holes[0][2] >= 0.35 and band(right, 0.25, 0.75).min() >= 0.8 \
-            and (stem or holes[0][0] >= 0.03):
+            and (stem or holes[0][0] >= 0.03
+                 or (HEAVY_SLIT and holes[0][0] >= HEAVY_SLIT and holes[0][2] >= HEAVY[0] and upright())):
         # D: the bowl closes the right side from top to bottom, and its right corners are round. At the left it has
         # corners; or, in a heavy face with long serifs, the stem stands upright left of the closed-in paper, which
         # the serifs push to the right.
-        upright = max((last - first + 1 for column in range(int(holes[0][2] * wide)) for first, last in _runs(piece[:, column])),
-                      default=0) >= HEAVY[1] * high
-        if (corners or (holes[0][2] >= HEAVY[0] and upright)) \
+        if (corners or (holes[0][2] >= HEAVY[0] and upright())) \
                 and min(band(right, 0.0, 0.06).max(), band(right, 0.94, 1.0).max()) <= 0.92:
             return 'D'
         return None
@@ -164,6 +180,9 @@ def name_letter(piece: np.ndarray) -> str | None:
                 and any(len(runs) == 2 and runs[0][0] <= 0.12 and runs[-1][1] <= 0.7 for runs in arms):
             return 'F'
         return None
+    if ROUND_FOOT and stem and band(left, 0.0, 0.1).min() <= 0.1 and band(left, 0.9, 1.0).min() <= ROUND_FOOT \
+            and top >= 0.8 and bottom >= 0.7 and any(len(runs) == 3 and runs[0][0] <= 0.12 and runs[-1][1] >= 0.88 for runs in arms):
+        return 'E'      # an E whose foot the heavy face rounds (ROUND_FOOT)
     # C and G: round at the left (the top and bottom rows begin further right than the middle), ink at the top and
     # at the bottom, open at the right over the middle.
     round_left = band(left, 0.3, 0.7).max() <= 0.2 and min(band(left, 0.0, 0.08).min(), band(left, 0.92, 1.0).min()) >= 0.12
@@ -233,14 +252,14 @@ def letter_marks(layers: dict, index: int, clef: str, after: float = 0.0, trace:
             words.append([piece])
     named = []
     for word in words:
-        head = word[0]
+        head = next((piece for piece in word if piece['y1'] - piece['y0'] + 1 >= FLAT * space), word[0]) if FLAT_HEAD else word[0]
         high, wide = head['y1'] - head['y0'] + 1, head['x1'] - head['x0'] + 1
         letter = None
         if HIGH[0] * space <= high <= HIGH[1] * space and WIDE[0] * high <= wide <= WIDE[1] * high:
             letter = name_letter(labels[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] == head['label'])
         if LINE_FOOT and letter is None:
             letter = _line_foot(labels, head, first, staff, space)
-        rest = [piece for piece in word[1:] if piece['y1'] - piece['y0'] + 1 >= FLAT * space]
+        rest = [piece for piece in word if piece is not head and piece['y1'] - piece['y0'] + 1 >= FLAT * space]
         if letter == 'U':
             # "Un.": the n is lower than the U and stands on its line; after it only the full stop, or a stroke that
             # a pencil joined to it, in the lower half.
