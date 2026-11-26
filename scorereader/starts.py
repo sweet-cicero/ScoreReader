@@ -41,6 +41,12 @@ SYSTEM_START = 1.0  # the staves of a system begin in the same columns: a staff 
 #                     staff spaces of the staff's left end) shows its clef or key and its notes begin this many staff
 #                     spaces or more before that, the scan cut the left end of the system, and the notes of the staff
 #                     begin there too (None: off)
+NO_CLEF = 1.0       # a page whose staves show no clef at all is a print that sets the rest of its hymn without clefs
+#                     and keys (a slip with the Amen, a system that goes on from the page before): where a staff shows
+#                     no key either, and its system has the hymn's staves (as many as the clefs of the page before,
+#                     two or more), its notes begin this many staff spaces from the staff's left end, not after the
+#                     room of a lost clef and key. The false staves of a page of text stand alone or in other
+#                     numbers (None: off)
 KEY_LOST = (0.35, 2)    # where most staves show no key, a key that this many staves show this well (miss) is the page's key (None: off)
 KEY_STRONG = (0.5, 2)   # a key of two or more signs that this many staves show this well wins over fewer signs of its sort (None: off)
 KEY_WEAK = True         # one unclear mark alone (see read_start) is a witness for a lost key only beside a clear one
@@ -906,6 +912,9 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
         left = start['left'] if start['clef'] or staff['system'] not in lefts else float(np.median(lefts[staff['system']]))
         if usual is not None and (end is None or (end - left) / staff['space'] > usual + USUAL_START):
             end, shown = left + usual * staff['space'], None
+        elif end is None and NO_CLEF is not None and not rooms and clefs_before and len(clefs_before) >= 2 \
+                and sum(1 for other in staves if other['system'] == staff['system']) == len(clefs_before):
+            end = left + NO_CLEF * staff['space']
         elif end is None:
             end = max(start['x1'], left + min(room, 2 * LOST_CLEF) * staff['space'])
             end += (abs(key) * 1.1 + 1.0) * staff['space'] if key else 0.0

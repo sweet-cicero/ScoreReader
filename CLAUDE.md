@@ -1818,6 +1818,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   10 notes for 3. The engraver's meaning is not on the page; where the bow ends is. The print's ties stop at the bar
   line, and the engraving's bows go on past it to the second head (`TIE_BAR_PAST`, set by LitChoir's ties). A bow
   that goes on in the rows of a staff line is not seen: say so where it acts.
+- A print can set the rest of its hymn without clefs and keys (a slip with the Amen, a system that goes on from the page
+  before). Where no staff of a page shows a clef, the room of a lost clef and of the key took the first chord of each
+  system. Such a page begins its notes at the staff's left end (`starts.NO_CLEF`). A census of every staff's start
+  found 8 such pages on LitChoir and none on the fresh set: 3 of music, each with systems of the hymn's staves, and 5
+  pages of text whose false staves stand alone or in other numbers, where the first form read false notes. The guard is
+  the system's shape (as many staves as the clefs of the page before, two or more), not the page's kind.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
