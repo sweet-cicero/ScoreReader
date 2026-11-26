@@ -1853,6 +1853,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   its stem up, with the loop as its flag, where its stem down carries a flag too). The false half note had parted the
   step of that column, and the note that it kept right was lost with it: list what each mark that goes held, its stems
   and its column, before the rule is closed.
+- A wider limit for a step of a chain is asked only where the page asks for the next link. A hand spaces the signs of
+  a key wide (1.71 to 2.28 staff spaces on 32 staves of LitChoir, each looked at), and the fresh set's engravings set
+  another mark 2.06 to 2.18 staff spaces after a key's last sign on 49 staves: a wider step for every chain reads
+  those as signs. The page's key is the guard (`starts.KEY_REACH`: a staff that shows the first signs of the page's key
+  reaches the next ones over a wider step), and the rule acts on no staff of the fresh set. A staff whose start comes
+  from such a rule is no witness of where the page's other staves begin, and they do not move it: let into the
+  page's usual start, it moved the starts of staves that the rule does not touch. Its own key alone is no shield
+  from the page's usual start either: staves that show the page's key and that the page moves hold true first notes
+  between the two starts on three pages.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
