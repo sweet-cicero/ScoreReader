@@ -1833,6 +1833,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   (`starts.FLAT_HEAVY`). A census of every flat with a head at its foot (9) and of every joined mark with a flat's sides
   (12), each looked at, named the cases. A wider limit for a glued flat took a half-flat of an Arabic copy by hand (a
   flat with a slash, which the hymn types as a natural): look at what else has the shape before a limit is widened.
+- A test that an older rule makes of one kind of line is asked again where the mark touches the line. A mark before the
+  line that opens a system is no clef where a clef stands right after that line (`starts.OPENING`), and the test asked
+  bare lines only: a clef that touches the line makes it a joining line. A staff that was followed past its system's
+  left end into a punch hole had the ring read as its clef, and the true clef's loops as five notes
+  (`starts.OPEN_JOINED`). A joining line is also a bar line through the gap: the first form took a scribble in a first
+  bar that a hand crossed out, and the dots of a repeat sign, for the clef, where the true clef stands at the staff's
+  left end. The other staves of the system say where the clefs stand: they are the witnesses, not the one staff.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
