@@ -1921,6 +1921,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   of ink into three or four marks in one column, and two whole notes are two marks. The size of the inside parted them
   by a hair (0.27 against 0.297 staff spaces); the count of the piece's marks parts them wholly. A rule that reads a
   mark at an earlier step than the step that read it before changes its box, not its note: look at such pages too.
+- A mark that no finder takes can be a head whose line fills it. A ledger line as thick as a whole note's inside is high
+  leaves two slivers of paper, one over the line and one under it, and the line's ends make the mark wider than an oval
+  (`symbols.LEDGER_WHOLE`). A census of every wide mark with no stem and closed paper over and under its middle, each
+  looked at, gave the shape: the slivers stand in one column, and the ink between them lies on a ledger line's place
+  beside the staff. The sharps and letters with such cells are taller, and the other such marks stand in the staff. A
+  note that the count calls not there can be a printed note that the typed hymn leaves out (a divided alto that holds
+  a tied C4 under the moving voice): look at the page before a rule is narrowed for it. A head whose stem is lost is
+  gained only with its length: two stemless heads of one blot were read at the right pitches and came out as quarter
+  notes, because a hairline beam with no witness was the only sign of their eighths, and no rule was written.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

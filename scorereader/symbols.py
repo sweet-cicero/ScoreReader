@@ -326,6 +326,20 @@ WHOLE_TWIN = (1.0, 0.75, 2.0)  # a hollow mark with no stem that the whole note'
 #                                (the numbers of a time signature, which the staff lines cut into three or four marks)
 #                                (None: off)
 WHOLE_TWIN_SEEN = None         # a list: each mark that WHOLE_TWIN lets through
+LEDGER_WHOLE = (1.35, 2.2, 0.85, 1.3, 0.3, 0.25, 0.5)
+#   A whole note on a ledger line beside the staff whose line is as thick as its inside is high: the line cuts the
+#   inside into two slivers, one over it and one under it, too small for a hollow head, and the line's ends make the
+#   mark wider than an oval. Such a mark with no stem is a whole note on that line where it is from the first to the
+#   second number of the page's heads wide and from the third to the fourth number of their height high, the middle of
+#   the ink between the two slivers lies within the fifth number of a place (half a staff space) of a ledger line's
+#   place, the mark holds exactly one sliver of closed paper (3 pixels or more) over that middle and one under it, each
+#   within the sixth number of staff spaces of the mark's middle column, and the ink between them, at most the seventh
+#   number of staff spaces high, fills nine tenths of their columns (a speck of paper beside a sliver stays). A census
+#   of every mark without a stem from 1.2 to 2.4 heads wide with closed paper over and under its middle on LitChoir's
+#   pages (31, each looked at): the 20 whole notes stand beside the staff on a ledger line's place, 1.47 to 2.0 heads
+#   wide and 0.96 to 1.17 high; the sharps, the letters and the edge of a scan are 1.45 heads high or more, and two
+#   whole notes side by side and two sharps stand in the staff. The fresh set holds no such note. (None: off)
+LEDGER_WHOLE_SEEN = None   # a list: each mark that LEDGER_WHOLE takes
 WHOLE_STAFF = 0      # in the staff a whole note is at least this many times as wide as it is high (0: as WHOLE says).
 #                    Off: with 1.0 it gained 1 note on the clean copies, lost 1 and wrote 8 notes that are not there.
 WHOLE_FILLED = 0     # a filled oval without a stem, as large as a whole note, that touches a whole note over or under
@@ -3191,6 +3205,47 @@ def _whole_twins(layers: dict, marks: list[dict], limit: float, meet: dict) -> s
     return found
 
 
+def _ledger_whole(layers: dict, staff: dict, mark: dict) -> tuple[float, float, list[float]] | None:
+    """(LEDGER_WHOLE) The place of a whole note whose ledger line cuts its inside into two slivers, the row of that line
+    and the rows of the ledger lines from the staff to it; None when the mark is no such note."""
+    least, most, low, high, off, column, thick = LEDGER_WHOLE
+    space, (head_wide, head_high) = staff['space'], layers['head']
+    wide, tall = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+    if not (least * head_wide <= wide <= most * head_wide and low * head_high <= tall <= high * head_high):
+        return None
+    box = layers['ink'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1]
+    paper = np.pad((box == 0).astype(np.uint8), 1, constant_values=1)
+    count, labels, stats, centres = cv2.connectedComponentsWithStats(paper, connectivity=4)
+    outer = labels[0, 0]
+    middle = (mark['y0'] + mark['y1']) / 2
+    cells = [(int(stats[k][0]) - 1 + mark['x0'], int(stats[k][1]) - 1 + mark['y0'], int(stats[k][2]), int(stats[k][3]),
+              float(centres[k][0]) - 1 + mark['x0'], float(centres[k][1]) - 1 + mark['y0'])
+             for k in range(1, count) if k != outer and stats[k][4] >= 3]
+    over = [cell for cell in cells if cell[5] < middle]
+    under = [cell for cell in cells if cell[5] > middle]
+    if len(over) != 1 or len(under) != 1:
+        return None
+    (ux, uy, uw, uh, ucx, _), (lx, ly, lw, _, lcx, _) = over[0], under[0]
+    if abs(ucx - mark['cx']) > column * space or abs(lcx - mark['cx']) > column * space:
+        return None
+    top, bottom = uy + uh, ly - 1
+    if not (0 <= bottom - top + 1 <= thick * space):
+        return None
+    left, right = min(ux, lx), max(ux + uw, lx + lw)
+    if bottom >= top and layers['ink'][top:bottom + 1, left:right].astype(bool).mean() < 0.9:
+        return None       # paper between the slivers: no line goes through (a speck of paper is no sliver)
+    row = (top + bottom) / 2
+    place = pitch_place(staff, row)
+    line = 2 * round(place / 2)
+    if abs(line) < 6 or abs(place - line) > off:
+        return None
+    lines = [place_row(staff, step if line > 0 else -step) for step in range(6, abs(line), 2)] + [row]
+    if LEDGER_WHOLE_SEEN is not None:
+        LEDGER_WHOLE_SEEN.append({'cx': mark['cx'], 'cy': mark['cy'], 'place': place, 'wide': wide / head_wide,
+                                  'high': tall / head_high, 'cells': [over[0], under[0]]})
+    return float(line), row, lines
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -3467,6 +3522,7 @@ def read_symbols(layers: dict) -> dict:
         cy = mark['hole_cy'] if HOLE_PLACE and hollow and mark['hole_cy'] is not None else mark['cy']
         or_hollow = None
         orphan = False
+        lined = None
         if hollow and mark.get('solid_cy') is not None and mark['stems']:
             or_hollow = cy
             hollow, cy = False, mark['solid_cy']
@@ -3501,6 +3557,10 @@ def read_symbols(layers: dict) -> dict:
             # No word stands in the staff: there a whole note may be as round as the letter o.
             oval = lying(mark, WHOLE_STAFF if WHOLE_STAFF and abs(place) <= 4.6 else WHOLE[0])
             oval = oval or id(mark) in twins     # a whole note of a chord: see WHOLE_TWIN
+            if LEDGER_WHOLE and not hollow and 'tail_of' not in mark and abs(place) > 4.6:
+                lined = _ledger_whole(layers, layers['staves'][staff], mark)
+                if lined is not None:
+                    hollow, oval, place, cy = True, True, lined[0], lined[1]     # see LEDGER_WHOLE
             if WHOLE_SLIT and not hollow and oval and 'tail_of' not in mark \
                     and WHOLE_SLIT[0] * layers['head'][0] <= wide <= WHOLE_SLIT[1] * layers['head'][0] \
                     and high <= WHOLE_SLIT[9] * layers['head'][1] \
@@ -3511,7 +3571,7 @@ def read_symbols(layers: dict) -> dict:
                     and other['hole'] >= limit and lying(other) and abs(other['cx'] - mark['cx']) <= WHOLE_FILLED * space
                     and min(abs(other['y0'] - mark['y1']), abs(mark['y0'] - other['y1'])) <= 0.3 * space for other in marks):
                 hollow = True       # the print filled the hole of a whole note that touches the whole note of the other voice
-            elif not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM
+            elif lined is None and not (hollow and oval and 'tail_of' not in mark and _rim(layers, mark) >= RIM
                       and not (CELL and _cell(layers, mark))):
                 # A mark as large as a head with no stem: the copy may have cut its stem off (see lost_stems()).
                 if not (ORPHANS and 'tail_of' not in mark
@@ -3558,6 +3618,8 @@ def read_symbols(layers: dict) -> dict:
             continue
         if mark.get('line_place') is not None:
             head['ledgers'] = [mark['dash']] if 'dash' in mark else []
+        elif lined is not None:
+            head['ledgers'] = lined[2]
         elif abs(place) > 4.6:
             if SIDE_LEDGER and mark.get('pair'):
                 # The two heads of a pair at one stem line are one wide head for a ledger line: see SIDE_LEDGER.
