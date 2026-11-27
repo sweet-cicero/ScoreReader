@@ -9390,7 +9390,7 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
     line close in a little paper, which was read as a low hollow head with the bar line as its stem. The line goes
     through the staff from its top line to its bottom line and goes on above the mark and below it (a stem ends at its
     head), and the mark is lower than a head. A low hollow mark with no stem is asked for a line at its side
-    (BAR_SIDE)."""
+    (BAR_SIDE). A low filled mark is such a place where a thin stroke goes on at both sides of the line (BAR_CROSS)."""
     if not BAR_MARK:
         return []
     ink, high, out = layers['ink'], layers['head'][1], []
@@ -9400,7 +9400,8 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
             if _bar_side(layers, mark):
                 out.append(mark)
             continue
-        if not mark['hollow'] or mark.get('thin') or len(mark['stems']) != 1 \
+        filled = bool(BAR_CROSS) and not mark['hollow']
+        if not (mark['hollow'] or filled) or mark.get('thin') or len(mark['stems']) != 1 \
                 or mark['y1'] - mark['y0'] + 1 > BAR_MARK[0] * high:
             continue
         staff = layers['staves'][mark['staff']]
@@ -9416,10 +9417,67 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
         over = column[max(0, int(mark['y0']) - reach):int(mark['y0'])]
         under = column[int(mark['y1']) + 1:int(mark['y1']) + 1 + reach]
         if not len(over) or not len(under) or min(over.mean(), under.mean()) < BAR_MARK[3]:
-            if not (BAR_END and _bar_end(layers, mark, column, staff, top, bottom, reach)):
+            if filled or not (BAR_END and _bar_end(layers, mark, column, staff, top, bottom, reach)):
                 continue
+        if filled and not _bar_cross(layers, mark, x, staff, top, bottom):
+            continue
         out.append(mark)
     return out
+
+
+BAR_CROSS = (0.6, 0.6, 0.3)   # a low filled mark with one stem is the place where a tie or a slur crosses a bar line,
+#   and no head, where BAR_MARK's tests of the mark and the line hold and a thin stroke goes on at both sides of the line:
+#   in the ink without the staff lines and without the line's own columns (the columns within [2] staff spaces of the
+#   stem that are ink in BAR_MARK's share of the staff's rows), a piece that touches the mark reaches [0] staff spaces
+#   or more from the line at each side, and the piece is [1] staff spaces thick or less (the median of its columns' ink).
+#   The bow of a tie lies along a staff line where it crosses a bar line, and the tie, the bar line and the staff line
+#   are one piece lower than a head, with the bar line as its stem (triodion-meatfare: two false notes). The first form
+#   (any such filled mark) took 59 marks on LitChoir's scan pages, each looked at: most were the heads of a chord on
+#   their stem, the numbers of time signatures, a natural and rests beside a bar line. A census at this step of every
+#   low filled mark whose stem fills the staff and goes on above and below it (56 on LitChoir's scan pages): the ties
+#   and slurs that cross a line reach 0.74 to 2.4 staff spaces at their shorter side and are 0.13 to 0.48 thick, and
+#   the other marks reach 0.42 at most at their shorter side (a head stands at one side of its stem), and their pieces
+#   that reach 0.55 or more are 0.65 thick or more. The rule takes 6 marks, all ties and slurs. (None: off)
+BAR_CROSS_SEEN = None   # census: (staff, x, y, the reach and the thickness at the left and at the right)
+
+
+def _bar_cross(layers: dict, mark: dict, x: int, staff: dict, top: int, bottom: int) -> bool:
+    """Whether a thin stroke goes on at both sides of the line through a low filled mark (BAR_CROSS)."""
+    space = staff['space']
+    bare = layers['bare']
+    y0 = max(0, int(mark['y0'] - space))
+    y1 = min(bare.shape[0], int(mark['y1'] + space) + 1)
+    x0 = max(0, int(x - 4 * space))
+    x1 = min(bare.shape[1], int(x + 4 * space) + 1)
+    piece = (bare[y0:y1, x0:x1] > 0).astype(np.uint8)
+    near = int(round(BAR_CROSS[2] * space))
+    ink_share = layers['ink'][top:bottom + 1, max(0, x - near):x + near + 1].mean(axis=0)
+    line = [max(0, x - near) + number for number, share in enumerate(ink_share) if share >= BAR_MARK[1]]
+    if not line:
+        return False
+    first, last = min(line) - 1, max(line) + 1
+    piece[:, max(0, first - x0):max(0, last - x0 + 1)] = 0
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(piece, connectivity=8)
+    box = labels[max(0, int(mark['y0']) - 1 - y0):int(mark['y1']) + 2 - y0,
+                 max(0, int(mark['x0']) - 1 - x0):int(mark['x1']) + 2 - x0]
+    reach = {'left': (0.0, 0.0), 'right': (0.0, 0.0)}
+    for number in set(np.unique(box)) - {0}:
+        left, width = int(stats[number, cv2.CC_STAT_LEFT]) + x0, int(stats[number, cv2.CC_STAT_WIDTH])
+        if left + width - 1 < first:
+            side, far = 'left', (first - left) / space
+        elif left > last:
+            side, far = 'right', (left + width - 1 - last) / space
+        else:
+            continue
+        columns = (labels == number).sum(axis=0)
+        thick = float(np.median(columns[columns > 0])) / space
+        if far > reach[side][0]:
+            reach[side] = (far, thick)
+    if BAR_CROSS_SEEN is not None:
+        BAR_CROSS_SEEN.append({'staff': mark['staff'], 'x': mark['cx'], 'y': mark['cy'],
+                               'left': [round(value, 2) for value in reach['left']],
+                               'right': [round(value, 2) for value in reach['right']]})
+    return all(far >= BAR_CROSS[0] and thick <= BAR_CROSS[1] for far, thick in reach.values())
 
 
 BAR_END = (2, 0.2)   # and such a mark is no head either at an end of a bar line, where a slur that crosses the line meets

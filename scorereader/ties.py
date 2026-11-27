@@ -123,14 +123,19 @@ TIE_BESIDE = 2.0         # (TIE_LINE) and the lens is fatter than the same line 
 #                          a scan that prints one line thick all along has no lens. Of the 33 flat ties of LitChoir's
 #                          pages, the 8 where no bow is printed are no fatter than the line beside them, and the others 3
 #                          to 9 pixels fatter; the fresh set's 5 are 3 or 4 (None: off)
-TIE_WORD = (5, 0.5, 6.5, 2.0, 0.3, 0.7, 0.45, 0.4)   # a page whose bows join the syllables of a word (None: off). A tied note
+TIE_WORD = (5, 0.5, 6.5, 2.0, 0.3, 0.5, 0.45, 0.4)   # a page whose bows join the syllables of a word (None: off). A tied note
 #                         takes no syllable. Where at least [0] ties of a page end over the beginning of a syllable (the
 #                         ties of a chord count once), and these are at least this share [1] of its ties that have words,
 #                         they are no ties: the print draws a bow from syllable to syllable. The words of a staff are the
 #                         nearest band of words under it, at most [2] staff spaces away. A syllable begins from [3] staff spaces left of
 #                         the middle of the second head to [4] right of it and is at least [5] wide; its letters stand at
 #                         most [6] apart, and a letter's column has ink over [7] staff spaces of rows (a hyphen and a
-#                         line under the words are flat)
+#                         line under the words are flat). A syllable of one letter is half a staff space wide or more:
+#                         0.7 left "a" (0.6) and "li" (0.69) of triodion-meatfare out, whose bows from syllable to syllable
+#                         were then read as ties. Of the groups of letters that begin in that room under the ties of
+#                         LitChoir's pages and are under 0.7 wide, the others are pieces of a word that a gap of paper
+#                         parts (0.26 at most), a stem through the words (0.42) and the 3 of a triplet (0.67, on pages where
+#                         the rule does not act); no page acts otherwise from 0.3 to 0.6.
 TIE_BREAK = (3.0, 0.45, 1.8, 1.0, 0.4, 0.6, 1.0, 0.9, 0.5)   # a tie over the end of a line (None: off): a bow leaves the last
 #                         note of its voice, is this many staff spaces long or more, shows its ink in this share of its
 #                         columns, ends at most this far before the end of the staff and moves at most this far up or
