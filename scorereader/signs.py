@@ -540,10 +540,15 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         elif SHARP_JOINED and sign.get('joined'):
             kind = _joined_sharp(layers, sign, space)
             heavy = sign.get('heavy') if kind == 'sharp' else None     # starts.FLAT_HEAVY
+            if kind is None and sign.get('glued_flat'):
+                heavy = sign['glued_flat']      # starts.GLUED_WIDE: the joined mark is no sharp
             if heavy and (any(sign['x0'] <= head['cx'] <= sign['x1'] and sign['top'] <= head['cy'] <= sign['bottom'] for head in full)
                           or FLAT_FLAG is not None and flag_of_stem(heavy) or FLAT_RISE and rises(heavy)):
                 heavy = None      # a head in the mark's box (a sign stands before its head), or the flag of a stem
             if heavy:
+                if _starts.GLUED_SEEN is not None and heavy.get('glued'):
+                    _starts.GLUED_SEEN.append({'x0': sign['x0'], 'x1': sign['x1'], 'top': sign['top'], 'bottom': sign['bottom'],
+                                               'place': heavy['bowl_place'], 'staff': staff['rows'][2]})
                 signs.append(heavy)
             elif kind:
                 signs.append(dict(sign, kind=kind))
