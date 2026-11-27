@@ -2016,6 +2016,12 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   middle the scan filled. The voices that touch hold their stems away from each other, a chord holds one way. A rule
   that takes the false heads of a sign also gives the sign to its note: the heads alone left the note without its
   sharp.
+- A hairline of the scan that runs through a mark joins it into a piece of another shape: the 4/4 of a time signature,
+  with a grey hairline from over the staff to far under it, ended nowhere near a staff line and was read as two heads
+  with the hairline as their stem. The page's black ink (`layers.BLACK`) parts the print from such a line, and is a
+  further look for the numbers in the middle of a staff (`meter.TIME_BLACK`), after the other looks and under the same
+  test of the system. A signature that a staff alone shows in the middle of a system is refused, so a mark that is
+  missed on one staff can make the other staff's true signature a false note too.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

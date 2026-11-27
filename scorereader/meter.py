@@ -59,6 +59,18 @@ TIME_LINES = True        # numbers are also found in the ink without the staff l
 #                          pages it finds 21 signatures on 12 pages, each looked at: 20 true ones, at the start of a staff
 #                          and after a bar line, in print and by hand, and the flat of a key that the reader does not read
 #                          on its page (it takes no note); none on the fresh set (False: off)
+TIME_BLACK = True        # in the middle of a staff, numbers are also found in the ink without the lines kept to the
+#                          page's black ink (layers.BLACK), where no other sign stands: a hairline of the scan, grey, that
+#                          runs through the numbers from over the staff to far under it joins them into one piece that
+#                          ends nowhere near a line, and the numbers were read as heads with the hairline as their stem
+#                          (non-liturgical-jesus-prayer pg0647). The numbers so found pass mid_signs as any others: in a
+#                          system of two staves or more, beside numbers of another staff. A census at the reader's own
+#                          step on every page of LitChoir and of the fresh set, each looked at: 10 signatures that only
+#                          this ink finds, all on LitChoir's pages; one is kept, the 4/4 of pg0647, whose mate over it had
+#                          been found and refused for want of it. The 9 others are refused there: no other staff of
+#                          their system shows numbers in their columns (two heads one over the other with their stem, the
+#                          flag of an eighth, stems and slurs of thick copies, and a 4/4 at the start of a staff). The
+#                          3/2 of pg0648 is not found: the 3 of the staff over it is worn into specks (False: off)
 COMMON = True            # the sign of common time (C) at the start of a staff is found too (False: only numbers)
 COMMON_HIGH = (1.5, 2.7) # the C is this high, in staff spaces
 COMMON_WIDE = (0.35, 2.3)    # and this wide (a hand copy draws a thin bow, and the staff lines take its two ends)
@@ -87,6 +99,13 @@ def _number_ink(layers: dict) -> np.ndarray:
     return layers['number_ink']
 
 
+def _black_ink(layers: dict) -> np.ndarray:
+    """The ink without the lines of the layers, kept to the page's black ink (TIME_BLACK)."""
+    if 'black_free' not in layers:
+        layers['black_free'] = _free(layers) & layers['black']
+    return layers['black_free']
+
+
 def _stacked(columns: np.ndarray, wides: list[int], space: float, crosses: bool) -> bool:
     """Whether the ink of two halves is two numbers one over the other by TIME_STACK. `columns` holds the share of ink
     of each column between the top and the bottom line, `wides` the width of each half, and `crosses` says that a
@@ -103,15 +122,20 @@ def _stacked(columns: np.ndarray, wides: list[int], space: float, crosses: bool)
     return (from_cross if crosses else from_other) <= full.min() / len(columns) and full.max() / len(columns) <= to
 
 
-def time_signs(layers: dict, staff: dict, first: float | None = None, last: float | None = None, weak: bool = False) -> list[dict]:
+def time_signs(layers: dict, staff: dict, first: float | None = None, last: float | None = None, weak: bool = False,
+               black: bool = False) -> list[dict]:
     """The time signatures of a staff between the columns first and last (the whole staff when they are not given):
     each {'x0', 'x1'}. The numbers that pass only by the wider limit of TIME_LOOSE are marked ('loose': True). With
     `weak`, also the ink that fills the two halves of the staff as two numbers do and fails a check for a bar line,
     a head or a stem ('weak': True): see TIME_MATE. Numbers that are found only in the ink without the lines that the
-    ink alone shows (TIME_LINES) come after all others, where no other sign stands."""
+    ink alone shows (TIME_LINES) come after all others, where no other sign stands, and with `black` after them the
+    numbers that are found only in the page's black ink (TIME_BLACK)."""
     found = _signs_in(layers, staff, first, last, weak, False)
     if TIME_LINES:
         found += [sign for sign in _signs_in(layers, staff, first, last, False, True) if _apart(sign, found)]
+        found.sort(key=lambda sign: sign['x0'])
+    if black and TIME_BLACK and layers.get('black') is not None:
+        found += [sign for sign in _signs_in(layers, staff, first, last, False, 'black') if _apart(sign, found)]
         found.sort(key=lambda sign: sign['x0'])
     return found
 
@@ -120,9 +144,9 @@ def _apart(sign: dict, others: list[dict]) -> bool:
     return not any(sign['x0'] <= other['x1'] and other['x0'] <= sign['x1'] for other in others)
 
 
-def _signs_in(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, alone: bool) -> list[dict]:
+def _signs_in(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, alone: bool | str) -> list[dict]:
     """The time signatures of time_signs() in one ink: the ink without the lines of the layers, or (`alone`) without
-    the lines that the ink alone shows."""
+    the lines that the ink alone shows, or (`alone` is 'black') the first kept to the page's black ink."""
     found = _time_signs(layers, staff, first, last, weak, TIME_EDGE, alone)
     if TIME_LOOSE:
         wider = [dict(sign, loose=True) for sign in _time_signs(layers, staff, first, last, weak, TIME_LOOSE[0], alone)]
@@ -137,10 +161,11 @@ def _signs_in(layers: dict, staff: dict, first: float | None, last: float | None
 
 
 def _time_signs(layers: dict, staff: dict, first: float | None, last: float | None, weak: bool, limit: float,
-                alone: bool = False) -> list[dict]:
+                alone: bool | str = False) -> list[dict]:
     """The time signatures of time_signs() whose numbers begin and end at most `limit` staff spaces from their lines,
-    in the ink without the lines of the layers or (`alone`) without the lines that the ink alone shows."""
-    free = _number_ink(layers) if alone else _free(layers)
+    in the ink without the lines of the layers or (`alone`) without the lines that the ink alone shows (or, where
+    `alone` is 'black', the first kept to the page's black ink)."""
+    free = _black_ink(layers) if alone == 'black' else _number_ink(layers) if alone else _free(layers)
     height, width = free.shape
     space, rows = staff['space'], staff['rows']
     top, middle, bottom = rows[0], rows[2], rows[4]
@@ -420,7 +445,7 @@ def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:
     numbers stand at one place in two staves or more. In a system of one staff, a bar line stands before them."""
     staves = layers['staves']
     found = {index: [{name: value for name, value in sign.items() if name != 'loose'}
-                     for sign in time_signs(layers, staff, ends[index], weak=bool(TIME_MATE)) if sign['x0'] >= ends[index]]
+                     for sign in time_signs(layers, staff, ends[index], weak=bool(TIME_MATE), black=True) if sign['x0'] >= ends[index]]
              for index, staff in enumerate(staves)}
     kept = {index: [] for index in found}
 
