@@ -76,6 +76,21 @@ TIE_DIP = (0.3, 0.1, 2.8, 0.15)   # a bow that lies in a staff line for a long p
 #                         Only a bow of this many staff spaces or longer: between two near heads a number of the time
 #                         signature, a flat or a stroke of the hand shows as much ink beside a line. And its ink shows
 #                         over this many staff spaces or more at each side of that part: the bow comes out of the line.
+TIE_ENDS = (0.5, 0.3, 0.45, 3.0, 0.9)   # a bow that begins and ends inside a staff line (None: off): its ink shows only
+#                         in its middle, from the first to the last stretch of ink of the second number of staff spaces
+#                         or longer, which begins and ends at least the first number of staff spaces from the heads,
+#                         takes the third share of the room between the heads or more and the fourth number of staff
+#                         spaces or more, and shows in the last share of its columns. Before and after the middle the
+#                         lines hide the bow (the way holds as little paper as TIE_SEEN allows), and after it the line
+#                         goes on to the second head. TIE_SEEN wants the ink in 60 % of the columns, and TIE_TO_LINE
+#                         lets the line hide 1.5 staff spaces before the second head: in pascha-angel-cried--s2 the
+#                         lines hide 39 % of one such tie, and the other runs into the line 2.4 staff spaces before its
+#                         head. A census of every pair of heads on LitChoir's scan pages whose way is turned down
+#                         although a stretch of its ink shows at least half a staff space from each head (363 pairs): 7
+#                         have such a middle, 5 of them bows and all ties (3 tied already by another way) and 2 flat
+#                         ties that one print breaks at its bar line, which are no bow; every other pair takes 0.43 of
+#                         the room at most (0.35 where its middle is longer than 1.3 staff spaces), or shows its ink in
+#                         0.85 of its middle or less (a line in pencil from a head to the next chord).
 TIE_FROM_LINE = True    # a bow may begin in a staff line beside its head: it is followed from the line (False: off)
 TIE_TO_LINE = (1.5, 3.5)   # a bow may end in a staff line beside its head too: where its ink runs into a line and the line
 #                         goes on to the head, the bow's last ink may lie this many staff spaces before the head, and the
@@ -328,6 +343,33 @@ def _dips(way: dict, lines: np.ndarray, x: int, space: float) -> bool:
     return float(np.mean(away)) <= TIE_DIP[1] * space
 
 
+def _ends(way: dict, x: int, first: int, last: int, space: float) -> bool:
+    """Is the way that was followed from the column `x` a bow that begins and ends inside a staff line (TIE_ENDS)? The
+    heads' columns end at `first` and begin again at `last`. Its middle shows as one bow; before it and after it, up to
+    the second head, a staff line hides it."""
+    shown = way['shown']
+    count = len(shown)
+    stretches, at = [], 0
+    while at < count:
+        if not shown[at]:
+            at += 1
+            continue
+        end = at
+        while end < count and shown[end]:
+            end += 1
+        if end - at >= TIE_ENDS[1] * space:
+            stretches.append((at, end))
+        at = end
+    if not stretches or way['end'] + way['tail'] < last - int(round(TIE_SIDE * space)):
+        return False
+    start, stop = stretches[0][0], stretches[-1][1]
+    if min(x - first + start, last - (x + stop) + 1) < TIE_ENDS[0] * space:
+        return False
+    if stop - start < max(TIE_ENDS[2] * (last - first), TIE_ENDS[3] * space):
+        return False
+    return float(np.mean(shown[start:stop])) >= TIE_ENDS[4]
+
+
 def _bar_at(ink: np.ndarray, rows: list[float], low: int, high: int, stems: list[float], space: float) -> int | None:
     """The last column from `low` to `high` where an upright line fills the staff from its top line to its bottom line
     and no stem stands (TIE_BAR): a bar line."""
@@ -459,9 +501,10 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                 if _to_bar(way, column, first, last, staff_bar, layers, one, two, space) and not pencil(way, column):
                     return True
                 continue
+            ends = bool(TIE_ENDS) and not low and _ends(way, column, first, last, space)
             if way['end'] < last - side and not (TIE_TO_LINE and way['end'] + way['tail'] >= last - side
                                                  and way['end'] >= last - TIE_TO_LINE[0] * space
-                                                 and count >= TIE_TO_LINE[1] * (last - way['end'])):
+                                                 and count >= TIE_TO_LINE[1] * (last - way['end'])) and not ends:
                 continue
             if abs(way['rows'][-1] - two['cy']) > high:
                 continue
@@ -482,7 +525,7 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                 continue
             if way['seen'] < TIE_SEEN[0] * count and not (TIE_DIP and way['seen'] >= TIE_DIP[0] * count
                                                          and count >= TIE_DIP[2] * space
-                                                         and _dips(way, lines, column, space)):
+                                                         and _dips(way, lines, column, space)) and not ends:
                 continue
             flat = low and min(abs(way['rows'][0] - one['cy']), abs(way['rows'][-1] - two['cy'])) >= TIE_FLAT[2] * space
             if not _is_bow(way, space, flat) or pencil(way, column):

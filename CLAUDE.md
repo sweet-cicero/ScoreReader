@@ -1939,6 +1939,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   heavy sharp on one print and a quarter rest on others (11 of the 14 such pairs on LitChoir's scan pages that reach the
   notes and are no notes; 4 more are true notes): look at every mark of a shape before a rule is written for its one
   case.
+- A bow that begins and ends inside a staff line shows only its middle, and the share of its columns where ink shows
+  says nothing of it: the line hides 39 % of such a tie, and a slur or a pencil line beside a head shows as little. The
+  middle is measured apart from its ends (`ties.TIE_ENDS`): where it begins and ends, the share of the room between the
+  heads that it takes, and how much of it shows. A census of every way that is turned down, so measured, parted the ties
+  (0.49 of the room or more, ink in 0.93 of the middle or more) from the slur of another voice, a rest and a pencil line.
+  A census that writes its result only at its end loses the whole run to one value that the writer cannot store (a
+  truth value of NumPy): write plain values, or write as it goes.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
