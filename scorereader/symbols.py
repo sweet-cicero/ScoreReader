@@ -7460,19 +7460,71 @@ END_PAST = 0.55   # a mark whose middle is past the end of its staff is no head 
 #   and beside a punch hole, have 0.43 at most.) 1.1: only at a whole bar line
 
 
+END_DOUBLE = (0.8, 0.15, 0.8)  # a final bar line of two strokes (a thin one and a thick one) ends its staff where the
+#   ink fills this share of the staff's rows in the columns of a stroke that ends at most this many staff spaces before
+#   the staff's end, and in a stroke before it whose right edge is at most this many staff spaces before the left edge
+#   of the last one. The cells that the staff lines close between the two strokes are no notes: a mark whose middle is
+#   at or past the left edge of the first stroke, and that reaches the end as END_MARK asks, is no head. END_MARK alone
+#   measures from the end of the staff, and such a cell's middle stands 0.5 to 0.85 staff spaces before it. (A census of
+#   every read note at the end of a staff that ends with a bar line, on LitChoir's scan pages and the fresh set, each
+#   looked at: the cells of such a bar line and the 4 of a time signature set between its strokes, and no note. The
+#   full pass took 21 marks on 17 pages of LitChoir, each looked at, none a note; their middles stand 0.50 to 0.83
+#   staff spaces before the end, the first stroke's left edge 0.77 to 1.16. No mark of the fresh set stands there.)
+#   None: off
+
+
+def _double_bar(layers: dict, staff: dict) -> float | None:
+    """The left edge of the first stroke of a final bar line of two strokes at the end of a staff (END_DOUBLE), or None."""
+    ink, space = layers['ink'], layers['space']
+    top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
+    x1 = staff['x1']
+    lo = max(0, int(x1 - (END_DOUBLE[2] + 2.0) * space))
+    hi = min(ink.shape[1], int(x1 + END_MARK[1] * space) + 1)
+    if hi - lo < 2 or bottom <= top:
+        return None
+    full = list((ink[top:bottom + 1, lo:hi] > 0).mean(axis=0) >= END_DOUBLE[0]) + [False]
+    runs, start = [], None
+    for index, value in enumerate(full):
+        if value and start is None:
+            start = index
+        elif not value and start is not None:
+            runs.append((lo + start, lo + index - 1))
+            start = None
+    last = next((run for run in runs if run[1] >= x1 - END_DOUBLE[1] * space), None)
+    if last is None:
+        return None
+    before = [run for run in runs if run[1] < last[0] and last[0] - run[1] <= END_DOUBLE[2] * space]
+    return float(before[-1][0]) if before else None
+
+
 def without_end_marks(layers: dict, heads: list[dict]) -> list[dict]:
-    """The heads without the marks at or past the bar line that ends their staff (END_MARK)."""
+    """The heads without the marks at or past the bar line that ends their staff (END_MARK), and without the cells
+    between the two strokes of a final bar line (END_DOUBLE)."""
     if not END_MARK:
         return heads
-    space, out = layers['space'], []
+    space, out, doubles = layers['space'], [], {}
     for head in heads:
         staff = layers['staves'][head['staff']]
         if (staff.get('end_bar') or head['cx'] >= staff['x1'] and staff.get('end_ink', 0.0) >= END_PAST) \
                 and head['cx'] >= staff['x1'] - END_MARK[0] * space \
                 and head['x1'] >= staff['x1'] - END_MARK[1] * space and head['cx'] <= staff['x1'] + END_MARK[2] * space:
             continue
+        if END_DOUBLE and staff.get('end_bar') and head['x1'] >= staff['x1'] - END_MARK[1] * space \
+                and head['cx'] <= staff['x1'] + END_MARK[2] * space:
+            if head['staff'] not in doubles:
+                doubles[head['staff']] = _double_bar(layers, staff)
+            left = doubles[head['staff']]
+            if left is not None and head['cx'] >= left:
+                if END_DOUBLE_SEEN is not None:
+                    END_DOUBLE_SEEN.append({'staff': head['staff'], 'x': head['cx'], 'y': head['cy'],
+                                            'left': round((left - staff['x1']) / space, 3),
+                                            'cx': round((head['cx'] - staff['x1']) / space, 3), 'hollow': head['hollow']})
+                continue
         out.append(head)
     return out
+
+
+END_DOUBLE_SEEN = None   # (census) a list: every mark that END_DOUBLE takes
 
 
 def without_upright_holes(layers: dict, heads: list[dict]) -> list[dict]:
