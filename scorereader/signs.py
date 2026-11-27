@@ -115,6 +115,18 @@ STACK_TOUCH = 0.15              # ... and two strokes this close (staff spaces),
                                 # (PAIR_WIDE), are one such mark: a scan parts it at the middle stroke that both sharps share
 JOINED_HEAD = True              # the middle of a joined sharp (SHARP_JOINED) that was taken for a head is no head: a mark whose
                                 # middle and stems lie in the columns of the one wide stroke (False: off)
+SHARP_FILLED = 0.25             # a heavy sharp whose middle a heavy scan filled closes no paper, and its right stroke ends over
+                                # the bottom bar, so SHARP_JOINED does not take it: its bars are read as two filled heads one
+                                # over the other in the columns of the one wide stroke, the upper with the left stroke as its
+                                # stem down and the lower with the right stroke as its stem up. Each stem runs through the
+                                # other head and on past it by at least this much (staff spaces); two voices that touch
+                                # hold their stems away from each other, and a chord holds one way. Such heads are the
+                                # sharp, and the stroke is a sharp (None: off). A census at JOINED_HEAD's step of every
+                                # stroke with two heads or more in its columns (89 strokes on 33 pages of LitChoir, none on
+                                # the fresh set): of 86 pairs one over the other, 58 hold their stems away from each other
+                                # (the typewriter prints' slanted heads of two voices a second apart among them), 27 one
+                                # way, and the one sharp of pascha-hypakoe--s2 crosses them (0.36 and 0.58 past the other
+                                # head). A rule for one case; the other scan of the print closes the sharp's paper.
 NATURAL_OWN = True              # the paper that the strokes and the bars of a natural close in is no hollow head: a mark whose
                                 # middle lies between the two strokes and each of whose stems is one of them (False: off)
 NATURAL_LONE = True             # the right stroke of a natural is no stem of a hollow head after it either where it is that
@@ -430,6 +442,7 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     #                         that was followed into the bow at a stroke's end ends beside the stroke, and
                     #                         its middle column is the stroke's: starts.STROKE_BOW)
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
+    filled = []     # the strokes of the sharps that SHARP_FILLED takes
     if JOINED_HEAD and SHARP_JOINED:
         # A heavy sharp whose two strokes are one mark, with its middle read as a head and one of its strokes as that
         # head's stem: the mark is a sharp by its ends and its closed paper, and the head lies inside its columns.
@@ -441,6 +454,9 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             if inside and _joined_sharp(layers, {'x0': stroke['x0'], 'x1': stroke['x1'], 'top': stroke['top'],
                                                  'bottom': stroke['bottom']}, space) == 'sharp':
                 ghosts.extend(inside)
+            elif SHARP_FILLED is not None and _filled_sharp(inside, space):
+                ghosts.extend(inside)
+                filled.append(stroke)
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
     stacks = []
     if STACKED:
@@ -558,6 +574,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
             signs.append(sign)
         elif SHARP_JOINED and sign.get('joined'):
             kind = _joined_sharp(layers, sign, space)
+            if kind is None and any(stroke['x0'] == sign['x0'] and stroke['top'] == sign['top'] for stroke in filled):
+                kind = 'sharp'      # SHARP_FILLED: the two heads in its middle were its bars
             heavy = sign.get('heavy') if kind == 'sharp' else None     # starts.FLAT_HEAVY
             if kind is None and sign.get('glued_flat'):
                 heavy = sign['glued_flat']      # starts.GLUED_WIDE: the joined mark is no sharp
@@ -840,6 +858,21 @@ def _past_stem(layers: dict, after: list[dict], stroke: dict, stem: dict, space:
         return None
     return {'x0': float(edge + 1 + columns[0]), 'x1': float(edge + 1 + columns[-1]), 'top': float(stroke['top'] + rows[0]),
             'bottom': float(stroke['top'] + rows[-1])}
+
+
+def _filled_sharp(inside: list[dict], space: float) -> bool:
+    """True where the heads that lie in the columns of one wide stroke are the two bars of a heavy sharp whose middle the
+    scan filled (SHARP_FILLED): two filled heads one over the other, each with one stem, the upper one's going down and
+    the lower one's going up, each through the other head and on past it by SHARP_FILLED staff spaces. The stems are the
+    sharp's two strokes; two voices that touch hold their stems away from each other."""
+    if len(inside) != 2 or any(head.get('hollow') or head.get('thin') or len(head['stems']) != 1 for head in inside):
+        return False
+    upper, lower = sorted(inside, key=lambda head: head['cy'])
+    if not (upper['cy'] < lower['y0'] and lower['cy'] > upper['y1']):
+        return False
+    down, up = upper['stems'][0], lower['stems'][0]
+    return down['direction'] == 'down' and up['direction'] == 'up' \
+        and down['end'] >= lower['y1'] + SHARP_FILLED * space and up['end'] <= upper['y0'] - SHARP_FILLED * space
 
 
 def _joined_sharp(layers: dict, sign: dict, space: float) -> str | None:
