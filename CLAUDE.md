@@ -1988,6 +1988,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   stroke and most of the box). A census at the reader's own step of the marks that the older test leaves parted the
   strokes from the chords of a thick copy. A rule whose other marks a later step takes as well changes only the page of
   its own case: of four marks, three were the final strokes that `END_MARK` takes.
+- A false note between two notes in time keeps the bow between them from being joined. A rule that takes the false note
+  lets the bow join where an older rule should have refused it: the bow of triodion-meatfare from "de" to "li" over a bar
+  line became a tie, because `ties.TIE_WORD` asked for a syllable 0.7 staff spaces wide, and "li" is 0.69. The older
+  rule is mended in the same round from a census of what it measures (every group of letters under the second head of
+  every tie), and each rule is counted alone and with the other. A rule for a low filled mark on a bar line meets every
+  head of a chord on its stem, and the numbers of a time signature: the ink at the two sides of the line parts a stroke
+  that crosses it from a mark that stands beside it (`symbols.BAR_CROSS`).
 - `experiments/` holds the record of the first tests.
 
 ## Rules
