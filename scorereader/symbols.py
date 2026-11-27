@@ -7426,8 +7426,29 @@ THICK_BAR = (0.8, 0.9)  # a filled mark in the staff is a piece of a thick bar l
 #   heads of a chord taper towards the lines between them.) None: off
 
 
+THICK_RUN = (0.97, 0.5, 0.7)   # a filled mark in the staff is a piece of a thick bar line, and no head, where its box
+#   holds a run of columns that are ink in [0] of the staff's rows from its top line to its bottom line, [1] staff spaces
+#   wide or more (in the space of its own staff) and [2] of the box's width or more. THICK_BAR asks every row for ink
+#   across the box, and a box that the paper beside the stroke widens by two pixels at each side misses it: the thick
+#   stroke of a double bar line in the middle of a staff (triodion-meatfare) was read as two heads with the thin line
+#   as their stem. (A census at the reader's own step of every filled mark with such a run of 0.3 staff spaces or more
+#   on LitChoir's scan pages, 54 marks, each kind looked at: the thick strokes of bar lines have runs from 0.44 staff
+#   spaces on and fill 0.5 to 0.78 of their box; the heads of chords that a stem joins, on a thick copy, have 0.39 at
+#   most and fill 0.37 of it at most. The rule takes four marks, all thick strokes: three at the end of a staff, which
+#   END_MARK takes too, and the one in the middle. The fresh set has none.) None: off
+
+
+def _full_run(full) -> int:
+    """The longest run of True in a sequence of columns."""
+    best = run = 0
+    for value in full:
+        run = run + 1 if value else 0
+        best = max(best, run)
+    return best
+
+
 def without_bar_pieces(layers: dict, heads: list[dict]) -> list[dict]:
-    """The heads without the filled marks that are pieces of a thick bar line (THICK_BAR)."""
+    """The heads without the filled marks that are pieces of a thick bar line (THICK_BAR, THICK_RUN)."""
     if not THICK_BAR:
         return heads
     ink, out = layers['ink'], []
@@ -7438,8 +7459,18 @@ def without_bar_pieces(layers: dict, heads: list[dict]) -> list[dict]:
             box = ink[top:bottom + 1, max(0, int(head['x0'])):int(head['x1']) + 1] > 0
             if box.size and top <= head['cy'] <= bottom and (box.mean(axis=1) >= THICK_BAR[0]).mean() >= THICK_BAR[1]:
                 continue
+            if THICK_RUN and box.size and top <= head['cy'] <= bottom:
+                run = _full_run(box.mean(axis=0) >= THICK_RUN[0])
+                if run >= THICK_RUN[1] * (bottom - top) / 4.0 and run >= THICK_RUN[2] * box.shape[1]:
+                    if THICK_RUN_SEEN is not None:
+                        THICK_RUN_SEEN.append({'staff': head['staff'], 'x': head['cx'], 'y': head['cy'],
+                                               'run': round(run / ((bottom - top) / 4.0), 3), 'share': round(run / box.shape[1], 3)})
+                    continue
         out.append(head)
     return out
+
+
+THICK_RUN_SEEN = None   # (census) a list: every mark that THICK_RUN takes
 
 
 END_MARK = (0.5, 0.25, 1.5)  # nothing of the music stands at or past the bar line that ends a staff: a mark whose middle

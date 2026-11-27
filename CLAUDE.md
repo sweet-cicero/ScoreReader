@@ -1981,6 +1981,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   the list for the word that a misread stands for asks it, for a word that ends in s, without the s, and keeps the s
   (`ocr.TWIN_S`): a narrow face joins an r and an i into an n ("spi-nts"), the list lacks "spirits", and the mending
   had made "saints" of it, one letter away.
+- A test that asks each row of a mark's box for ink across the box misses a stroke whose box is wider than the stroke.
+  The thick stroke of a double bar line in the middle of a staff was cut by the staff lines into marks two pixels wider
+  than the stroke at each side, each row held 0.78 of the box, and `THICK_BAR` (0.8) left both marks as heads. The
+  columns say it plainly (`symbols.THICK_RUN`: a run of columns that are ink over the whole staff, as wide as a thick
+  stroke and most of the box). A census at the reader's own step of the marks that the older test leaves parted the
+  strokes from the chords of a thick copy. A rule whose other marks a later step takes as well changes only the page of
+  its own case: of four marks, three were the final strokes that `END_MARK` takes.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
