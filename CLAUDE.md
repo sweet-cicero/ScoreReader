@@ -1913,6 +1913,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   two lines (`symbols.GONE_SPACE`). A heavy sharp or natural fills its space in the same way: it stands before its
   head, at the head's height. The census of every mark that only the height refused (21 on LitChoir's pages, none on
   the fresh set) named the shape, and the limits of the guard stand in the middle of the gaps that it showed.
+- Notes that sound together agree on the shape of a whole note too. A staff line along the rim of one of two whole
+  notes of a chord makes it as high as it is wide, and the oval refused it; a wider limit for every whole note took
+  letters, numbers and rings by hand as often (23 notes gained and 31 lost on its census's pages). A mark that the
+  oval refuses only by its width is a whole note where a whole note that the oval takes stands in its columns, close
+  over or under it (`symbols.WHOLE_TWIN`). The numbers of a time signature stand so too: the staff lines cut one piece
+  of ink into three or four marks in one column, and two whole notes are two marks. The size of the inside parted them
+  by a hair (0.27 against 0.297 staff spaces); the count of the piece's marks parts them wholly. A rule that reads a
+  mark at an earlier step than the step that read it before changes its box, not its note: look at such pages too.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
