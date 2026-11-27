@@ -95,6 +95,14 @@ BREVE_FILLED = True     # a heavy scan fills the inside of a breve, and the head
 #                       the ison by letters (16 of LitChoir, 2 of the fresh set) it takes two heads, both breves of the
 #                       heavy scan pascha-hypakoe--s2 (pg0537), each read as a note that is not there. (False: off)
 BREVE_SEEN = None       # census
+BREVE_START = True      # the breve that restates the ison at the start of a staff, under no letter, is a witness of the
+#                       note that the ison holds there. Where the last letter before it names another note, a letter was
+#                       missed (a heavy letter whose arms the ink joined), and the ison sings the breve's note from the
+#                       start of that staff. A census of every breve that is taken on LitChoir's chant pages (36 on 199
+#                       pages) found 9 such breves at the start of a staff with no letter at them: at 8 the ison holds the
+#                       breve's note there, and at one (pascha-hypakoe--s2, pg0537) the E over the end of the staff before
+#                       is not named. A breve at the start of the page's first staff, before any letter, is left as it
+#                       was: the census found none. (False: off)
 
 
 def _holes(piece: np.ndarray) -> list[tuple[float, float, float]]:
@@ -433,4 +441,33 @@ def without_breves(layers: dict, heads: list[dict], letters: dict[int, list[dict
                         breve['staff'] == head['staff'] and breve['x0'] - BREVE_TAIL * space <= stem['x'] <= breve['x1'] + BREVE_TAIL * space
                         and breve['y0'] - BREVE_TAIL * space <= stem['end'] <= breve['y1'] + BREVE_TAIL * space for breve in breves):
                     head['tails'][stem['direction']] = 0
+    return out
+
+
+def start_breves(layers: dict, heads: list[dict], kept: list[dict], letters: dict[int, list[dict]]) -> dict[int, list[dict]]:
+    """The letters of each staff, with an ison mark for each breve at the start of a staff that names another note than
+    the last letter before it (see BREVE_START): `heads` before without_breves(), `kept` after it."""
+    if not BREVE_START or not letters:
+        return letters
+    space = layers['space']
+    taken = [head for head in heads if not any(head is other for other in kept)]
+    out, last = {}, None
+    for index in sorted(letters):
+        marks = list(letters[index])
+        for breve in sorted((head for head in taken if head['staff'] == index), key=lambda head: head['cx']):
+            if any(other['staff'] == index and other['cx'] < breve['x0'] for other in kept):
+                continue      # the melody began before it: no start of the staff
+            if any(-BREVE[0] * space <= breve['cx'] - mark['x'] <= BREVE[1] * space for mark in marks):
+                continue      # a breve under its letter
+            if any(mark['x'] < breve['cx'] for mark in marks):
+                continue      # a letter before it on its staff
+            place = int(round(breve['place']))
+            if last is None or last.get('unison') or last['place'] == place:
+                continue
+            box = {name: breve[name] for name in ('x0', 'x1', 'y0', 'y1', 'cx', 'cy')}
+            marks.insert(0, {'x': breve['cx'], 'place': place, 'voice': 1, 'length': Fraction(4), 'stem_x': None,
+                             'head': dict(box, hollow=True, stems=[], tails={}, staff=index, letter='breve', place=place)})
+        out[index] = marks
+        if marks:
+            last = marks[-1]
     return out

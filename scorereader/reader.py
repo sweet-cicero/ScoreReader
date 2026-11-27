@@ -13,7 +13,7 @@ from fractions import Fraction
 
 import numpy as np
 
-from .drone import letter_marks, without_breves
+from .drone import letter_marks, start_breves, without_breves
 from .fermatas import fermatas, on_fermata
 from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs
@@ -454,7 +454,9 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # The ison's letters over the staves of a chant page, and the breve that a print sets under a letter for the
     # ison's note: it is no note of the melody (scorereader.drone.BREVE).
     letters = {index: letter_marks(layers, index, clefs[index]) for index in range(len(staves))} if width == 1 else {}
-    heads = without_breves(layers, heads, letters)
+    kept = without_breves(layers, heads, letters)
+    letters = start_breves(layers, heads, kept, letters)
+    heads = kept
     # A second look at the kind of each head by the small network (scorereader.headnet), unless it is switched off.
     net = headnet.weights()
     if net and HEADNET_FLIP is not None and heads:

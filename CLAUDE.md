@@ -1930,6 +1930,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   a tied C4 under the moving voice): look at the page before a rule is narrowed for it. A head whose stem is lost is
   gained only with its length: two stemless heads of one blot were read at the right pitches and came out as quarter
   notes, because a hairline beam with no witness was the only sign of their eighths, and no rule was written.
+- What a page restates is a witness of what the reader missed before it. A print restates the ison at the start of
+  each staff by a breve under no letter, and the note of that breve is the note that the ison holds there: where the
+  last letter before it names another note, a letter was missed (an E whose arms the ink joined, which has no shape of
+  its own to test for), and the ison sings the breve's note from the start of the staff (`drone.BREVE_START`). Count
+  such a rule on the pages where the restated thing agrees as well: the census showed 9 such breves on LitChoir's chant
+  pages, 8 of them agreeing with the letters. And two heads whose short stems cross, each in the other's columns, are a
+  heavy sharp on one print and a quarter rest on others (11 of the 14 such pairs on LitChoir's scan pages that reach the
+  notes and are no notes; 4 more are true notes): look at every mark of a shape before a rule is written for its one
+  case.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
