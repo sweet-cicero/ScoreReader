@@ -164,10 +164,15 @@ MEND_NEAR = True         # (MEND) where the list holds two or more words one let
 #                          of the first language file: a further file's reading is chosen by its letters outside the
 #                          list (SECOND), and a word mended there made a reading win that had misread two others.
 #                          False: off
-MEND_TWIN = (('m', 'rn'),)   # with a list of words: a word of three letters or more that the list does not hold becomes
-#                          the list's word that has the two letters where the one letter was read ('bom' is 'born':
-#                          an r and an n that touch are an m for Tesseract at every size and with every file, and it
-#                          is sure of the m), where the list holds one such word (None: off)
+MEND_TWIN = (('m', 'rn'), ('n', 'ri'))   # with a list of words: a word of three letters or more that the list does not
+#                          hold becomes the list's word that has the two letters where the one letter was read ('bom'
+#                          is 'born': an r and an n that touch are an m for Tesseract at every size and with every
+#                          file, and it is sure of the m; 'Chnst' is 'Christ': a narrow face joins the r and the i
+#                          into an n), where the list holds one such word (None: off)
+TWIN_S = True            # (MEND_TWIN) and a word that ends in s, where neither it nor the word without its s is in the
+#                          list, is mended so without its s and keeps the s ('spi-nts' is 'spi-rits': the list holds
+#                          'spirit' and not 'spirits', and 'saints' was one letter away). The list holds the singular of
+#                          nearly every plural (MEND_S).
 MEND_WAY = (3, 2, 1, 2)  # (syllables, letters, count, words) a word of this many syllables or more by the hyphens
 #                          that were read, which the list does not hold and Tesseract is not sure of, becomes the list's
 #                          word that stands with both of its neighbours in the list's text, begins with the same letter
@@ -1133,6 +1138,10 @@ def _mend_twin(syllables: list[dict], known: dict[str, int], mended: list | None
             continue
         meant = {(at, two) for one, two in MEND_TWIN for at in range(len(read))
                  if read.startswith(one, at) and known.get(read[:at] + two + read[at + len(one):], 0) >= MEND[1]}
+        if not meant and TWIN_S and len(read) > 3 and read.endswith('s') and read[:-1] not in known:
+            stem = read[:-1]      # a plural whose singular the list holds (see TWIN_S)
+            meant = {(at, two) for one, two in MEND_TWIN for at in range(len(stem))
+                     if stem.startswith(one, at) and known.get(stem[:at] + two + stem[at + len(one):], 0) >= MEND[1]}
         if len(meant) != 1:
             continue
         (at, two), = meant
