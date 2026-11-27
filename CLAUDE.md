@@ -1995,6 +1995,20 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   every tie), and each rule is counted alone and with the other. A rule for a low filled mark on a bar line meets every
   head of a chord on its stem, and the numbers of a time signature: the ink at the two sides of the line parts a stroke
   that crosses it from a mark that stands beside it (`symbols.BAR_CROSS`).
+- A sign can be one stroke with the stem of the note before it. A heavy print set a natural right behind a stem up, and
+  the stroke of the stem, its head and the natural was too wide and too high for a sign. The ink past the stem's right
+  edge, taken near the stem's end where the stem stands alone, is asked whether it is the sign (`signs.NATURAL_PAST`).
+  And a test that an older rule makes of a joined sign is asked of a mark that another test took first: the test for
+  a sharp of two joined strokes also names a natural (`starts._joined_sharp`), and the stroke that the test for a flat
+  had taken is a natural where it does (`signs.NATURAL_JOINED`).
+- The mirror of a rule for two voices that touch is the mirror of its whole shape, stems too. Two voices a second apart
+  whose half note stands at the upper left (`symbols.DIAG_LOW`, the mirror of `DIAG_PAIR`) share one stem line between
+  the heads: the stem up leaves the right half of the mark and the stem down its left half. By the measures of the two
+  heads alone, 32 of 37 marks of LitChoir's pages were clefs, letters, signs and the 4 of a time signature; the stem
+  line kept 6, and one of those was two half notes a third apart by a thin pen, whose lower rim is no filled head (a
+  circle of 0.44 of a head's height against 0.55 or more). A pages pass showed it where no count moved: the new head
+  stood a step off with the wrong length, and a dotted half note elsewhere on the page lost its dot. Read the notes of
+  every page that a first form changes, also where its score does not move.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
