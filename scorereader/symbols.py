@@ -6100,6 +6100,22 @@ DOT_JOIN_ROUND = 0.5  # ... and the blot and the other dot are each at least thi
 #                    note a dash as its dot and the other note the next dash as a blot (0.42 and 0.39; the printed dots
 #                    of the census 0.59 or more)
 DOT_JOIN_SEEN = None # a census: every head that DOT_JOIN gives a dot, with its measures
+DOT_SHARED = (0.35, 0.15)   # a head that shares its stem with a dotted head of its kind and has no dot of its own:
+#                    notes that sound together agree on a dot, and the other head's dot gives the column. A piece whose
+#                    middle stands within [1] staff spaces of that dot's column, in the space where this head's dot
+#                    stands (its own space, or the space over its line, from the staff's rows), and that has a dot's
+#                    shape once the rows of a staff line that it hangs from or sits on are left out, is this head's dot
+#                    where no head has it; [0] the two stems within this many staff spaces. A dot that hangs from a line
+#                    by its whole width keeps no hair of it (DOT_LINE), and the dot of a head on a line stands half a
+#                    space over the head, where the reader's middle of the head can lie a few pixels low: three of the
+#                    five dots below stand 0.77 to 0.86 staff spaces over their head, and a dot may stand 0.7 over it. A
+#                    census of every piece at such a column on LitChoir's pages (24 pieces at 22 heads on 19 pages) gave
+#                    5 dots, each looked at, all printed: the lower half note of two scans of one print (a dot that
+#                    hangs from the top line), the upper whole note of two scans of another, and a hand's tick beside a
+#                    dotted quarter of a chord. The rest are the other head's own dot and specks. A share of the other
+#                    dot's ink as a limit (0.6) left the two whole notes: that dot sits on a line and keeps the line's
+#                    rows. The fresh set has no such head (None: off)
+DOT_SHARED_SEEN = None   # a census: every piece that DOT_SHARED measures, with its verdict (None: none)
 DOT_BODY = 0         # 1.5: a head beside the staff whose mark holds its ledger line is this many times as wide as the
 #                    heads of the page or more: the line runs on under the dot. The dot is then measured from the
 #                    ink of the head in the dot's own rows, not from the end of the line. Off: alone it gained 6
@@ -9150,6 +9166,71 @@ def dots(layers: dict, heads: list[dict]) -> None:
                 if blot and not any(abs(blot[0] - x) + abs(blot[1] - y) < 0.3 * space for x, y in blots):
                     head['dot'] = True
                     blots.append(blot)
+    if DOT_SHARED:
+        # (see DOT_SHARED: the dot of a head that shares its stem with a dotted head)
+        kind = lambda head: (bool(head.get('hollow')), max(head['tails'].values(), default=0))
+        dotted = [head for head in heads if id(head) in first and head['dot']]
+        held = [found[first[id(head)]] for head in dotted]   # the dots that heads have (a head can take a second dot near it)
+        for head in heads:
+            if head['dot'] or not head.get('stems') or head.get('staff') is None:
+                continue
+            partners = [other for other in dotted if other is not head and other.get('staff') == head.get('staff')
+                        and kind(other) == kind(head) and abs(other['x1'] - head['x1']) <= DOT_BESIDE[0] * space
+                        and any(abs(a['x'] - b['x']) <= DOT_SHARED[0] * space and a['direction'] == b['direction']
+                                for a in head['stems'] for b in other.get('stems') or [])]
+            if not partners:
+                continue
+            other = min(partners, key=lambda o: abs(o['cy'] - head['cy']))
+            place = _dot_shared(layers, labels, stats, head, found[first[id(other)]], sizes[first[id(other)]], held)
+            if place is not None:
+                head['dot'] = True
+                held.append(place)
+
+
+def _dot_shared(layers: dict, labels: np.ndarray, stats: np.ndarray, head: dict, place: tuple, size: tuple,
+                held: list) -> tuple | None:
+    """(DOT_SHARED) The middle of a piece of a dot's shape at the column of the dot at place (x, y) with size (left,
+    wide, high, area), in the space where the dot of head stands, that is no dot of another head (held); None where
+    there is none. The rows of a staff line that the piece hangs from or sits on are left out of its measures."""
+    space, lines = layers['space'], layers['lines']
+    near = DOT_SHARED[1]
+    column = place[0]
+    staff = layers['staves'][head['staff']]
+    step = int(round(head['place']))
+    low = step - 1 if step % 2 else step        # the line under the dot's space: a head on a line, its own line
+    top, bottom = place_row(staff, low + 2), place_row(staff, low)
+    half = staff['thick'] / 2
+    best = None
+    for index in range(1, len(stats)):
+        x, y, wide, high, area = (int(value) for value in stats[index])
+        if x > column + 0.6 * space or x + wide < column - 0.6 * space or y > bottom or y + high < top:
+            continue
+        if wide > 0.6 * space or high > 1.5 * space:
+            continue
+        piece = labels[y:y + high, x:x + wide] == index
+        inked = piece.any(axis=1)
+        line = (lines[y:y + high, max(0, x - 3):x].any(axis=1) | lines[y:y + high, x + wide:x + wide + 3].any(axis=1)) & inked
+        rows = np.nonzero(inked & ~line)[0]
+        if not len(rows) or rows[-1] - rows[0] + 1 != len(rows):
+            continue                    # ink of the piece at both sides of a line
+        part = piece[rows[0]:rows[-1] + 1]
+        columns = np.nonzero(part.any(axis=0))[0]
+        w, h, ink = int(columns[-1] - columns[0] + 1), len(rows), int(part.sum())
+        ys, xs = np.nonzero(part)
+        mx, my = x + float(xs.mean()), y + rows[0] + float(ys.mean())
+        shape = (DOT_SMALL * space <= min(w, h) and w <= 0.6 * space and h <= DOT_HIGH * space
+                 and ink >= DOT_FILL * w * h and DOT_SLIM <= w / h <= DOT_FLAT)
+        ok = shape and abs(mx - column) <= near * space and top + half < my < bottom - half \
+            and not any(abs(mx - hx) + abs(my - hy) < 0.3 * space for hx, hy in held)
+        if DOT_SHARED_SEEN is not None:
+            DOT_SHARED_SEEN.append({'head': (round(head['cx']), round(head['cy']), head['staff'], round(head['place'], 2)),
+                                    'dot': (round(place[0]), round(place[1]), size[3]), 'piece': (x, y, wide, high, area),
+                                    'part': (round(mx, 1), round(my, 1), w, h, ink), 'line': bool(line.any()),
+                                    'dx': round((mx - column) / space, 2), 'space': (round(top), round(bottom)),
+                                    'shape': bool(shape), 'ok': bool(ok)})
+        if ok and (best is None or abs(mx - column) < abs(best[0] - column)):
+            best = (mx, my)
+    return best
 
 
 def _dot_joined(layers: dict, head: dict, place: tuple, size: tuple) -> tuple | None:
