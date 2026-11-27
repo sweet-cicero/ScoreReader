@@ -80,6 +80,13 @@ TIME = (0.25, 2.5)      # the numbers of a time signature are no key signs, and 
 #                         staff spaces (None: off)
 CLEF_BEFORE = 1.0       # the weight of the clefs of the page before in the same hymn, among the witnesses for a clef (None: off)
 TRIM = True             # a short dash beyond a longer gap at an end of an upright stroke is no part of the stroke
+STROKE_BOW = (1.5, 0.5, 1.0, 0.4)   # the end of a bow that an upright stroke was followed into: past a gap that holds a
+#                     row of paper (and may hold a staff line), a piece whose ink (looked at this many staff spaces to each
+#                     side) goes on sideways at least this many staff spaces beside the stroke's columns, is at least this
+#                     many times as wide as high and holds at most this many staff spaces of ink in a column on the mean (a
+#                     bow is thin; a head under the stroke is not) is a slur or a tie that ends at a sign, and no part of
+#                     the sign's stroke (signs.pair_signs and sign_candidates ask it where the whole stroke makes no sign;
+#                     None: off)
 EIGHT = (0.7, 1.7, 4.6, 0.008, 0.3, 0.2, 0.9, 1.4, 0.13)    # the small 8 under a treble clef: looked for from this many
 #   staff spaces under the bottom line to this many under the clef's lowest ink (at most this many under the line); a
 #   hole of it has from this to this many square staff spaces; its two holes stand from this to this many staff
@@ -187,6 +194,49 @@ def start_strokes(layers: dict, staff: dict, first: int, last: int, without: lis
                         'bottom': int(bottom), 'wide': wide / space, 'high': high / space,
                         'place': pitch_place(staff, (top + bottom) / 2)})
     return sorted(strokes, key=lambda stroke: stroke['x'])
+
+
+def bow_ends(layers: dict, staff: dict, stroke: dict) -> dict:
+    """The stroke without an end piece that is the end of a bow (STROKE_BOW): the stroke itself where it has none."""
+    reach, out, lie, thin = STROKE_BOW
+    space, ink, free = staff['space'], layers['ink'], _free(layers)
+    height, width = ink.shape
+    first, last = int(stroke['top']), int(stroke['bottom'])
+    x0, x1 = int(stroke['x0']), int(stroke['x1'])
+    near = staff['thick'] / 2 + 1.5
+    rows = ink[first:last + 1, x0:x1 + 1].any(axis=1)
+    on_line = np.array([any(abs(first + row - line) <= near for line in staff['rows']) for row in range(len(rows))])
+    own = rows & ~on_line
+    gaps = np.nonzero(~own)[0]
+    if not len(gaps) or not own.any():
+        return stroke
+    w0, w1 = max(0, int(x0 - reach * space)), min(width, int(x1 + reach * space) + 1)
+
+    def bow(r0: int, r1: int) -> bool:
+        # The ink of the end piece in the stroke's columns goes on sideways, and lies on its side.
+        y0, y1 = max(0, int(r0 - 0.5 * space)), min(height, int(r1 + 0.5 * space) + 1)
+        window = np.ascontiguousarray(free[y0:y1, w0:w1]).astype(np.uint8)
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(window, connectivity=8)
+        for index in set(np.unique(labels[r0 - y0:r1 - y0 + 1, x0 - w0:x1 - w0 + 1]).tolist()) - {0}:
+            x, _, wide, high, area = stats[index]
+            if max(x0 - (w0 + x), w0 + x + wide - 1 - x1) >= out * space and wide >= lie * high and area <= thin * space * wide:
+                return True
+        return False
+
+    top, bottom = first, last
+    filled = np.nonzero(own)[0]
+    if gaps[-1] > filled[0] and gaps[-1] < len(own) - 1 and own[gaps[-1] + 1:].any():
+        # The piece under the last gap: the gap holds a row of paper (a stroke that only crosses a staff line goes on).
+        end = int(np.nonzero(own[:gaps[-1]])[0][-1])
+        if (~rows[end + 1:gaps[-1] + 1]).any() and bow(first + gaps[-1] + 1, last):
+            bottom = first + end
+    if gaps[0] < filled[-1] and gaps[0] > 0 and own[:gaps[0]].any():
+        start = int(gaps[0] + np.nonzero(own[gaps[0]:])[0][0])
+        if (~rows[gaps[0]:start]).any() and bow(first, first + gaps[0] - 1):
+            top = first + start
+    if (top == first and bottom == last) or bottom - top < 3:
+        return stroke
+    return dict(stroke, top=int(top), bottom=int(bottom), high=(bottom - top + 1) / space, bow=True)
 
 
 def _free(layers: dict) -> np.ndarray:
@@ -379,6 +429,12 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
                                       'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
                                       'bowl_place': pitch_place(staff, sides['bowl']) if sides['bowl'] is not None else None,
                                       'top': stroke['top'], 'bottom': stroke['bottom']}
+        elif STROKE_BOW and beams and 0.45 < stroke['wide'] and stroke['high'] > 3.4 \
+                and (cut := bow_ends(layers, staff, stroke)) is not stroke and cut['high'] <= 3.4:
+            # Two joined strokes that were followed into the end of a slur or a tie: the sign is the stroke without it.
+            signs.append({'kind': 'sharp', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']),
+                          'place': pitch_place(staff, (cut['top'] + cut['bottom']) / 2), 'joined': True, 'bow': True,
+                          'top': cut['top'], 'bottom': cut['bottom']})
     return sorted(signs, key=lambda sign: sign['x0'])
 
 

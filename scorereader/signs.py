@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 
 from .starts import PAIR, SIGN_STROKE, _ink, sign_candidates, start_strokes
+from . import starts as _starts
 
 BEFORE = (-0.45, 1.7)    # a head begins this far right of the right edge of its sign, in staff spaces
 HIGH = 1.2               # and its place is at most this many pitch places from the sign's place
@@ -136,6 +137,8 @@ THIN_SIGN = False               # a head that was read from its stem (symbols.th
                                 # sign (False: the head stays, and the stroke is its stem). Off: it gained 2 notes on
                                 # the clean copies and took 4 notes that are not there away, and lost 6 notes on one
                                 # piece of the fresh set; the thin heads of LitChoir show no measure that parts them
+SHARP_BOW_FOOT = True           # a heavy sharp whose joined strokes were followed into a bow at its foot (starts.STROKE_BOW):
+                                # the end of the bow, read as a thin head with the sign's stroke as its stem, is no head
 STEM_APART = 0.25               # a stroke beside the stem of a head is no part of that stem where a column between the
                                 # stem's middle column and the stroke holds ink (without the staff lines) in under this
                                 # share of the rows that they share: the stroke of a sign close behind the stem of the
@@ -300,6 +303,12 @@ def pair_signs(layers: dict, staff: dict, strokes: list[dict]) -> list[dict]:
                 if cut[0] is not left or cut[1] is not right:
                     sign = fit(*cut)
                     sign = dict(sign, cut=True) if sign is not None and sign['kind'] == 'sharp' else None
+            if sign is None and _starts.STROKE_BOW:
+                # The end of a stroke is not the slur or the tie that it was followed into (starts.STROKE_BOW).
+                cut = [_starts.bow_ends(layers, staff, stroke) for stroke in (left, right)]
+                if cut[0] is not left or cut[1] is not right:
+                    sign = fit(*cut)
+                    sign = dict(sign, bow=True) if sign is not None and sign['kind'] == 'sharp' else None
             if sign is None:
                 continue
             found.append(sign)
@@ -400,8 +409,11 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 if head['y1'] - head['y0'] + 1 >= SHARP_HEAD[2] * space or head['x1'] - head['x0'] + 1 < SHARP_HEAD[3] * wide:
                     ghosts.append(head)
                 elif SHARP_OWN and sign['x0'] <= head['cx'] <= sign['x1'] and all(
-                        any(stroke['x0'] - 1 <= stem['x'] <= stroke['x1'] + 1 for stroke in parts) for stem in head['stems']):
-                    ghosts.append(head)     # its middle lies between the two strokes, and its stem is one of them
+                        any(stroke['x0'] - 1 <= (stem.get('mid', stem['x']) if sign.get('bow') else stem['x']) <= stroke['x1'] + 1
+                            for stroke in parts) for stem in head['stems']):
+                    ghosts.append(head)     # its middle lies between the two strokes, and its stem is one of them (a stem
+                    #                         that was followed into the bow at a stroke's end ends beside the stroke, and
+                    #                         its middle column is the stroke's: starts.STROKE_BOW)
         full = [head for head in full if not any(head is ghost for ghost in ghosts)]
     if JOINED_HEAD and SHARP_JOINED:
         # A heavy sharp whose two strokes are one mark, with its middle read as a head and one of its strokes as that
@@ -461,6 +473,24 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                         - max(stroke['top'], min(head['cy'], head['stems'][0]['end'])) >= 0.5 * (stroke['bottom'] - stroke['top'])
                         for stroke in parts):
                     strays.append((sign, head))
+        full = [head for head in full if not any(head is stray for _, stray in strays)]
+    if SHARP_BOW_FOOT and _starts.STROKE_BOW and SHARP_JOINED:
+        # A heavy sharp whose joined strokes were followed into a slur or a tie at its foot: the end of the bow there was
+        # read as a thin head with the sign's stroke as its stem (symbols.thin_heads), and the stroke was no sign.
+        for stroke in strokes:
+            if not (0.45 < stroke['wide'] <= 1.2 and stroke['high'] > 3.4):
+                continue
+            cut = _starts.bow_ends(layers, staff, stroke)
+            if cut is stroke or cut['high'] > 3.4:
+                continue
+            box = {'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'top': cut['top'], 'bottom': cut['bottom']}
+            if _joined_sharp(layers, box, space) != 'sharp':
+                continue
+            for head in full:
+                if head.get('thin') and len(head['stems']) == 1 and stroke['x0'] - 1 <= head['stems'][0]['x'] <= stroke['x1'] + 1 \
+                        and not cut['top'] <= head['cy'] <= cut['bottom'] \
+                        and stroke['top'] - 0.5 * space <= head['cy'] <= stroke['bottom'] + 0.5 * space:
+                    strays.append((box, head))
         full = [head for head in full if not any(head is stray for _, stray in strays)]
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     legs = []

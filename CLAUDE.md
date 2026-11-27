@@ -1946,6 +1946,15 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   (0.49 of the room or more, ink in 0.93 of the middle or more) from the slur of another voice, a rest and a pencil line.
   A census that writes its result only at its end loses the whole run to one value that the writer cannot store (a
   truth value of NumPy): write plain values, or write as it goes.
+- A stroke of a sign is followed over a small gap of paper, or through a staff line, into the end of a slur or a tie
+  that ends at the sign, and its end then reads the bow. A sharp whose left stroke ran on into a slur was no pair (one
+  end 0.9 staff spaces lower), and its strokes were the stems of two false half notes in its cells: the stems' far ends
+  lay in the slur, their middle columns in the strokes. A heavy sharp whose joined strokes ran into a tie under it was
+  too high for a sign, and the tie's end was read as a thin head on the stroke. The piece past the gap is a bow where
+  its ink goes on sideways, lies on its side and is thin (`starts.STROKE_BOW`), and it is asked only where the whole
+  stroke makes no sign. The census at the reader's step found 3 places; the third was the lower of two stacked half
+  notes, which lies on its side as a bow does (a bow is thin). The first full pass turned two flats into sharps: a
+  stroke that only crosses a staff line keeps the line's remnants beside it, so the gap must hold a row of paper.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
