@@ -1955,6 +1955,14 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   stroke makes no sign. The census at the reader's step found 3 places; the third was the lower of two stacked half
   notes, which lies on its side as a bow does (a bow is thin). The first full pass turned two flats into sharps: a
   stroke that only crosses a staff line keeps the line's remnants beside it, so the gap must hold a row of paper.
+- Notes that sound together agree on a dot, and the other head's dot gives the column. A dot that hangs from a staff
+  line by its whole width keeps no hair of the line, and the dot of a head on a line stands half a space over it, where
+  the reader's middle of the head can lie a few pixels low: the space of the dot is taken from the staff's rows by the
+  head's place, not from the middle of its pixels (`symbols.DOT_SHARED`). A head takes every dot in its reach, and the
+  first is its dot: a test for a dot that no head has asks the dots that heads use, not every dot that a head took. A
+  yardstick taken from the other mark is measured as the rule measures its own piece: the other dot's ink as a limit
+  left two true dots, because that dot sits on a line and keeps the line's rows. The census of every piece at such a
+  column (24 on LitChoir's pages) gave 5 dots, each looked at, and the fresh set has none.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
