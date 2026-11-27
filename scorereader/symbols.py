@@ -85,6 +85,21 @@ DIAG_PAIR = (1.6, 1.45, 2.4, 0.55, 0.45, 0.4, 0.3, 0.55, 0.9)   # a mark with a 
 #                     on liturgy-one-is-holy and its second scan and on communion-lords-prayer; the fourth is a piece
 #                     of a word near the foot of a page of wedding-service, cut but read as no note before and after)
 DIAG_SEEN = None     # a list: every mark that DIAG_PAIR cuts, for a census
+DIAG_LOW = (1.3, 1.3, 2.4, 0.55, 0.3, 0.3, 0.2, 0.5, 0.8, 0.6, 0.2)   # the same pair the other way round: the half
+#                     note of the upper voice at the left with its stem up, and the filled head of the lower voice at its
+#                     right and a second under it, with its stem down (the first nine numbers as in DIAG_PAIR, the filled
+#                     head RIGHT of the hole and UNDER it). The two stems are one stem line between the heads: the stem up
+#                     leaves the right half of the mark and the stem down its left half, their middles at most the tenth
+#                     number of staff spaces apart, and the line between them stands at least the eleventh number of staff
+#                     spaces right of the hole's middle and left of the filled head's middle. A census of every mark that
+#                     the first nine numbers take with a circle of 0.4 (37 on LitChoir's pages, none on the fresh set),
+#                     each looked at: 5 are the pair (one page that cherubic-kastorsky and hierarchical-cherubic-kastorsky
+#                     share, at two places; extra-come-bless); the clefs, the letters of a page set on its side, a flat, a
+#                     sharp with its head, the 4 of a time signature and a hook by hand have no such stem line (the
+#                     nearest, a treble clef, has its line 0.12 staff spaces from the hole's middle); and on
+#                     megalynarion-warren-morgan--s3 a thin pen's two half notes a third apart have the stem line, where
+#                     the lower rim holds a circle of 0.44 of a head's height and the filled heads 0.55 or more (None: off)
+DIAG_LOW_SEEN = None     # a list: every mark that DIAG_LOW measures, for a census
 SOLID_LOOP = 0.7     # ink this share of a head's height over or under a hole is a filled head beside a flag's loop (0: off)
 LOOP_FOOT = (0.75, 1.0, 1.2, 0.3)   # the flag of an eighth that comes back to its head meets the stem again, and the
 #                     two are one stroke for a while past the loop, at the side away from the head: of such a foot only
@@ -1320,7 +1335,7 @@ def thick_marks(layers: dict) -> list[dict]:
                         cut = (mask[:, :column], holes[:, :column], x, y), (mask[:, column:], holes[:, column:], x + column, y)
                 diag_ways = {name: _way(layers, mark, up, right) for name, up, right in
                              (('up_right', True, True), ('up_left', True, False), ('down_right', False, True), ('down_left', False, False))} \
-                    if DIAG_PAIR and cut is None else {}
+                    if (DIAG_PAIR or DIAG_LOW) and cut is None else {}
                 if cut is None and DIAG_PAIR and own_wide >= DIAG_PAIR[0] * wide and own_high >= DIAG_PAIR[1] * high \
                         and own_wide <= DIAG_PAIR[2] * wide and own_high <= DIAG_PAIR[2] * high \
                         and any(is_stem(diag_ways[name], space) for name in ('up_right', 'up_left')) \
@@ -1342,6 +1357,41 @@ def thick_marks(layers: dict) -> list[dict]:
                             if DIAG_SEEN is not None:
                                 DIAG_SEEN.append({'box': [x, y, x + own_wide - 1, y + own_high - 1], 'hole': [x + cx, y + cy],
                                                   'rest': [x + float(columns.mean()), y + float(rows.mean())], 'space': space})
+                if cut is None and DIAG_LOW and own_wide >= DIAG_LOW[0] * wide and own_high >= DIAG_LOW[1] * high \
+                        and own_wide <= DIAG_LOW[2] * wide and own_high <= DIAG_LOW[2] * high \
+                        and any(is_stem(diag_ways[name], space) for name in ('up_right', 'up_left')) \
+                        and any(is_stem(diag_ways[name], space) for name in ('down_right', 'down_left')):
+                    # The pair the other way round: the hollow head at the upper left, the filled head at the lower right.
+                    box = np.zeros_like(mask)
+                    box[max(0, int(round(cy - DIAG_LOW[3] * high))):int(round(cy + DIAG_LOW[3] * high)) + 1,
+                        max(0, int(round(cx - DIAG_LOW[3] * wide))):int(round(cx + DIAG_LOW[3] * wide)) + 1] = True
+                    rest = mask & ~box
+                    if rest.any():
+                        rows, columns = np.nonzero(rest)
+                        own = np.pad(rest[rows.min():rows.max() + 1, columns.min():columns.max() + 1], 1).astype(np.uint8)
+                        measures = {'area': float(rest.sum() / (wide * high)), 'right': float((columns.mean() - cx) / wide),
+                                    'under': float((rows.mean() - cy) / space),
+                                    'circle': 2 * float(cv2.distanceTransform(own, cv2.DIST_L2, 5).max()) / high,
+                                    'wide': own_wide / wide, 'high': own_high / high}
+                        taken = measures['area'] >= DIAG_LOW[4] and measures['right'] >= DIAG_LOW[5] \
+                            and DIAG_LOW[6] <= measures['under'] <= DIAG_LOW[8] and measures['circle'] >= DIAG_LOW[7]
+                        if taken and len(DIAG_LOW) > 9:
+                            # The stem line of the two voices: the stem up of the half note and the stem down of the
+                            # filled head, one over the other, between the two heads.
+                            stem_up, stem_down = diag_ways.get('up_right'), diag_ways.get('down_left')
+                            stem_line = (stem_up['mid'] + stem_down['mid']) / 2 \
+                                if is_stem(stem_up, space) and is_stem(stem_down, space) else None
+                            taken = stem_line is not None and abs(stem_up['mid'] - stem_down['mid']) <= DIAG_LOW[9] * space \
+                                and stem_line - (x + cx) >= DIAG_LOW[10] * space \
+                                and x + columns.mean() - stem_line >= DIAG_LOW[10] * space
+                        if DIAG_LOW_SEEN is not None and measures['right'] > 0 and measures['under'] > 0:
+                            measures['ways'] = {name: [way['x'], way['mid'], way['past'] / space, is_stem(way, space)]
+                                                for name, way in diag_ways.items() if way}
+                            measures['inside'] = float((mask & holes & box).sum() / (wide * high))
+                            DIAG_LOW_SEEN.append(dict(measures, box=[x, y, x + own_wide - 1, y + own_high - 1], hole=[x + cx, y + cy],
+                                                      rest=[x + float(columns.mean()), y + float(rows.mean())], space=space, taken=taken))
+                        if taken:
+                            cut = (mask & box, holes & box, x, y), (rest, holes & ~box, x, y)
                 if cut:
                     parts = [_mark(part, inside, px, py, mark['blob']) for part, inside, px, py in cut]
         elif PAIR_STEM and mark['hole'] < HOLLOW and (pair := _pair_at_stem(layers, mask, holes, x, y, wide, high, mark['blob'])):

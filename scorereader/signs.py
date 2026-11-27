@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 
 from .starts import PAIR, SIGN_STROKE, _ink, sign_candidates, start_strokes
+from .symbols import pitch_place
 from . import starts as _starts
 
 BEFORE = (-0.45, 1.7)    # a head begins this far right of the right edge of its sign, in staff spaces
@@ -143,6 +144,20 @@ STEM_APART = 0.25               # a stroke beside the stem of a head is no part 
                                 # stem's middle column and the stroke holds ink (without the staff lines) in under this
                                 # share of the rows that they share: the stroke of a sign close behind the stem of the
                                 # note before it (None: the place alone, as it was)
+NATURAL_JOINED = 0.45           # a natural whose strokes and bars a heavy print joined into one stroke wider than this (staff
+                                # spaces) has a bare stroke at its top and ink at the right of its lower part, as a flat
+                                # has: where the test for a sharp of two joined strokes calls the stroke a natural (its left
+                                # stroke alone at the top, its right one alone at the bottom, paper closed in between its
+                                # bars), it is a natural (None: a flat, as it was). The census of every such stroke at the
+                                # rule's own step found one, the natural of nativity-kontakion, on LitChoir's pages and none
+                                # on the fresh set
+NATURAL_PAST = 0.4              # a natural that a heavy print set right behind the stem up of the note before it is one stroke
+                                # with that stem and its head, too wide and too high for a sign: where the stroke reaches at
+                                # least this far (staff spaces) past the stem, the ink past the stem is asked whether it is a
+                                # natural (None: off). The census at the rule's own step found two places on LitChoir's
+                                # pages: the natural of nativity-kontakion, and on blessed-be-zakkak the stem up of a quarter
+                                # note that runs into two half notes of the other voice, which no head takes (the page reads
+                                # as before); none on the fresh set
 
 
 NATURAL_ROWS = 1.9       # the two strokes of a natural stand side by side for at most this many staff spaces (1.5: as it
@@ -376,8 +391,8 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                 if min(sign['x1'], head['x1']) - max(sign['x0'], head['x0']) >= 0.5 * min(sign['x1'] - sign['x0'] + 1, head['x1'] - head['x0'] + 1)
                 and head['y1'] >= sign['top'] and head['y0'] <= sign['bottom']]
 
-    strokes = start_strokes(layers, staff, int(first), int(staff['x1']), layers.get('words') if SIGN_WORDS else None)
-    strokes = [stroke for stroke in strokes if 0.9 <= stroke['high'] <= SIGN_STROKE[1]]
+    raw = start_strokes(layers, staff, int(first), int(staff['x1']), layers.get('words') if SIGN_WORDS else None)
+    strokes = [stroke for stroke in raw if 0.9 <= stroke['high'] <= SIGN_STROKE[1]]
     if SIGN_START:
         # A stroke in the first columns is ink that was cut there, when its ink goes on to the left: the right bow of
         # the clef, or the last sign of the key.
@@ -525,6 +540,10 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         if any(x0 - 2 <= sign['x0'] <= x1 + 2 for x0, x1 in taken):
             continue
         if sign['kind'] == 'flat':
+            if NATURAL_JOINED is not None and not (sign.get('pair') or sign.get('glued')) \
+                    and (natural := _joined_natural(layers, staff, sign, strokes)):
+                signs.append(natural)
+                continue
             if FLAT_FLAG is not None and flag_of_stem(sign):
                 continue
             if FLAT_RISE and rises(sign):
@@ -558,6 +577,22 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
         for part in two:
             middle = (part['top'] + part['bottom']) / 2
             signs.append(dict(part, kind='sharp', joined=True, stacked=True, place=4 - 2 * (middle - staff['rows'][0]) / space))
+    if NATURAL_PAST is not None:
+        # A natural set right behind the stem up of the note before it: the ink past the stem.
+        for number, stroke in enumerate(raw):
+            if stroke['wide'] <= 0.45:
+                continue
+            for head in full:
+                for stem in head['stems']:
+                    if stem['direction'] != 'up' or not stroke['x0'] <= stem['x'] <= stroke['x1'] - NATURAL_PAST * space:
+                        continue
+                    box = _past_stem(layers, raw[number + 1:], stroke, stem, space)
+                    natural = _natural_box(layers, staff, box) if box else None
+                    if natural and not any(other['x0'] <= natural['x1'] and natural['x0'] <= other['x1']
+                                           and other['top'] <= natural['bottom'] and natural['top'] <= other['bottom'] for other in signs):
+                        if NATURAL_SEEN is not None:
+                            NATURAL_SEEN.append(dict(natural, stem=dict(stem), stroke=dict(stroke)))
+                        signs.append(natural)
     out = []
     for sign in signs:
         place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
@@ -752,6 +787,59 @@ def _stacked_sharps(layers: dict, stroke: dict, space: float) -> list[dict] | No
             return None
         out.append(sign)
     return out
+
+
+NATURAL_SEEN = None     # a list for a census: the naturals that NATURAL_PAST finds
+
+
+def _joined_natural(layers: dict, staff: dict, sign: dict, strokes: list[dict]) -> dict | None:
+    """The natural that the test for a flat took (NATURAL_JOINED): the stroke of the flat is wider than a flat's, and the
+    test for a joined sign calls it a natural. None where it is no such natural."""
+    stroke = next((stroke for stroke in strokes if stroke['x0'] == sign['x0'] and stroke['top'] == sign['top']), None)
+    if stroke is None or stroke['wide'] <= NATURAL_JOINED:
+        return None
+    natural = _natural_box(layers, staff, {'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'top': float(stroke['top']),
+                                           'bottom': float(stroke['bottom'])})
+    return dict(natural, place=stroke['place']) if natural else None
+
+
+def _natural_box(layers: dict, staff: dict, box: dict) -> dict | None:
+    """The natural in a box of joined ink (see _joined_sharp), with the rows of its own ink, or None."""
+    test = dict(box)
+    if _joined_sharp(layers, test, staff['space']) != 'natural':
+        return None
+    rows = np.nonzero(layers['bare'][int(box['top']):int(box['bottom']) + 1, int(box['x0']):int(box['x1']) + 1].any(axis=1))[0]
+    top, bottom = box['top'] + int(rows[0]), box['top'] + int(rows[-1])
+    return dict(box, kind='natural', joined=True, cut=bool(test.get('cut')), top=top, bottom=bottom,
+                place=pitch_place(staff, (top + bottom) / 2))
+
+
+def _past_stem(layers: dict, after: list[dict], stroke: dict, stem: dict, space: float) -> dict | None:
+    """The box of the ink of a stroke past the stem in it (NATURAL_PAST), without the staff lines, with the strokes that
+    touch it at its right (`after`: the strokes right of it). The stem's right edge is taken near the stem's end, where the
+    stem stands alone. None where the stem has no ink there or nothing is left past it."""
+    bare = layers['bare']
+    height, width = bare.shape
+    row = int(min(max(0, stem['end'] + 0.3 * space), height - 1))
+    edge = None
+    for column in (int(stem['x']), int(stem.get('mid', stem['x']))):
+        if 0 <= column < width and bare[row, column]:
+            edge = column
+            while edge + 1 < width and bare[row, edge + 1]:
+                edge += 1
+            break
+    if edge is None:
+        return None
+    x1 = int(stroke['x1'])
+    for other in after:
+        if other['x0'] <= x1 + 2 and other['top'] <= stroke['bottom'] and stroke['top'] <= other['bottom']:
+            x1 = max(x1, int(other['x1']))
+    region = bare[int(stroke['top']):int(stroke['bottom']) + 1, edge + 1:x1 + 1]
+    rows, columns = np.nonzero(region.any(axis=1))[0], np.nonzero(region.any(axis=0))[0]
+    if not len(rows):
+        return None
+    return {'x0': float(edge + 1 + columns[0]), 'x1': float(edge + 1 + columns[-1]), 'top': float(stroke['top'] + rows[0]),
+            'bottom': float(stroke['top'] + rows[-1])}
 
 
 def _joined_sharp(layers: dict, sign: dict, space: float) -> str | None:
