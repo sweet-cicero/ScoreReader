@@ -1977,6 +1977,10 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   a mark at or past the first). A false note that goes can give back a true one that it cut short: the whole note
   before the bar line had been a half note. A rule that takes marks is listed mark by mark at its own step: 21 marks on
   17 pages, and only 10 pages differ, because the other marks had made no note of the written music.
+- The list of words holds the singular of nearly every plural and few plurals (`ocr.MEND_S`). A mending rule that asks
+  the list for the word that a misread stands for asks it, for a word that ends in s, without the s, and keeps the s
+  (`ocr.TWIN_S`): a narrow face joins an r and an i into an n ("spi-nts"), the list lacks "spirits", and the mending
+  had made "saints" of it, one letter away.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
