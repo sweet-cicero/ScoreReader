@@ -191,14 +191,15 @@ def held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, s
         for onset, event in cuts + [(length, None)]:
             if onset > at and state.get('unison'):
                 free = at
-                for note in sorted(notes, key=lambda note: (note['onset'], note['voice'])):
+                melody_notes = [note for note in notes if not note.get('rest')]
+                for note in sorted(melody_notes, key=lambda note: (note['onset'], note['voice'])):
                     if UNISON_LINE:
                         # The melody is one line, but its stems go up and down with its height, and a stem down
                         # reads as a second voice: the ison sings each note that begins when the last one has ended.
                         if not (at <= note['onset'] < onset and note['onset'] >= free):
                             continue
                         free = note['onset'] + note['length']
-                    elif not (at <= note['onset'] < onset and note['voice'] == min(other['voice'] for other in notes)):
+                    elif not (at <= note['onset'] < onset and note['voice'] == min(other['voice'] for other in melody_notes)):
                         continue
                     bar.append({key: value for key, value in dict(note, tie_start=False, tie_stop=False).items() if key != 'lyric'})
             elif onset > at and state.get('note') is not None:

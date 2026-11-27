@@ -10,6 +10,9 @@ right after a bar line.
 """
 from __future__ import annotations
 
+from functools import lru_cache
+from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -478,3 +481,250 @@ def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:
                     or any(0 <= sign['x0'] - bar <= COMMON_AT[1] * space for bar in bars.get(index, [])):
                 kept[index] = sorted(kept[index] + [sign], key=lambda found: found['x0'])
     return kept
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Time signature reading: classify numerator, denominator, common time (C), and cut time (C|).
+
+_DIGIT_FONTS = (
+    '/usr/share/fonts/noto/NotoSerif-Bold.ttf',
+    '/usr/share/fonts/liberation/LiberationSerif-Bold.ttf',
+    '/usr/share/fonts/noto/NotoSerif-Regular.ttf',
+    '/usr/share/fonts/noto/NotoMusic-Regular.ttf',
+)
+_SMUFL_DIGITS = {
+    '2': '\U0001D100',  # fallback only if font lacks standard digits; serif fonts use ASCII
+}
+VALID_METERS = {
+    (2, 2), (3, 2), (4, 2),
+    (2, 4), (3, 4), (4, 4), (5, 4), (6, 4),
+    (3, 8), (6, 8), (9, 8), (12, 8),
+}
+_DIGIT_HOLES = {'2': 0, '3': 0, '4': 1, '6': 1, '8': 2, '9': 1, '12': 0}
+
+
+def _normalize_glyph(mask: np.ndarray, size: int = 24) -> np.ndarray | None:
+    """Tight-crops a binary glyph mask and centers it inside a size x size float32 square."""
+    ys, xs = np.nonzero(mask)
+    if len(ys) < 6:
+        return None
+    crop = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.float32)
+    h, w = crop.shape
+    scale = (size - 4) / max(h, w)
+    nh, nw = max(1, int(round(h * scale))), max(1, int(round(w * scale)))
+    resized = cv2.resize(crop, (nw, nh), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
+    out = np.zeros((size, size), np.float32)
+    y0, x0 = (size - nh) // 2, (size - nw) // 2
+    out[y0:y0 + nh, x0:x0 + nw] = resized
+    return out
+
+
+def _closed_hole_count(mask: np.ndarray) -> int:
+    """Counts interior paper holes in a binary glyph mask."""
+    if mask.size == 0:
+        return 0
+    pad = np.pad((mask == 0).astype(np.uint8), 1, constant_values=1)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(pad, connectivity=4)
+    outside = labels[0, 0]
+    min_area = max(3, int(0.015 * mask.shape[0] * mask.shape[1]))
+    return sum(1 for k in range(1, count) if k != outside and stats[k, cv2.CC_STAT_AREA] >= min_area)
+
+
+@lru_cache(maxsize=1)
+def _digit_templates() -> dict[str, list[np.ndarray]]:
+    """Builds multi-font normalized 24x24 templates for time-signature digits."""
+    templates: dict[str, list[np.ndarray]] = {d: [] for d in ('2', '3', '4', '6', '8', '9', '12')}
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        available = [p for p in _DIGIT_FONTS[:3] if Path(p).exists()]
+        for font_path in available:
+            font = ImageFont.truetype(font_path, 48)
+            for digit in templates:
+                img = Image.new('L', (96, 96), 255)
+                draw = ImageDraw.Draw(img)
+                draw.text((48, 48), digit, font=font, fill=0, anchor='mm')
+                arr = (np.array(img) < 180).astype(np.uint8)
+                norm = _normalize_glyph(arr)
+                if norm is not None:
+                    templates[digit].append(norm)
+                    # Add a slightly bolded variant for heavy prints and scans.
+                    bold = cv2.dilate(arr, np.ones((3, 3), np.uint8))
+                    nb = _normalize_glyph(bold)
+                    if nb is not None:
+                        templates[digit].append(nb)
+    except Exception:
+        pass
+    # Always include clean OpenCV Hershey fallback templates so zero external font is required.
+    for font_id in (cv2.FONT_HERSHEY_TRIPLEX, cv2.FONT_HERSHEY_DUPLEX, cv2.FONT_HERSHEY_SIMPLEX):
+        for digit in templates:
+            canvas = np.zeros((96, 96), np.uint8)
+            cv2.putText(canvas, digit, (14, 72), font_id, 2.0, 1, 4, cv2.LINE_AA)
+            norm = _normalize_glyph(canvas)
+            if norm is not None:
+                templates[digit].append(norm)
+    return templates
+
+
+def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | None, float]:
+    """Classifies a single time-signature number mask against multi-font templates."""
+    norm = _normalize_glyph(mask)
+    if norm is None:
+        return None, 0.0
+    ys, xs = np.nonzero(mask)
+    aspect = (xs.max() - xs.min() + 1) / max(1.0, ys.max() - ys.min() + 1)
+    holes = _closed_hole_count(mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+    vec = norm.ravel()
+    vec = vec - vec.mean()
+    vnorm = float(np.linalg.norm(vec))
+    if vnorm < 1e-6:
+        return None, 0.0
+    vec /= vnorm
+    templates = _digit_templates()
+    best_digit, best_score = None, -1.0
+    # Measure left-edge openness in the middle band: '3' is open on the left, while '6' has a solid left curve.
+    crop_bin = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0
+    ch, cw = crop_bin.shape
+    left_mid = float(crop_bin[int(0.25 * ch):max(int(0.25 * ch) + 1, int(0.75 * ch)), :max(1, int(0.32 * cw))].any(axis=1).mean())
+    right_mid = float(crop_bin[int(0.25 * ch):max(int(0.25 * ch) + 1, int(0.75 * ch)), max(0, int(0.68 * cw)):].any(axis=1).mean())
+    for digit in allowed:
+        if digit == '12' and aspect < 0.95:
+            continue
+        if digit != '12' and aspect > 1.45:
+            continue
+        best_t = -1.0
+        for tpl in templates.get(digit, ()):
+            tv = tpl.ravel()
+            tv = tv - tv.mean()
+            tnorm = float(np.linalg.norm(tv))
+            if tnorm > 1e-6:
+                score = float(np.dot(vec, tv / tnorm))
+                if score > best_t:
+                    best_t = score
+        # Apply mild shape-structure cues (closed loops + left-vs-right openness for 3 vs 6).
+        want_holes = _DIGIT_HOLES.get(digit, 0)
+        if holes == want_holes:
+            best_t += 0.04
+        elif abs(holes - want_holes) >= 2:
+            best_t -= 0.08
+        if digit == '3':
+            if left_mid < 0.65 and right_mid >= 0.70:
+                best_t += 0.12
+            elif left_mid >= 0.85:
+                best_t -= 0.10
+        elif digit == '6':
+            if left_mid >= 0.80:
+                best_t += 0.08
+            elif left_mid < 0.55:
+                best_t -= 0.12
+        if best_t > best_score:
+            best_digit, best_score = digit, best_t
+    return best_digit, best_score
+
+
+def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, str | None] | None, float]:
+    """Reads a detected time-signature box as ((beats, beat_type, symbol), confidence).
+
+    Returns ((4, 4, 'common'), conf) for C, ((2, 2, 'cut'), conf) for cut time,
+    or ((num, den, None), conf) for stacked numbers.
+    """
+    space, rows = staff['space'], staff['rows']
+    if sign.get('common'):
+        if sign.get('cut'):
+            return (2, 2, 'cut'), 0.95
+        # Check for a vertical cut-time slash extending over and under the C arc.
+        free = _free(layers)
+        x0 = max(0, int(sign['x0']) - 1)
+        x1 = min(free.shape[1], int(sign['x1']) + 2)
+        y0 = max(0, int(rows[0] - 0.8 * space))
+        y1 = min(free.shape[0], int(rows[4] + 0.8 * space) + 1)
+        if x1 > x0 and y1 > y0:
+            crop = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
+                                    np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
+            ys_all = np.nonzero(crop.any(axis=1))[0]
+            if len(ys_all):
+                c_high = (ys_all[-1] - ys_all[0] + 1) / space
+                mid_x0 = int(0.28 * (x1 - x0))
+                mid_x1 = max(mid_x0 + 1, int(0.76 * (x1 - x0)))
+                col_span = crop[ys_all[0]:ys_all[-1] + 1, mid_x0:mid_x1].mean(axis=0)
+                if c_high >= 2.55 and len(col_span) and float(col_span.max()) >= 0.82:
+                    return (2, 2, 'cut'), 0.90
+        return (4, 4, 'common'), 0.90
+
+    free = _free(layers)
+    h, w = free.shape
+    x0 = max(0, int(sign['x0']) - 1)
+    x1 = min(w, int(sign['x1']) + 2)
+    top, mid, bot = rows[0], rows[2], rows[4]
+    y_top = max(0, int(top - 0.35 * space))
+    y_mid = int(round(mid))
+    y_bot = min(h, int(bot + 0.35 * space) + 1)
+    if x1 - x0 < 3 or y_mid <= y_top + 2 or y_bot <= y_mid + 2:
+        return None, 0.0
+    close_k = np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8)
+    upper = cv2.morphologyEx(np.ascontiguousarray(free[y_top:y_mid, x0:x1]), cv2.MORPH_CLOSE, close_k)
+    lower = cv2.morphologyEx(np.ascontiguousarray(free[y_mid:y_bot, x0:x1]), cv2.MORPH_CLOSE, close_k)
+    num, n_conf = _classify_digit(upper, ('2', '3', '4', '6', '9', '12'))
+    den, d_conf = _classify_digit(lower, ('2', '4', '8'))
+    if num is None or den is None:
+        return None, 0.0
+    pair = (int(num), int(den))
+    if pair not in VALID_METERS:
+        return None, 0.0
+    conf = 0.5 * (n_conf + d_conf)
+    return (pair[0], pair[1], None), conf
+
+
+def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
+               ends: list[float]) -> tuple[tuple[int, int, str | None] | None, dict[int, list[tuple[float, tuple[int, int, str | None]]]]]:
+    """Determines the opening meter of a page (voted across System 0 staves) and any mid-page meter changes.
+
+    Returns (opening_meter, changes_by_staff) where each change is (x_column, (beats, beat_type, symbol)).
+    """
+    staves = layers['staves']
+    if not staves:
+        return None, {}
+    sys0 = [idx for idx, staff in enumerate(staves) if staff['system'] == 0]
+    votes: dict[tuple[int, int, str | None], list[float]] = {}
+    for idx in sys0:
+        staff = staves[idx]
+        space = staff['space']
+        cands = []
+        if starts[idx].get('time'):
+            cands.append(starts[idx]['time'])
+        for sign in times.get(idx, []):
+            if sign['x0'] <= ends[idx] + 5.0 * space:
+                cands.append(sign)
+        if not cands:
+            # Scan right after the clef/key region on System 0 staves for bold C/cut or stacked numbers.
+            key_right = starts[idx].get('end', starts[idx]['x1'])
+            scan_left = key_right - 0.5 * space if starts[idx].get('key', 0) != 0 else starts[idx]['x1'] - 0.3 * space
+            scan_right = max(ends[idx], key_right) + 5.5 * space
+            cands.extend(bold_commons(layers, staff, scan_left - 1.0 * space, scan_right))
+            cands.extend(s for s in time_signs(layers, staff, starts[idx]['x1'] - 0.3 * space, scan_right)
+                         if s['x0'] <= max(ends[idx], key_right) + 4.5 * space)
+        best_here = None
+        for sign in cands:
+            parsed, conf = read_meter(layers, staff, sign)
+            if parsed is not None and conf >= 0.42:
+                if best_here is None or conf > best_here[1]:
+                    best_here = (parsed, conf)
+        if best_here is not None:
+            votes.setdefault(best_here[0], []).append(best_here[1])
+
+    opening = None
+    if votes:
+        best_m = max(votes, key=lambda m: (len(votes[m]), sum(votes[m])))
+        # On a single-staff system require higher confidence; on multi-staff allow 1 strong vote or >=2 votes.
+        if len(votes[best_m]) >= 2 or max(votes[best_m]) >= 0.55:
+            opening = best_m
+
+    changes: dict[int, list[tuple[float, tuple[int, int, str | None]]]] = {}
+    for idx, staff in enumerate(staves):
+        space = staff['space']
+        for sign in times.get(idx, []):
+            if idx in sys0 and sign['x0'] <= ends[idx] + 5.0 * space:
+                continue
+            parsed, conf = read_meter(layers, staff, sign)
+            if parsed is not None and conf >= 0.50:
+                changes.setdefault(idx, []).append((float(sign['x0']), parsed))
+    return opening, changes

@@ -57,8 +57,10 @@ def _page_ties(before: list[dict], after: list[dict]) -> None:
     """Keeps the ties over the end of a page that both pages mark, in one part: `before` are its bars so far and
     `after` the bars of the next page. A note of the last bar with 'tie_start' and no note of its pitch after it,
     and a note of the first bar with 'tie_stop' and no note of its pitch before it, are the halves."""
-    last = next((bar['notes'] for bar in reversed(before) if bar['notes']), [])
-    first = next((bar['notes'] for bar in after if bar['notes']), [])
+    last = [n for n in next((bar['notes'] for bar in reversed(before) if any(not x.get('rest') for x in bar['notes'])), [])
+            if not n.get('rest')]
+    first = [n for n in next((bar['notes'] for bar in after if any(not x.get('rest') for x in bar['notes'])), [])
+             if not n.get('rest')]
     going = [note for note in last if note.get('tie_start')
              and not any(other['midi'] == note['midi'] and other['onset'] > note['onset'] for other in last)]
     coming = [note for note in first if note.get('tie_stop')

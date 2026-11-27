@@ -178,7 +178,7 @@ def write_page(out: Path, name: str, result: dict) -> None:
 def read_one(command: str, source: Path, page: int, out: Path, name: str | None = None, drawing: str = 'auto',
              key_before: int | None = None, clefs_before: list[str] | None = None, key_hymn: int | None = None,
              looked: tuple | None = None, lex=None, shapes: str | None = None, ocr: bool = False,
-             ties_before: list | None = None) -> tuple[int, dict, dict | None]:
+             ties_before: list | None = None, meter_before: tuple | None = None) -> tuple[int, dict, dict | None]:
     """Does `command` ('read', 'layers' or 'layout') on one page and writes its files to `out`. Returns the exit
     code, the summary that the command prints, and what the reader gave (None when nothing was read). `looked` is
     what a first look at the page gave already: (the drawing's result or None, what prepare() gave or None). With
@@ -224,7 +224,7 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(read_layers(clean, places)))
         else:
             result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before, key_hymn=key_hymn,
-                               ties_before=ties_before, layers=ready.get('layers'))
+                               ties_before=ties_before, layers=ready.get('layers'), meter_before=meter_before)
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
             if lex or ocr:
                 summary['syllables'] = set_words([result], lex, shapes, name, ocr)
@@ -282,10 +282,10 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
             looked.append((source, page, stem, (result, ready)))
     whole = hymn_key(shown)
     read, told, stems = [], [], []
-    clefs_before = ties_before = None
+    clefs_before = ties_before = meter_before = None
     for source, page, stem, first in looked:
         code, summary, result = read_one('read', source, page, out, stem, drawing, key_before, clefs_before, whole, first,
-                                         ties_before=ties_before)
+                                         ties_before=ties_before, meter_before=meter_before)
         ties_before = result.get('ties_out') if result is not None else None
         told.append(dict(summary, source=str(source), page=page, read=result is not None))
         if result is not None:
@@ -293,6 +293,7 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
             stems.append(stem)
             key_before = result['key']
             clefs_before = result.get('system_clefs') or clefs_before
+            meter_before = result.get('meter') or meter_before
     if not read:
         return 1, {'name': name, 'pages': told}
     if (lex or ocr) and set_words(read, lex, shapes, name, ocr):

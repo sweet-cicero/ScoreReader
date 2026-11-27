@@ -184,6 +184,72 @@ def test_multi_dpi_synthetic_staves_and_notes() -> None:
             assert got == want, f'space={space} staff {idx + 1}: got {got} != want {want}'
 
 
+def test_end_to_end_synthetic_meter_and_rests() -> None:
+    """Reads a synthetic engraved score with 4/4 meter, half rest, quarter rest, and exact shifted onsets."""
+    from PIL import Image, ImageDraw, ImageFont
+    space = 24
+    w, h = 2100, 620
+    img = np.full((h, w), 255, np.uint8)
+    y_top = 180
+    rows = [y_top + k * space for k in range(5)]
+    x0, x1 = 160, 1920
+    for y in rows:
+        cv2.line(img, (x0, y), (x1, y), 0, 2)
+    cv2.line(img, (x0, rows[0]), (x0, rows[4]), 0, 3)
+    cv2.line(img, (x1, rows[0]), (x1, rows[4]), 0, 3)
+
+    # Render treble clef + 4/4 time signature + quarter rest using NotoMusic & NotoSerif
+    pil = Image.fromarray(img)
+    draw = ImageDraw.Draw(pil)
+    music_font = Path('/usr/share/fonts/noto/NotoMusic-Regular.ttf')
+    serif_font = Path('/usr/share/fonts/noto/NotoSerif-Bold.ttf')
+    assert music_font.exists() and serif_font.exists(), 'required open system fonts missing'
+    f_music = ImageFont.truetype(str(music_font), int(4.0 * space))
+    f_digit = ImageFont.truetype(str(serif_font), int(2.7 * space))
+    draw.text((x0 + int(1.6 * space), rows[2] - int(0.1 * space)), '\U0001D11E', font=f_music, fill=0, anchor='mm')
+    draw.text((x0 + int(4.4 * space), rows[1]), '4', font=f_digit, fill=0, anchor='mm')
+    draw.text((x0 + int(4.4 * space), rows[3]), '4', font=f_digit, fill=0, anchor='mm')
+    # Quarter rest in bar 1 beat 2
+    qrest_x = x0 + int(12.5 * space)
+    draw.text((qrest_x, rows[2]), '\U0001D13D', font=f_music, fill=0, anchor='mm')
+    img = np.array(pil)
+
+    def put_quarter(x: int, place: int) -> None:
+        cy = int(round(rows[2] - place * space / 2))
+        cv2.ellipse(img, (x, cy), (int(0.62 * space), int(0.45 * space)), -20, 0, 360, 0, -1, cv2.LINE_AA)
+        sx = x + int(0.56 * space) if place <= 0 else x - int(0.56 * space)
+        sy2 = cy - int(3.3 * space) if place <= 0 else cy + int(3.3 * space)
+        cv2.line(img, (sx, cy), (sx, sy2), 0, 3)
+
+    # Bar 1: G4 (beat 0), quarter rest (beat 1), A4 (beat 2), B4 (beat 3)
+    put_quarter(x0 + int(8.0 * space), -2)
+    put_quarter(x0 + int(17.0 * space), -1)
+    put_quarter(x0 + int(22.0 * space), 0)
+    bar1_x = x0 + int(26.5 * space)
+    cv2.line(img, (bar1_x, rows[0]), (bar1_x, rows[4]), 0, 3)
+    # Bar 2: C5 half note (beats 0..2), half rest sitting on line 3 (beats 2..4)
+    cx2, cy2 = x0 + int(31.0 * space), int(round(rows[2] - 1 * space / 2))
+    cv2.ellipse(img, (cx2, cy2), (int(0.65 * space), int(0.46 * space)), -20, 0, 360, 0, -1, cv2.LINE_AA)
+    cv2.ellipse(img, (cx2, cy2), (int(0.42 * space), int(0.22 * space)), -20, 0, 360, 255, -1, cv2.LINE_AA)
+    cv2.line(img, (cx2 - int(0.58 * space), cy2), (cx2 - int(0.58 * space), cy2 + int(3.3 * space)), 0, 3)
+    hrest_x = x0 + int(39.0 * space)
+    cv2.rectangle(img, (hrest_x - int(0.6 * space), rows[2] - int(0.48 * space)),
+                  (hrest_x + int(0.6 * space), rows[2]), 0, -1)
+
+    staves = find_staves(img)
+    assert len(staves) == 1, f'expected 1 staff, got {len(staves)}'
+    systems = find_systems(img, staves)
+    page, places = clean_page(img, staves, systems)
+    result = read_page(page, places)
+    assert result['meter'] == (4, 4, None), f'expected (4, 4, None), got {result["meter"]}'
+    assert '<beats>4</beats><beat-type>4</beat-type>' in result['musicxml'], 'missing <time> 4/4'
+    assert '<rest/>' in result['musicxml'], 'missing <rest/> in MusicXML'
+    bar0 = [(n['step'], n['onset'], n['length']) for n in result['notes'] if n['bar'] == 0]
+    assert bar0 == [('G', 0.0, 1.0), ('A', 2.0, 1.0), ('B', 3.0, 1.0)], f'bar 1 shifted onsets wrong: {bar0}'
+    bar1_rests = [r for r in result['parts'][0][1]['notes'] if r.get('rest')]
+    assert len(bar1_rests) == 1 and bar1_rests[0]['length'] == Fraction(2), f'bar 2 half rest wrong: {result["parts"][0][1]}'
+
+
 TESTS = [
     test_tied_accidental_across_barline,
     test_musicxml_chord_cursor_unequal_lengths,
@@ -192,6 +258,7 @@ TESTS = [
     test_join_pages_mixed_staff_counts,
     test_multi_verse_lyrics,
     test_multi_dpi_synthetic_staves_and_notes,
+    test_end_to_end_synthetic_meter_and_rests,
 ]
 
 

@@ -16,11 +16,11 @@ import numpy as np
 from .drone import letter_marks, start_breves, without_breves
 from .fermatas import fermatas, on_fermata
 from .layers import read_layers
-from .meter import COMMON_ROWS, mid_signs
+from .meter import COMMON_ROWS, mid_signs, page_meter
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, key_alters, musicxml, pitch_of, staff_columns
 from . import music as _music
 from . import headnet
-from .rests import block_rests, in_rest, quarter_rests
+from .rests import block_rests, eighth_rests, in_rest, quarter_rests, rest_dot
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
 from .symbols import line_gap_stems, arc_pairs, bar_stems, arc_wholes, open_wholes, bar_lines, bar_marks, faint_bars, big_holes, broken_stems, count_tails, dots, hole_heads, loops_have_flags, lost_stems, gone_stems, chord_stems, read_symbols, \
@@ -119,7 +119,7 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
     edges = [x for x in sorted(bars) if staff['x0'] + 2 * space < x < staff['x1'] - space]
     measures = [sum(1 for x in edges if x < bar[0][0]['x']) for bar in plan]
     out, alone, quarters = {}, [], {}
-    every = [note for bar in built for note in bar]
+    every = [note for bar in built for note in bar if not note.get('rest')]
     for block in sorted(blocks, key=lambda block: block['x']):
         quarter = block.get('kind') != 'block'
         if not quarter and REST_APART is not None and _between_stems(block, every, space):
@@ -128,7 +128,7 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
         if measure not in measures:
             continue
         number = measures.index(measure)
-        notes = built[number]
+        notes = [note for note in built[number] if not note.get('rest')]
         if not notes:
             continue
         end = max(note['onset'] + note['length'] for note in notes)
@@ -143,10 +143,12 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
             if until > begin:
                 gaps[voice] = (begin, until)
         if quarter:
-            # A quarter rest is the voice's that its place names, where that voice's notes leave room for it.
+            # A quarter or short rest belongs to the voice named by its vertical shift, when that voice leaves room.
             voice = 1 if block['middle'] <= -REST_QUARTER else 2 if block['middle'] >= REST_QUARTER else None
             if voice in gaps:
-                quarters[(number, voice) + gaps[voice]] = quarters.get((number, voice) + gaps[voice], 0) + 1
+                rest_len = Fraction(block.get('length', 1))
+                key = (number, voice) + gaps[voice]
+                quarters[key] = quarters.get(key, Fraction(0)) + rest_len
             continue
         if len({note['voice'] for note in notes}) == 1 and not gaps:
             # A bar of one voice that sings on over the rest: the rest is the other voice's, for the whole bar. A whole
@@ -169,11 +171,11 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
             if not any(rest['voice'] == voice and rest['onset'] < span[1] and span[0] < rest['onset'] + rest['length']
                        for rest in out.get(number, [])):
                 out.setdefault(number, []).append({'voice': voice, 'onset': span[0], 'length': span[1] - span[0]})
-    # The quarter rests of a gap are its last quarter notes, where the gap holds them all.
-    for (number, voice, begin, until), count in sorted(quarters.items()):
-        if until - begin >= count and not any(rest['voice'] == voice and rest['onset'] < until and until - count < rest['onset'] + rest['length']
-                                              for rest in out.get(number, [])):
-            out.setdefault(number, []).append({'voice': voice, 'onset': until - count, 'length': Fraction(count)})
+    # The non-block rests of a gap occupy the tail of the gap when the gap holds their total length.
+    for (number, voice, begin, until), total_len in sorted(quarters.items()):
+        if until - begin >= total_len and not any(rest['voice'] == voice and rest['onset'] < until and until - total_len < rest['onset'] + rest['length']
+                                                  for rest in out.get(number, [])):
+            out.setdefault(number, []).append({'voice': voice, 'onset': until - total_len, 'length': Fraction(total_len)})
     # The bars of one voice, in runs of bars that follow each other: the stems of a part alone say nothing of its voice,
     # so the run's notes are the voice whose notes stand nearer on the page, and the rest is the other voice's.
     runs = []
@@ -224,9 +226,59 @@ def other_time(head: dict, staves: list[dict], starts: list[dict], times: dict, 
     return False
 
 
+def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[float],
+                         rest_list: list[dict], space: float,
+                         bar_beats: Fraction | None = None) -> tuple[list[list[list[dict]]], list[dict]]:
+    """Inserts shared-column rests into bar plans before build_staff() so all active voices rest and advance onsets.
+
+    Returns (updated_plan, leftover_single_voice_rests) where leftover rests overlap another voice's notes or
+    stand shifted toward one voice (handled by voice_rests()).
+    """
+    if not rest_list:
+        return plan, []
+    edges = [x for x in sorted(bars) if staff['x0'] + 2 * space < x < staff['x1'] - space]
+    bar_map: dict[int, list[list[dict]]] = {}
+    for bar in plan:
+        if bar and bar[0]:
+            m_idx = sum(1 for x in edges if x < bar[0][0]['x'])
+            bar_map[m_idx] = [list(col) for col in bar]
+
+    leftover: list[dict] = []
+    for rest in sorted(rest_list, key=lambda r: r['x']):
+        m_idx = sum(1 for x in edges if x < rest['x'])
+        cols = bar_map.get(m_idx)
+        # Check if any note in this measure stands in the same x-columns as the rest.
+        bar_events = [ev for col in (cols or []) for ev in col if not ev.get('rest')]
+        overlaps_note = any(rest['x0'] - 0.55 * space <= ev['x'] <= rest['x1'] + 0.55 * space for ev in bar_events)
+        kind = rest.get('kind', 'quarter')
+        middle = float(rest.get('middle', 0.0))
+        shifted = (kind in ('quarter', 'eighth', '16th') and abs(middle) >= 0.75) or (
+            kind == 'block' and abs(middle) >= 1.15)
+        if overlaps_note or shifted:
+            leftover.append(rest)
+            continue
+        length = Fraction(rest.get('length', 1))
+        if kind == 'block' and rest.get('hangs') and not rest.get('sits'):
+            length = bar_beats if (bar_beats is not None and not bar_events) else Fraction(4)
+        if cols is None:
+            # Whole-bar rest in an otherwise empty measure.
+            if kind == 'block' or length >= 2:
+                bar_map[m_idx] = [[{'x': float(rest['x']), 'place': 0, 'voice': 1, 'head': {},
+                                    'length': bar_beats or length, 'stem_x': None, 'rest': True}]]
+            continue
+        active_voices = sorted({ev['voice'] for ev in bar_events}) or [1]
+        rest_col = [{'x': float(rest['x']), 'place': 0, 'voice': v, 'head': {},
+                     'length': length, 'stem_x': None, 'rest': True} for v in active_voices]
+        cols.append(rest_col)
+        cols.sort(key=lambda col: col[0]['x'])
+
+    updated = [bar_map[k] for k in sorted(bar_map)]
+    return updated, leftover
+
+
 def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
               clefs_before: list[str] | None = None, key_hymn: int | None = None, ties_before: list | None = None,
-              layers: dict | None = None) -> dict:
+              layers: dict | None = None, meter_before: tuple | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
     ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests', 'fermatas') for pictures and
@@ -468,6 +520,17 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             if (filled if head['hollow'] else hollow) >= HEADNET_FLIP:
                 head['hollow'] = not head['hollow']
                 head['net_flip'] = True
+    # Detect printed eighth and sixteenth rests free of notes and barlines, and apply augmentation dots on rests.
+    short_rests = eighth_rests(layers, ends, heads, bars)
+    all_rests = rests + blocks + short_rests
+    for rest in all_rests:
+        base_len = Fraction(rest.get('length', 1))
+        if base_len in (Fraction(2), Fraction(1), Fraction(1, 2)) and rest_dot(layers, rest):
+            rest['length'] = base_len * Fraction(3, 2)
+            rest['dot'] = True
+    opening_meter, meter_changes = page_meter(layers, begin['starts'], times, ends)
+    effective_meter = opening_meter or meter_before
+    bar_beats = Fraction(effective_meter[0] * 4, effective_meter[1]) if effective_meter else None
     parts = [[] for _ in range(width)]
     notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
@@ -488,11 +551,17 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     drone, holding = [], {}
     places = voice_places(staves, plans) if REST_VOICE else {}
     for index, staff in enumerate(staves):
-        built = build_staff(staff, [], bars[index], clefs[index], keys[index], space, plans[index])
+        staff_rests = [r for r in all_rests if r['staff'] == index]
+        # Exclude blocks trapped between stems (ties printed into staff lines).
+        if REST_APART is not None:
+            note_stub = [{'head': ev['head']} for bar in plans[index] for col in bar for ev in col if ev.get('head')]
+            staff_rests = [r for r in staff_rests if r.get('kind') != 'block' or not _between_stems(r, note_stub, space)]
+        plan_with_rests, leftover_rests = _insert_shared_rests(staff, plans[index], bars[index], staff_rests, space, bar_beats)
+        built = build_staff(staff, [], bars[index], clefs[index], keys[index], space, plan_with_rests)
         if width == 1 and built:
             marks = [[] for _ in built]
             for mark in letters[index]:
-                later = [number for number, bar in enumerate(plans[index]) if any(column[0]['x'] >= mark['x'] - 0.6 * space for column in bar)]
+                later = [number for number, bar in enumerate(plan_with_rests) if any(column[0]['x'] >= mark['x'] - 0.6 * space for column in bar)]
                 marks[later[0] if later else len(built) - 1].append(mark)
 
             def pitch(event: dict, staff=staff, index=index) -> dict:
@@ -501,12 +570,18 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             for bar in held(built, marks, pitch, space, holding):
                 drone.append({'notes': [{name: value for name, value in note.items() if name != 'head'} for note in bar],
                               'clef': clefs[index], 'key': keys[index]})
-        quiet = voice_rests(staff, built, plans[index], bars[index], [block for block in blocks if block['staff'] == index]
-                            + ([rest for rest in rests if rest['staff'] == index] if REST_QUARTER is not None else []), space,
+        quiet = voice_rests(staff, built, plan_with_rests, bars[index], leftover_rests, space,
                             places.get(staff['number'])) if REST_VOICE else {}
         first = len(parts[staff['number']])
+        staff_edges = [x for x in sorted(bars[index]) if staff['x0'] + 2 * space < x < staff['x1'] - space]
+        change_bars = {sum(1 for x in staff_edges if x < cx): m for cx, m in meter_changes.get(index, [])}
         for number, bar in enumerate(built):
-            parts[staff['number']].append({'notes': bar, 'clef': clefs[index], 'key': keys[index]})
+            bar_entry = {'notes': bar, 'clef': clefs[index], 'key': keys[index]}
+            if opening_meter is not None and staff['system'] == 0 and number == 0:
+                bar_entry['time'] = opening_meter
+            elif number in change_bars:
+                bar_entry['time'] = change_bars[number]
+            parts[staff['number']].append(bar_entry)
             if quiet.get(number):
                 parts[staff['number']][-1]['rests'] = quiet[number]
             for note in bar:
@@ -524,7 +599,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                                         'stem': {'x': float(stem['x']), 'end': float(stem['end']), 'tails': head['tails'].get(stem['direction'], 0),
                                                  'marks': stem.get('marks', [])} if stem else None}))
         for grace in (grace for grace in graces if grace['staff'] == index):
-            later = [(number, note) for number, bar in enumerate(built) for note in bar if note['x'] > grace['cx']]
+            later = [(number, note) for number, bar in enumerate(built) for note in bar
+                     if not note.get('rest') and note['x'] > grace['cx']]
             if not later:
                 continue
             number, note = min(later, key=lambda item: (item[1]['x'], -item[1]['midi']))
@@ -542,9 +618,10 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     words = layers['words'] = word_rows(layers)
     return {'musicxml': musicxml(parts, title, names), 'parts': parts, 'names': names, 'notes': notes, 'part_notes': part_notes, 'title': title,
             'staves': len(staves), 'systems': len({staff['system'] for staff in staves}), 'key': key, 'clefs': clefs, 'layers': layers,
+            'meter': effective_meter, 'opening_meter': opening_meter,
             'system_clefs': [system_clefs[number] for number in sorted(system_clefs)],
             'ties_out': [[staves[head['staff']]['number'], int(round(head['place']))] for head in heads if head.get('tie_out')],
             'heads': heads, 'note_signs': found, 'starts': begin['starts'], 'ends': ends, 'bars': bars, 'signs': symbols['signs'],
             'keys': [start['key'] for start in begin['starts']], 'staff_keys': keys, 'ties': ties, 'words': words, 'triplets': triplets,
-            'rests': rests, 'fermatas': holds, 'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
+            'rests': all_rests, 'fermatas': holds, 'times': [([start['time']] if start.get('time') else []) + times.get(index, [])
                       for index, start in enumerate(begin['starts'])]}
