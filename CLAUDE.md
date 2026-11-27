@@ -1963,6 +1963,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   yardstick taken from the other mark is measured as the rule measures its own piece: the other dot's ink as a limit
   left two true dots, because that dot sits on a line and keeps the line's rows. The census of every piece at such a
   column (24 on LitChoir's pages) gave 5 dots, each looked at, and the fresh set has none.
+- A limit that an older rule set for one reading of a mark is widened as a second reading, asked only where the first
+  reading finds nothing. A flat glued to its head whose stroke a bold pen drew wider than a flat's (0.46 staff spaces
+  against 0.45) goes to the test for a sharp of two joined strokes, which finds no sharp. With the limit at 0.6 the
+  flat's own measures took 9 sharps as well as 8 flats on LitChoir's pages; the joined test parts them, and the stroke
+  is a flat only where it finds no sharp (`starts.GLUED_WIDE`). A trial that an earlier round stopped at a mark that it
+  named by sight is read against the typed hymn before that mark becomes a guard: the "Arabic half-flat" of round 136 is
+  typed Ab4 at its own note, and the A4 that the trial lost was the next note of the bar, which the flat holds.
 - `experiments/` holds the record of the first tests.
 
 ## Rules

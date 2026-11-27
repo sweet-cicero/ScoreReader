@@ -95,6 +95,13 @@ EIGHT = (0.7, 1.7, 4.6, 0.008, 0.3, 0.2, 0.9, 1.4, 0.13)    # the small 8 under 
 FLAT_GLUED = (0.25, 0.2, 0.8, 0.25, 1.0, 0.4)   # a flat whose bowl touches a ledger line or its head: the paper inside the
 #                     bowl begins at most this far right of the stroke, is from this to this wide and from this to this
 #                     high (staff spaces), and begins under this share of the stroke's height (None: off)
+GLUED_WIDE = 0.6    # a bold pen draws the stroke of a glued flat wider than 0.45 staff spaces, and the test for a sharp
+#                     whose two strokes are joined takes it. Where that test finds no sharp, a stroke no wider than
+#                     this that has a flat's sides and whose bowl still closes its paper is that flat
+#                     (signs.note_signs). From 0.45 to 0.58 such strokes on LitChoir's pages were 8 flats and 9 sharps,
+#                     which the flat's own measures do not part and the joined test does; from 0.65 on, a head's stem,
+#                     sharps and one flat. (None: off)
+GLUED_SEEN = None
 FLAT_HEAVY = 0.4    # a heavy flat whose bowl the ink filled is one wide stroke, and the test for a sharp whose two strokes
 #                     are joined takes it: where the top of such a mark is one bare stroke no wider than this (staff
 #                     spaces; a sharp's top holds its two strokes, 0.51 or more on LitChoir's pages), with the ink of a
@@ -429,6 +436,13 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
                                       'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
                                       'bowl_place': pitch_place(staff, sides['bowl']) if sides['bowl'] is not None else None,
                                       'top': stroke['top'], 'bottom': stroke['bottom']}
+            if GLUED_WIDE and FLAT_GLUED and stroke['wide'] <= GLUED_WIDE and sides and sides['top'] <= 0.65 and sides['bulge'] > 1.0 \
+                    and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] and sides['foot'] <= 0.3 \
+                    and (hole := _bowl_hole(layers, stroke, space)):
+                # A glued flat whose stroke a bold pen drew wide (see GLUED_WIDE).
+                signs[-1]['glued_flat'] = {'kind': 'flat', 'x0': float(stroke['x0']), 'x1': float(hole[1]), 'glued': True,
+                                           'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
+                                           'bowl_place': pitch_place(staff, hole[2]), 'top': stroke['top'], 'bottom': stroke['bottom']}
         elif STROKE_BOW and beams and 0.45 < stroke['wide'] and stroke['high'] > 3.4 \
                 and (cut := bow_ends(layers, staff, stroke)) is not stroke and cut['high'] <= 3.4:
             # Two joined strokes that were followed into the end of a slur or a tie: the sign is the stroke without it.
