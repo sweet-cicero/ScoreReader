@@ -4344,6 +4344,20 @@ STEM_GONE = (0.85, 1.1, 0.8, 1.08, 0.25, 0.5, 0.6, 0.87, 0.1)   # a filled mark 
 #                            0.3 staff spaces around the box, staff lines apart: a ledger line fits in). A scan that
 #                            lost the hairline stems of a print. A rest is a box, a dot is round, the end of a slur
 #                            is slim, and the two halves of a quarter rest are one piece of ink. (None: off)
+GONE_SPACE = (0.35, 2.6)   # a filled mark with no stem that is higher than STEM_GONE allows is still such a head where it
+#                            fills its space: its top and its bottom lie in the rows of the two staff lines of the space
+#                            (half a line's thickness and 2 pixels). One print draws its heads in a space from line to
+#                            line, and its box reaches through both lines (1.25 to 1.39 of the page's heads, as the
+#                            page's read heads in a space with stems are). A heavy sharp or natural fills its space in
+#                            the same way and stands before its head: no read head stands at its right within the second
+#                            number of staff spaces with its middle within the first number of the mark's middle. A
+#                            census of every stemless filled mark of LitChoir's pages that only the height refused (21,
+#                            each looked at): the 6 of the Rachmaninov print and a head of a copy by hand fill their
+#                            space; the 3 signs do too and stand 1.2 to 2.28 staff spaces before their heads, their
+#                            middles 0.14 to 0.23 apart; the true heads have no head within 2.98 staff spaces at their
+#                            height, and the nearer ones stand 0.46 staff spaces or more higher or lower. A rule for one
+#                            print. (None: off)
+GONE_SPACE_SEEN = None     # a list: each mark that GONE_SPACE lets through
 GONE_STEM = (0.25, 4.5, 1.5, 0.9, 1.6, 1.2, 0.3, 0.2, 1.0)   # the pieces that the scan left of such a stem, in the column
 #                            of the head's right edge over it or of its left edge under it (this many staff spaces to
 #                            both sides), up to this many staff spaces from the head and not into the words: slim ink
@@ -4533,6 +4547,23 @@ def _gone_stem(layers: dict, head: dict, up: bool) -> tuple[dict | None, bool]:
             'gone': True}, attached
 
 
+def _fills_space(layers: dict, head: dict, heads: list[dict]) -> bool:
+    """GONE_SPACE: the mark's top and bottom lie in the rows of the two staff lines of its space, and no read head
+    stands close at its right at its height, as the head of a sign does."""
+    if not GONE_SPACE:
+        return False
+    staff = _staff_of(layers, head['cx'], head['cy'])
+    if staff is None:
+        return False
+    rows, edge = layers['staves'][staff]['rows'], layers['staves'][staff]['thick'] / 2 + 2
+    if not any(abs(head['y0'] - over) <= edge and abs(head['y1'] - under) <= edge for over, under in zip(rows, rows[1:])):
+        return False
+    space = layers['space']
+    level, reach = GONE_SPACE
+    return not any(other is not head and 0 < other['cx'] - head['cx'] <= reach * space
+                   and abs(other['cy'] - head['cy']) <= level * space for other in heads)
+
+
 def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list[dict]) -> list[dict]:
     """The marks as large as a head that have no stem at all and that are heads of the print all the same
     (STEM_GONE): the scan lost their stems. They are notes without a stem: a quarter note, in the voice that the
@@ -4547,7 +4578,10 @@ def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list
         if head['stems'] or head['hollow'] or any(head is other for other in heads):
             continue
         own_wide, own_high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
-        if not (STEM_GONE[0] * wide <= own_wide <= STEM_GONE[1] * wide and STEM_GONE[2] * high <= own_high <= STEM_GONE[3] * high):
+        if not STEM_GONE[0] * wide <= own_wide <= STEM_GONE[1] * wide or own_high < STEM_GONE[2] * high:
+            continue
+        filling = own_high > STEM_GONE[3] * high
+        if filling and not _fills_space(layers, head, heads):
             continue
         if any(other['x0'] <= head['cx'] <= other['x1'] and other['y0'] <= head['cy'] <= other['y1'] for other in heads):
             continue
@@ -4567,6 +4601,8 @@ def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list
         if (float(around.sum()) - float(inside.sum())) > STEM_GONE[8] * max(1, around.size - inside.size):
             continue
         head['gone'] = True
+        if filling and GONE_SPACE_SEEN is not None:
+            GONE_SPACE_SEEN.append({'cx': head['cx'], 'cy': head['cy'], 'high': own_high, 'page_high': high})
         if GONE_STEM:
             (over, on_top), (under, on_foot) = _gone_stem(layers, head, True), _gone_stem(layers, head, False)
             # Pieces at one side only, and no short stem at the other side: the ink in a column can be another note's.
