@@ -224,7 +224,7 @@ def read_one(command: str, source: Path, page: int, out: Path, name: str | None 
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(read_layers(clean, places)))
         else:
             result = read_page(clean, places, title=name, key_before=key_before, clefs_before=clefs_before, key_hymn=key_hymn,
-                               ties_before=ties_before)
+                               ties_before=ties_before, layers=ready.get('layers'))
             cv2.imwrite(str(out / f'{name}.layers.png'), picture(result['layers']))
             if lex or ocr:
                 summary['syllables'] = set_words([result], lex, shapes, name, ocr)
@@ -257,9 +257,11 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
     the clefs of the page before are a witness for the clefs of a page. With `lex` (a list of words) the words of
     the pages that were read as images are read too, all pages together."""
     from .hymn import join_pages  # noqa: PLC0415
+    from .layers import read_layers  # noqa: PLC0415
     from .music import musicxml  # noqa: PLC0415
     from .reader import page_starts  # noqa: PLC0415
     from .starts import hymn_key  # noqa: PLC0415
+    from .words import word_bands  # noqa: PLC0415
     start = time.time()
     name = name or sources[0].stem
     # The first look: the first steps on each page, and what the start of each staff shows.
@@ -273,7 +275,10 @@ def read_hymn(sources: list[Path], out: Path, name: str | None = None, pages: st
                 print(f'ScoreReader: cannot open {source}. Give a PNG image or a PDF file.', file=sys.stderr)
                 return 2, {}
             if ready is not None and ready['staves']:
-                shown.append(page_starts(ready['clean'], ready['places']))
+                layers = read_layers(ready['clean'], ready['places'])
+                layers['words'] = word_bands(layers)
+                ready['layers'] = layers
+                shown.append(page_starts(ready['clean'], ready['places'], layers=layers))
             looked.append((source, page, stem, (result, ready)))
     whole = hymn_key(shown)
     read, told, stems = [], [], []

@@ -166,7 +166,9 @@ def joined(ink: np.ndarray, upper: dict, lower: dict) -> dict:
     first = max(1, int(min(upper['left'], lower['left']) - OUTSIDE * space))
     last = int(left + INSIDE * space)
     y0, y1 = gap(left)
-    opening = _path_cover(ink[y0:y1, first:last]) if y1 - y0 >= 3 else 0.0
+    # Two staves whose left edges are far apart (for example, an indented first system) do not share an opening line.
+    aligned_left = abs(upper['left'] - lower['left']) <= 2.0 * space
+    opening = _path_cover(ink[y0:y1, first:last]) if (aligned_left and y1 - y0 >= 3) else 0.0
     bars = 0
     before = -10 ** 9
     for x in range(last, int(right) + 1):

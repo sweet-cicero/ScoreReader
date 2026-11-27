@@ -17,9 +17,9 @@ STEPS = 'CDEFGAB'
 SEMITONES = [0, 2, 4, 5, 7, 9, 11]
 SHARPS = [3, 0, 4, 1, 5, 2, 6]      # the note names that the sharps of a key signature raise, in their order: F C G D A E B
 FLATS = [6, 2, 5, 1, 4, 0, 3]       # and the flats: B E A D G C F
-MIDDLE = {'G': 34, 'G8vb': 27, 'F': 22}   # the note on the middle line of each clef, as 7 * octave + name
-TYPES = {Fraction(4): 'whole', Fraction(2): 'half', Fraction(1): 'quarter', Fraction(1, 2): 'eighth',
-         Fraction(1, 4): '16th', Fraction(1, 8): '32nd'}
+MIDDLE = {'G': 34, 'G8vb': 27, 'F': 22, 'C': 28}   # the note on the middle line of each clef, as 7 * octave + name
+TYPES = {Fraction(8): 'breve', Fraction(4): 'whole', Fraction(2): 'half', Fraction(1): 'quarter',
+         Fraction(1, 2): 'eighth', Fraction(1, 4): '16th', Fraction(1, 8): '32nd'}
 DIVISIONS = 24       # a quarter note has this many parts: a triplet's notes need thirds
 TRIPLET = Fraction(2, 3)   # a note under a triplet's bracket has this share of its drawn length
 ONE_LINE = 0.6       # the stems of two voices on one pitch, or a second apart, are one line: at most this far apart
@@ -216,9 +216,10 @@ def held(melody: list[list[dict]], marks: list[list[dict]], pitch, gap: float, s
 
 
 
-def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: float) -> list[list[list[dict]]]:
-    """The notes of a staff in bars and columns: a list of bars, each a list of columns, each a list of events
-    {'x', 'place', 'voice', 'head', 'length', 'stem_x'}. The notes of a column begin together."""
+def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: float,
+                  rests: list[dict] | None = None) -> list[list[list[dict]]]:
+    """The notes and optional rests of a staff in bars and columns: each event has 'x', 'place', 'voice', 'head',
+    'length', 'stem_x', and optional 'rest'. The events of a column begin together."""
     events = []
     for head in heads:
         place = int(round(head['place']))
@@ -230,16 +231,21 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
                 length *= TRIPLET
             events.append({'x': head['cx'], 'place': place, 'voice': voice, 'head': head, 'length': length,
                            'stem_x': stem['x'] if stem else None})
+    for rest in rests or []:
+        voices = rest.get('voices') or ([rest['voice']] if rest.get('voice') in (1, 2) else [1])
+        for voice in voices:
+            events.append({'x': float(rest['x']), 'place': 0, 'voice': voice, 'head': {},
+                           'length': Fraction(rest['length']), 'stem_x': None, 'rest': True})
     events.sort(key=lambda event: event['x'])
     # A note without a stem (a whole note) under, over or beside a note with a stem is the other voice's note, and
     # the two begin together. Two voices on one pitch, or a second apart, stand side by side: the whole note at the
     # right, after the dot of the other note.
     for event in events:
-        if event['stem_x'] is not None:
+        if event.get('rest') or event['stem_x'] is not None:
             continue
         near = []
         for other in events:
-            if other['stem_x'] is None:
+            if other.get('rest') or other['stem_x'] is None:
                 continue
             ahead, apart = (event['x'] - other['x']) / space, abs(other['place'] - event['place'])
             reach = BESIDE_DOT if other['head'].get('dot') else BESIDE
@@ -270,6 +276,15 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
         columns = []
         for event in measure:
             for column in reversed(columns[-2:]):
+                if event.get('rest'):
+                    # Group simultaneous rests of different voices into one column, never with notes of the same voice.
+                    if all(other.get('rest') and other['voice'] != event['voice'] for other in column) \
+                            and abs(column[0]['x'] - event['x']) <= COLUMN * space:
+                        column.append(event)
+                        break
+                    continue
+                if any(other.get('rest') for other in column):
+                    continue
                 same_stem = any(other['voice'] == event['voice'] and other['stem_x'] is not None
                                 and event['stem_x'] is not None and abs(other['stem_x'] - event['stem_x']) <= 0.3 * space
                                 for other in column)
@@ -587,19 +602,20 @@ def _span_votes(votes: list[dict], spans: list[tuple], sure: list, resting: list
 
 
 def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, key: int, space: float,
-                measures: list[list[list[dict]]] | None = None) -> list[list[dict]]:
-    """The bars of a staff: each a list of notes {'onset', 'length', 'voice', 'step', 'alter', 'octave', 'midi', 'x',
-    'type', 'dot'} with onsets counted from the bar's start, in quarter notes. `measures` is what staff_columns()
-    gave for this staff, when the lengths were checked against the other staves first."""
+                measures: list[list[list[dict]]] | None = None,
+                rests: list[dict] | None = None) -> list[list[dict]]:
+    """Builds the bars of a staff with exact onsets, tied barline accidentals, and optional rests."""
     if measures is None:
-        measures = staff_columns(staff, heads, bars, space)
+        measures = staff_columns(staff, heads, bars, space, rests=rests)
     base = key_alters(key)
     out = []
+    tied_alters: dict[tuple[int, int], int] = {}
     for columns in measures:
         free = {1: Fraction(0), 2: Fraction(0)}
         last_onset, last_shortest = None, None
         notes = []
         alters = dict(base)
+        next_tied: dict[tuple[int, int], int] = {}
         for column in columns:
             onset = max(free[voice] for voice in {event['voice'] for event in column})
             if last_onset is not None and onset <= last_onset:
@@ -610,23 +626,39 @@ def build_staff(staff: dict, heads: list[dict], bars: list[float], clef: str, ke
                 for event in column:
                     if event['voice'] != voice:
                         continue
+                    length = event['length']
+                    if event.get('rest'):
+                        notes.append({'onset': onset, 'length': length, 'voice': voice, 'x': event['x'], 'rest': True})
+                        continue
                     # Each head keeps its own length: a head of the other voice whose stem was not found stands in
                     # this voice's column too.
-                    length = event['length']
                     name = (MIDDLE[clef] + event['place']) % 7
+                    pitch_key = (name, event['place'])
                     sign = event['head'].get('sign')
+                    tie_stop = bool(event['head'].get('tie_stop'))
+                    tie_start = bool(event['head'].get('tie_start'))
                     if sign is not None:
-                        alters[(name, event['place'])] = sign
-                    alter = alters.get((name, event['place']), alters.get(name, 0))
+                        alters[pitch_key] = sign
+                        alter = sign
+                    elif tie_stop and pitch_key in tied_alters and pitch_key not in alters:
+                        # Carry the accidental of a note tied across the barline without changing later untied notes.
+                        alter = tied_alters[pitch_key]
+                    else:
+                        alter = alters.get(pitch_key, alters.get(name, 0))
+                    if tie_start:
+                        next_tied[pitch_key] = alter
+                    else:
+                        next_tied.pop(pitch_key, None)
                     step, alter, octave, midi = pitch_of(event['place'], clef, alter)
                     notes.append({'onset': onset, 'length': length, 'voice': voice, 'step': step, 'alter': alter,
                                   'octave': octave, 'midi': midi, 'x': event['x'], 'place': event['place'],
                                   'head': event['head'], 'agreed': bool(event.get('agreed')),
-                                  'tie_start': bool(event['head'].get('tie_start')),
-                                  'tie_stop': bool(event['head'].get('tie_stop')),
+                                  'tie_start': tie_start,
+                                  'tie_stop': tie_stop,
                                   'votes': event.get('votes')})
             last_onset = onset
             last_shortest = min(event['length'] for event in column)
+        tied_alters = next_tied
         out.append(notes)
     return out
 
@@ -660,7 +692,11 @@ def _note_xml(note: dict, chord: bool) -> str:
             parts.append('<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>')
     if ties:
         parts.append('<notations>' + ''.join(f'<tied type="{name}"/>' for name in ties) + '</notations>')
-    if note.get('lyric'):
+    if note.get('lyrics'):
+        for verse, text, syll in note['lyrics']:
+            syllabic = f'<syllabic>{syll}</syllabic>' if syll else ''
+            parts.append(f'<lyric number="{verse}">{syllabic}<text>{escape(text)}</text></lyric>')
+    elif note.get('lyric'):
         syllabic = f'<syllabic>{note["syllabic"]}</syllabic>' if note.get('syllabic') else ''
         parts.append(f'<lyric number="1">{syllabic}<text>{escape(note["lyric"])}</text></lyric>')
     parts.append('</note>')
@@ -696,18 +732,29 @@ def musicxml(parts: list[list[dict]], title: str = '', names: dict[int, str] | N
         shown = None
         for index, bar in enumerate(bars or [{'notes': [], 'clef': 'G', 'key': 0}]):
             out.append(f'<measure number="{index + 1}">')
-            state = (bar['clef'], bar['key'])
+            bar_time = bar.get('time')
+            state = (bar['clef'], bar['key'], bar_time)
             if state != shown:
-                sign, line = ('F', 4) if bar['clef'] == 'F' else ('G', 2)
+                if bar['clef'] == 'F':
+                    sign, line = 'F', 4
+                elif bar['clef'] == 'C':
+                    sign, line = 'C', 3
+                else:
+                    sign, line = 'G', 2
                 octave = '<clef-octave-change>-1</clef-octave-change>' if bar['clef'] == 'G8vb' else ''
                 divisions = f'<divisions>{DIVISIONS}</divisions>' if shown is None else ''
+                time_xml = ''
+                if bar_time is not None and (shown is None or bar_time != shown[2]):
+                    beats, beat_type, sym = bar_time
+                    sym_attr = f' symbol="{sym}"' if sym else ''
+                    time_xml = f'<time{sym_attr}><beats>{beats}</beats><beat-type>{beat_type}</beat-type></time>'
                 out.append(f'<attributes>{divisions}<key><fifths>{bar["key"]}</fifths></key>'
-                           f'<clef><sign>{sign}</sign><line>{line}</line>{octave}</clef></attributes>')
+                           f'{time_xml}<clef><sign>{sign}</sign><line>{line}</line>{octave}</clef></attributes>')
                 shown = state
             written = Fraction(0)
             for voice in (1, 2):
                 notes = sorted((note for note in bar['notes'] if note['voice'] == voice),
-                               key=lambda note: (note['onset'], -note['midi']))
+                               key=lambda note: (note['onset'], 0 if note.get('rest') else -note['midi']))
                 # A printed rest of the voice, where none of its notes sounds (scorereader.reader.REST_VOICE).
                 quiet = [rest for rest in bar.get('rests', []) if rest['voice'] == voice and rest['length'] > 0
                          and not any(note['onset'] < rest['onset'] + rest['length'] and rest['onset'] < note['onset'] + note['length']

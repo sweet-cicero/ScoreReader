@@ -284,15 +284,15 @@ def _at(points: list[tuple], x: float) -> tuple[float, float] | None:
     return (min(rows), max(rows)) if rows else None
 
 
-def _whole_spacing() -> None:
-    """Makes pdfminer count the character spacing after the last character of a string too, as the PDF standard
-    says (every glyph is followed by the spacing Tc). Without it, a word that follows a string with a wide
-    spacing stands too far left: Encore sets each syllable under its note that way."""
+from contextlib import contextmanager
+
+
+@contextmanager
+def _whole_spacing():
+    """Temporarily makes pdfminer include character spacing after the last character, restoring on exit."""
     from pdfminer.pdfdevice import PDFTextDevice
 
     plain = PDFTextDevice.render_string_horizontal
-    if getattr(plain, 'whole_spacing', False):
-        return
 
     def render(self, seq, matrix, pos, font, fontsize, scaling, charspace, wordspace, *more):
         x, y = plain(self, seq, matrix, pos, font, fontsize, scaling, charspace, wordspace, *more)
@@ -300,8 +300,11 @@ def _whole_spacing() -> None:
             x += charspace
         return x, y
 
-    render.whole_spacing = True
     PDFTextDevice.render_string_horizontal = render
+    try:
+        yield
+    finally:
+        PDFTextDevice.render_string_horizontal = plain
 
 
 def read_pdf_page(path, number: int, title: str = '') -> dict | None:
@@ -310,8 +313,7 @@ def read_pdf_page(path, number: int, title: str = '') -> dict | None:
     'lyric' where a syllable stands under it."""
     import pdfplumber
 
-    _whole_spacing()
-    with pdfplumber.open(str(path)) as pdf:
+    with _whole_spacing(), pdfplumber.open(str(path)) as pdf:
         if not 1 <= number <= len(pdf.pages):
             return None
         page = pdf.pages[number - 1]
@@ -521,7 +523,7 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
     for staff in staves:
         index, gap = staff['index'], staff['gap']
         own = [head for head in heads if head['staff'] == index]
-        clef = clefs[index] if clefs[index] in ('G', 'G8vb', 'F') else 'G'
+        clef = clefs[index] if clefs[index] in ('G', 'G8vb', 'F', 'C') else 'G'
         plan = staff_columns(staff, own, bars[index], gap)
         marks = _drones(plan, rests.get(index, []), gap) if width == 1 else []
         if width == 1 and LETTERS:
@@ -544,8 +546,10 @@ def _read(staves, signs, level, upright, shapes, words, title) -> dict:
                 parts[part].append({'notes': bar, 'clef': clef, 'key': keys[index]})
                 for note in bar:
                     head = note.pop('head')
-                    if head.get('lyric') and part != width and note['voice'] == min(other['voice'] for other in bar if other['x'] == note['x']):
-                        note['lyric'] = head['lyric']
+                    if head.get('lyrics_all') and part != width and note['voice'] == min(other['voice'] for other in bar if other['x'] == note['x']):
+                        note['lyrics'] = head['lyrics_all']
+                        if head.get('lyric'):
+                            note['lyric'] = head['lyric']
                     notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
                                       ison=part == width))
     names = {width: 'Ison'}
@@ -711,5 +715,6 @@ def _words(staves: list[dict], heads: list[dict], words: list[dict]) -> None:
             verse += 1
     for head in heads:
         if head.get('lyrics'):
-            first = min(head['lyrics'])
-            head['lyric'] = ''.join(head['lyrics'][first]) if first == 0 else None
+            ordered = [(v + 1, ''.join(head['lyrics'][v]), None) for v in sorted(head['lyrics'])]
+            head['lyrics_all'] = ordered
+            head['lyric'] = ordered[0][1] if ordered[0][0] == 1 else None

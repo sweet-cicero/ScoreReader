@@ -17,17 +17,36 @@ def join_pages(pages: list[dict]) -> tuple[list[list[dict]], dict[int, str]]:
     A tie over the end of a page: each page marks its half (scorereader.ties.TIE_PAGE), the last note of a part with
     'tie_start' and the first note of the part on the next page with 'tie_stop'. The tie holds where both pages
     mark it at one pitch; a half without its other half is taken away, at the end of the hymn too."""
+    def _part_clef(bars_list: list[dict]) -> str | None:
+        return next((bar['clef'] for bar in bars_list if bar.get('clef')), None)
+
     width = max(len(page['parts']) for page in pages)
+    ref_page = max(pages, key=lambda page: len(page['parts']))
+    ref_clefs = [_part_clef(part) for part in ref_page['parts']]
     parts: list[list[dict]] = [[] for _ in range(width)]
     names: dict[int, str] = {}
     for page in pages:
         names.update(page.get('names') or {})
         bars = max((len(part) for part in page['parts']), default=0)
+        page_parts = page['parts']
+        if len(page_parts) == width:
+            mapping = {i: page_parts[i] for i in range(width)}
+        else:
+            # Align each staff of a shorter page to the full-score part with the matching clef.
+            mapping = {}
+            used: set[int] = set()
+            for own in page_parts:
+                clef = _part_clef(own)
+                slot = next((idx for idx in range(width) if idx not in used and ref_clefs[idx] == clef), None)
+                if slot is None:
+                    slot = next(idx for idx in range(width) if idx not in used)
+                used.add(slot)
+                mapping[slot] = own
         for number, part in enumerate(parts):
-            own = page['parts'][number] if number < len(page['parts']) else []
+            own = mapping.get(number, [])
             _page_ties(part, own)
             part.extend(own)
-            last = part[-1] if part else {'clef': 'G', 'key': page.get('key', 0)}
+            last = part[-1] if part else {'clef': ref_clefs[number] or 'G', 'key': page.get('key', 0)}
             part.extend({'notes': [], 'clef': last['clef'], 'key': last['key']} for _ in range(bars - len(own)))
     for part in parts:
         _page_ties(part, [])

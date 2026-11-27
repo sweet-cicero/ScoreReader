@@ -73,7 +73,8 @@ def flat_paper(grey: np.ndarray) -> np.ndarray:
     A page with white paper is given back as it is."""
     step = 8
     small = cv2.resize(grey, None, fx=1 / step, fy=1 / step, interpolation=cv2.INTER_AREA)
-    size = max(3, PAPER_PIECE // step) | 1
+    scale = 1.0 if 2100 <= grey.shape[1] <= 2900 else min(2.5, max(0.4, grey.shape[1] / 2550.0))
+    size = max(3, int(round(PAPER_PIECE * scale)) // step) | 1
     paper = cv2.morphologyEx(small, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
     paper = cv2.GaussianBlur(paper, (0, 0), size / 4)
     if np.percentile(paper, 5) >= PAPER_GREY:

@@ -814,7 +814,8 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
             rows[onto] = [syllable for syllable in rows.get(onto, []) if not left <= (syllable['x0'] + syllable['x1']) / 2 <= right] \
                 + rows[number]
             rows[number] = []
-    taken, count = set(), 0
+    verse_of: dict[int, int] = {}
+    count = 0
     for number in sorted(rows):
         band = bands[number]
         if not rows[number]:
@@ -823,9 +824,8 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
         if not over:
             continue
         index = max(over, key=lambda index: staves[index]['rows'][4])
-        if index in taken:
-            continue
-        taken.add(index)
+        verse = verse_of.get(index, 0) + 1
+        verse_of[index] = verse
         columns: list[list[int]] = []
         for at in sorted((at for at, note in enumerate(result['notes']) if note['staff'] == index),
                          key=lambda at: result['notes'][at]['x']):
@@ -910,7 +910,9 @@ def set_under(result: dict, syllables: list[dict], page: int = 0) -> int:
             goes_on = bool(row[final[j]].get('join'))
             syllabic = {(False, False): 'single', (False, True): 'begin', (True, True): 'middle', (True, False): 'end'}[(inside, goes_on)]
             for notes in (result['notes'], result['part_notes']):
-                notes[top]['lyric'] = text
-                notes[top]['syllabic'] = syllabic
+                if verse == 1:
+                    notes[top]['lyric'] = text
+                    notes[top]['syllabic'] = syllabic
+                notes[top].setdefault('lyrics', []).append((verse, text, syllabic))
             count += 1
     return count

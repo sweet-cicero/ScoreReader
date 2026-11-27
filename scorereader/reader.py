@@ -66,13 +66,13 @@ HEADNET_FLIP = 0.8   # with the weights of the small network (scorereader.headne
                      # SCOREREADER_HEADNET=off: off
 
 
-def page_starts(grey: np.ndarray, places: list[dict]) -> list[dict]:
-    """A first look at a clean page: what the start of each staff shows (its clef and its key signature), for the
-    vote of all pages of a hymn on its key (scorereader.starts.hymn_key)."""
+def page_starts(grey: np.ndarray, places: list[dict], layers: dict | None = None) -> list[dict]:
+    """Read the clef and key signature at the start of each staff for the hymn key vote."""
     if not places:
         return []
-    layers = read_layers(grey, places)
-    layers['words'] = word_bands(layers)
+    if layers is None:
+        layers = read_layers(grey, places)
+        layers['words'] = word_bands(layers)
     return [read_start(layers, index) for index in range(len(layers['staves']))]
 
 
@@ -225,7 +225,8 @@ def other_time(head: dict, staves: list[dict], starts: list[dict], times: dict, 
 
 
 def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before: int | None = None,
-              clefs_before: list[str] | None = None, key_hymn: int | None = None, ties_before: list | None = None) -> dict:
+              clefs_before: list[str] | None = None, key_hymn: int | None = None, ties_before: list | None = None,
+              layers: dict | None = None) -> dict:
     """Reads a clean page (a grey image and the places from clean_page()). Returns {'musicxml': text, 'notes': [...],
     'staves': n, 'systems': n, 'key': n, 'clefs': [...], 'layers': the layers}, and what was found on the way
     ('heads', 'bars', 'starts', 'ends', 'signs', 'note_signs', 'keys', 'ties', 'times', 'rests', 'fermatas') for pictures and
@@ -252,9 +253,11 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         return {'musicxml': musicxml([[]], title), 'parts': [[]], 'notes': [], 'part_notes': [], 'title': title, 'staves': 0, 'systems': 0, 'key': 0, 'clefs': [],
                 'layers': None, 'heads': [], 'note_signs': [], 'starts': [], 'ends': [], 'bars': {}, 'signs': [],
                 'keys': [], 'staff_keys': [], 'ties': [], 'words': [], 'triplets': [], 'rests': [], 'fermatas': [], 'times': []}
-    layers = read_layers(grey, places)
-    # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
-    words = layers['words'] = word_bands(layers)
+    if layers is None:
+        layers = read_layers(grey, places)
+        # The rows of the words: a stem ends where they begin, and a letter under a head is no stem.
+        layers['words'] = word_bands(layers)
+    words = layers['words']
     symbols = read_symbols(layers)
     heads = symbols['heads']
     space = layers['space']
@@ -507,6 +510,8 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             if quiet.get(number):
                 parts[staff['number']][-1]['rests'] = quiet[number]
             for note in bar:
+                if note.get('rest'):
+                    continue
                 head = note.pop('head')
                 part_notes.append(note)
                 stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (note['voice'] == 1)), None)

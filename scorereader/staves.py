@@ -38,18 +38,30 @@ UNEVEN = (1.4, 0.85)    # no staff: its widest gap is this many times its narrow
 #                         under this share of its columns (None: off)
 
 
+def _dpi_scale(width: int) -> float:
+    """Scale factor relative to a standard 300 DPI page width (2100..2900 px stays 1.0)."""
+    if 2100 <= width <= 2900:
+        return 1.0
+    return min(2.5, max(0.4, width / 2550.0))
+
+
 def faint_lines(grey: np.ndarray) -> np.ndarray:
     """1 on thin level lines that are too pale for ink_mask(): some copies print the staff in hair lines of grey,
     under notes of full black. A line is looked for by its shape (thin, level, long), not by how dark it is."""
-    hat = cv2.morphologyEx(grey, cv2.MORPH_BLACKHAT, np.ones((FAINT[0], 1), np.uint8))
-    return line_ink((hat >= FAINT[1]).astype(np.uint8), FAINT[2])
+    scale = _dpi_scale(grey.shape[1])
+    hat_h = max(5, int(round(FAINT[0] * scale)) | 1)
+    run_len = max(12, int(round(FAINT[2] * scale)))
+    hat = cv2.morphologyEx(grey, cv2.MORPH_BLACKHAT, np.ones((hat_h, 1), np.uint8))
+    return line_ink((hat >= FAINT[1]).astype(np.uint8), run_len)
 
 
 def staff_space(flat: np.ndarray) -> float:
     """The page's staff space in px: the most frequent distance between neighbour lines, 0 when no staff is found."""
     height, width = flat.shape
-    band = 80
-    votes = np.zeros(80)
+    scale = _dpi_scale(width)
+    band = max(32, int(round(80 * scale)))
+    max_space = max(60, int(round(80 * scale)))
+    votes = np.zeros(max_space)
     for x0 in range(0, width - band, band):
         profile = flat[:, x0:x0 + band].sum(axis=1)
         rows = np.where(profile >= 0.5 * band)[0]
@@ -64,7 +76,7 @@ def staff_space(flat: np.ndarray) -> float:
         # A staff gives four equal steps in a row.
         for k in range(len(steps) - 3):
             four = steps[k:k + 4]
-            if 5 <= four.min() and four.max() < 80 and four.max() - four.min() <= 0.25 * four.mean() + 1:
+            if 4 <= four.min() and four.max() < max_space and four.max() - four.min() <= 0.25 * four.mean() + 1:
                 votes[int(round(four.mean()))] += 1
     if votes.sum() == 0:
         return 0.0
@@ -185,11 +197,12 @@ def find_staves(grey: np.ndarray) -> list[dict]:
     look's staff unless the other has FAINT_EDGE times as much): a staff that is one line off has a line without
     ink, and a piece of a staff is shorter than the staff."""
     dark = ink_mask(grey)
+    init_run = max(10, int(round(25 * _dpi_scale(grey.shape[1]))))
     staves = _find(dark, dark)
     if not FAINT:
-        return _ends_on(dark, _without_false(line_ink(dark, 25), staves))
+        return _ends_on(dark, _without_false(line_ink(dark, init_run), staves))
     both = dark | faint_lines(grey)
-    flat = line_ink(both, 25)
+    flat = line_ink(both, init_run)
     # The dark look is the surer one: the look with the pale lines wins a place only by a clear margin.
     found = [(_support(flat, staff) * (1.0 if look else FAINT_EDGE), -look, staff)
              for look, group in enumerate((staves, _find(both, dark))) for staff in group]
@@ -266,7 +279,8 @@ def _same_place(one: dict, two: dict) -> bool:
 def _find(ink: np.ndarray, dark: np.ndarray) -> list[dict]:
     """The staves that the line ink of `ink` shows. `dark` is the dark ink alone: what stands on a staff is dark."""
     height, width = ink.shape
-    space0 = staff_space(line_ink(ink, 25))
+    init_run = max(10, int(round(25 * _dpi_scale(width))))
+    space0 = staff_space(line_ink(ink, init_run))
     if space0 <= 0:
         return []
     flat = line_ink(ink, int(max(15, round(1.4 * space0))))
@@ -333,7 +347,8 @@ def _find(ink: np.ndarray, dark: np.ndarray) -> list[dict]:
             continue
         # Stray ink past the end does not count: the staff ends where the columns with ink stop being dense.
         columns = np.array(columns)
-        dense = [x for x in columns if ((columns >= x - 40) & (columns <= x + 40)).sum() >= 40]
+        dense_win = max(16, int(round(2.0 * space)))
+        dense = [x for x in columns if ((columns >= x - dense_win) & (columns <= x + dense_win)).sum() >= dense_win]
         if not dense:
             continue
         columns = [dense[0], dense[-1]]
