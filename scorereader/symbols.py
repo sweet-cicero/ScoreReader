@@ -319,6 +319,13 @@ WHOLE_APART = (0.7, 0.2, 0.2, 0.2, 0.8)   # a whole note a third under or over a
 #                      (a smaller mark is a piece of a head) (None: off)
 WHOLE_OVER = 0.4     # the oval may begin this many staff spaces left of the head it touches (it is set in the middle
 #                      under it); 0: only as far as WHOLE_BESIDE says
+WHOLE_TWIN = (1.0, 0.75, 2.0)  # a hollow mark with no stem that the whole note's shape refuses only by its width over its
+#                                height (from the first number on) is a whole note where a whole note stands over or under
+#                                it in its columns, its middle from the second to the third number of staff spaces away
+#                                (two whole notes of a chord), and the ink of the two holds no third mark in that column
+#                                (the numbers of a time signature, which the staff lines cut into three or four marks)
+#                                (None: off)
+WHOLE_TWIN_SEEN = None         # a list: each mark that WHOLE_TWIN lets through
 WHOLE_STAFF = 0      # in the staff a whole note is at least this many times as wide as it is high (0: as WHOLE says).
 #                    Off: with 1.0 it gained 1 note on the clean copies, lost 1 and wrote 8 notes that are not there.
 WHOLE_FILLED = 0     # a filled oval without a stem, as large as a whole note, that touches a whole note over or under
@@ -3137,6 +3144,53 @@ def _ring_side(layers: dict, mark: dict, space: float) -> None:
         mark['ring_side'] = side
 
 
+def _whole_twins(layers: dict, marks: list[dict], limit: float, meet: dict) -> set:
+    """The ids of the marks that WHOLE_TWIN takes as whole notes: see WHOLE_TWIN."""
+    if not WHOLE_TWIN:
+        return set()
+    space, (head_wide, head_high) = layers['space'], layers['head']
+    least, near, far = WHOLE_TWIN
+    bare = [mark for mark in marks if mark['kind'] == 'head' and not mark['stems'] and not mark.get('room')
+            and 'tail_of' not in mark and mark['hole'] >= limit and id(mark) not in meet]
+    sure, loose = [], []
+    for mark in bare:
+        wide, high = mark['x1'] - mark['x0'] + 1, mark['y1'] - mark['y0'] + 1
+        if not (wide >= WHOLE[1] * head_wide and WHOLE[2] * head_high <= high <= WHOLE[3] * head_high):
+            continue
+        if wide >= WHOLE[0] * high:
+            sure.append(mark)
+        elif wide >= least * high:
+            loose.append(mark)
+    found = set()
+    for mark in loose:
+        if _rim(layers, mark) < RIM or (CELL and _cell(layers, mark)):
+            continue
+        staff = _staff_of(layers, mark['cx'], mark['cy'])
+        twins = [other for other in sure
+                 if _staff_of(layers, other['cx'], other['cy']) == staff
+                 and min(mark['x1'], other['x1']) - max(mark['x0'], other['x0']) + 1
+                 >= 0.5 * min(mark['x1'] - mark['x0'] + 1, other['x1'] - other['x0'] + 1)
+                 and near * space <= abs(other['cy'] - mark['cy']) <= far * space
+                 and _rim(layers, other) >= RIM and not (CELL and _cell(layers, other))]
+        if not twins:
+            continue
+        # The numbers of a time signature are one piece of ink that the staff lines cut into three or four marks in
+        # one column; two whole notes are two marks.
+        blobs = {mark.get('blob')} | {other.get('blob') for other in twins}
+        stack = sum(1 for other in marks if other is not mark and all(other is not twin for twin in twins)
+                    and other.get('blob') in blobs
+                    and min(mark['x1'], other['x1']) - max(mark['x0'], other['x0']) + 1
+                    >= 0.5 * min(mark['x1'] - mark['x0'] + 1, other['x1'] - other['x0'] + 1))
+        if stack:
+            continue
+        found.add(id(mark))
+        if WHOLE_TWIN_SEEN is not None:
+            WHOLE_TWIN_SEEN.append({'cx': mark['cx'], 'cy': mark['cy'], 'wide': mark['x1'] - mark['x0'] + 1,
+                                    'high': mark['y1'] - mark['y0'] + 1,
+                                    'twin': [(other['cx'], other['cy']) for other in twins]})
+    return found
+
+
 def read_symbols(layers: dict) -> dict:
     """The symbols of the page: {'heads': [...], 'signs': [...], 'marks': [...]}.
 
@@ -3399,6 +3453,7 @@ def read_symbols(layers: dict) -> dict:
     if WHOLE_BESIDE:
         _whole_beside(layers, marks, limit)
     meet = _heads_meet(layers, marks, limit) if HEADS_MEET else {}
+    twins = _whole_twins(layers, marks, limit, meet)
     heads, signs, orphans = [], [], []
     for number, mark in enumerate(marks):
         if mark['kind'] is None or mark['kind'] == 'beam':
@@ -3445,6 +3500,7 @@ def read_symbols(layers: dict) -> dict:
                     and WHOLE[2] * layers['head'][1] <= high <= WHOLE[3] * layers['head'][1]
             # No word stands in the staff: there a whole note may be as round as the letter o.
             oval = lying(mark, WHOLE_STAFF if WHOLE_STAFF and abs(place) <= 4.6 else WHOLE[0])
+            oval = oval or id(mark) in twins     # a whole note of a chord: see WHOLE_TWIN
             if WHOLE_SLIT and not hollow and oval and 'tail_of' not in mark \
                     and WHOLE_SLIT[0] * layers['head'][0] <= wide <= WHOLE_SLIT[1] * layers['head'][0] \
                     and high <= WHOLE_SLIT[9] * layers['head'][1] \
