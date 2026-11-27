@@ -10,6 +10,8 @@ right after a bar line.
 """
 from __future__ import annotations
 
+from collections import Counter
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 
@@ -188,8 +190,12 @@ def _time_signs(layers: dict, staff: dict, first: float | None, last: float | No
         begin, end = y0 + y, y0 + y + high - 1
         if wide > TIME_WIDE[1] * space:
             continue
-        upper = abs(begin - top) <= edge and (abs(end - middle) <= edge or abs(end - bottom) <= edge)
-        lower = abs(end - bottom) <= edge and abs(begin - middle) <= edge
+        if weak:
+            upper = abs(begin - top) <= edge and middle - edge <= end <= bottom + edge
+            lower = abs(end - bottom) <= edge and top - edge <= begin <= bottom - 0.8 * space
+        else:
+            upper = abs(begin - top) <= edge and (abs(end - middle) <= edge or abs(end - bottom) <= edge)
+            lower = abs(end - bottom) <= edge and abs(begin - middle) <= edge
         if upper or lower:
             parts.append((int(x), int(x + wide - 1), label))
     parts.sort()
@@ -205,7 +211,14 @@ def _time_signs(layers: dict, staff: dict, first: float | None, last: float | No
     for begin, end, own in groups:
         if not TIME_WIDE[0] * space <= end - begin + 1 <= TIME_WIDE[1] * space:
             continue
-        mask = np.isin(labels[:, begin:end + 1], own)
+        # In mid-staff scans (weak=True, system-verified), include in-staff digit fragments broken by staff lines.
+        extra = [label for label in range(1, count)
+                 if weak and label not in own
+                 and stats[label][3] >= 0.4 * space and stats[label][4] >= 0.08 * space * space
+                 and begin <= stats[label][0] and stats[label][0] + stats[label][2] - 1 <= end
+                 and top - edge <= y0 + stats[label][1]
+                 and y0 + stats[label][1] + stats[label][3] - 1 <= bottom + edge]
+        mask = np.isin(labels[:, begin:end + 1], own + extra)
         boxes = []
         for half in (mask[:split], mask[split:]):
             ys, xs = np.nonzero(half)
@@ -269,6 +282,15 @@ def common_signs(layers: dict, staff: dict, first: float, last: float) -> list[d
         if not COMMON_HIGH[0] * space <= bh <= COMMON_HIGH[1] * space or not COMMON_WIDE[0] * space <= bw <= COMMON_WIDE[1] * space:
             continue
         if abs(y0 + y + bh / 2 - middle) > COMMON_OFF * space:
+            continue
+        # Reject a narrow right-side arc sitting directly right of a taller cut-time slash.
+        if bw < 0.65 * space and any(
+                other != label
+                and 2.6 * space <= stats[other][3] <= 3.4 * space
+                and abs(y0 + stats[other][1] + stats[other][3] / 2 - middle) <= COMMON_OFF * space
+                and stats[other][0] < x
+                and -0.2 * space <= x - (stats[other][0] + stats[other][2]) <= 0.6 * space
+                for other in range(1, count)):
             continue
         box = labels[y:y + bh, x:x + bw] == label
         if box.mean() > COMMON_INK:
@@ -407,21 +429,26 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
         cut = False
         if cv2.connectedComponents(layers['holes'][y0 + top:y0 + bottom, x0 + left:x0 + right].astype(np.uint8))[0] > 2:
             # More than one piece of closed paper: the sign of cut time, by its stroke and the open side of its C.
-            cut = bool(COMMON_CUT) and len(group) == 1 and _cut_stroke(box, space)
+            cut = bool(COMMON_CUT) and _cut_stroke(box, space)
             if not cut:
                 continue
         elif bottom - top > high * space:
-            continue
+            cut = bool(COMMON_CUT) and _cut_stroke(box, space)
+            if not cut:
+                continue
         # Nothing else stands in its columns just over or under it (a stem, a head a third away).
         others = (labels[:, left:right] > 0) & ~own
-        if others[max(0, top - int(space / 2)):bottom + int(space / 2)].sum() > 0.1 * space * space:
+        pad_other = int(space / 4) if cut else int(space / 2)
+        if others[max(0, top - pad_other):bottom + pad_other].sum() > (0.15 if cut else 0.1) * space * space:
             continue
         waist = _waist(box) / space
-        # The two ends of the bow turn to the right: the stroke of a flat stands at the left over its bowl.
-        fifth = max(1, box.shape[0] // 5)
+        # The two ends of the bow turn to the right: on cut time, the vertical slash extends past the C arms.
+        arm_band = max(1, box.shape[0] // (3 if cut else 5))
         arms = [float(np.nonzero(rows_.any(axis=0))[0].max() + 1) / box.shape[1] if rows_.any() else 0.0
-                for rows_ in (box[:fifth], box[-fifth:])]
-        if (waist > bow or min(arms) < COMMON_ARM) and not every:
+                for rows_ in (box[:arm_band], box[-arm_band:])]
+        arm_ok = (min(arms) >= 0.55 and max(arms) >= 0.80) if cut else (min(arms) >= COMMON_ARM)
+        waist_ok = (waist <= -0.15 and (right - left) >= 1.18 * space) if cut else (waist <= bow)
+        if (not waist_ok or not arm_ok) and not every:
             continue
         found.append({'x0': float(x0 + left), 'x1': float(x0 + right - 1), 'common': True, 'bold': True, 'cut': cut,
                       'high': (bottom - top) / space, 'wide': (right - left) / space, 'ink': float(box.mean()), 'waist': waist,
@@ -500,7 +527,7 @@ VALID_METERS = {
     (2, 4), (3, 4), (4, 4), (5, 4), (6, 4),
     (3, 8), (6, 8), (9, 8), (12, 8),
 }
-_DIGIT_HOLES = {'2': 0, '3': 0, '4': 1, '6': 1, '8': 2, '9': 1, '12': 0}
+_DIGIT_HOLES = {'2': 0, '3': 0, '4': 1, '5': 0, '6': 1, '8': 2, '9': 1, '12': 0}
 
 
 def _normalize_glyph(mask: np.ndarray, size: int = 24) -> np.ndarray | None:
@@ -533,7 +560,7 @@ def _closed_hole_count(mask: np.ndarray) -> int:
 @lru_cache(maxsize=1)
 def _digit_templates() -> dict[str, list[np.ndarray]]:
     """Builds multi-font normalized 24x24 templates for time-signature digits."""
-    templates: dict[str, list[np.ndarray]] = {d: [] for d in ('2', '3', '4', '6', '8', '9', '12')}
+    templates: dict[str, list[np.ndarray]] = {d: [] for d in ('2', '3', '4', '5', '6', '8', '9', '12')}
     try:
         from PIL import Image, ImageDraw, ImageFont
         available = [p for p in _DIGIT_FONTS[:3] if Path(p).exists()]
@@ -565,6 +592,27 @@ def _digit_templates() -> dict[str, list[np.ndarray]]:
     return templates
 
 
+def _bridge_staff_rows(free: np.ndarray, ink: np.ndarray, staff: dict,
+                       y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+    """Bridges vertical staff-line breaks only in a narrow 2-3 px band around each staff line."""
+    crop = np.ascontiguousarray(free[y0:y1, x0:x1]).astype(np.uint8)
+    out = crop.copy()
+    h, w = crop.shape
+    half = max(1, min(3, int(round(staff['thick'] / 2.0))))
+    for row in staff['rows']:
+        ry = int(round(row)) - y0
+        r0 = max(0, ry - half)
+        r1 = min(h, ry + half + 1)
+        if r0 <= 0 or r1 >= h:
+            continue
+        above = crop[max(0, r0 - 2):r0, :].any(axis=0)
+        below = crop[r1:min(h, r1 + 2), :].any(axis=0)
+        cols = above & below
+        if cols.any():
+            out[r0:r1, cols] = np.maximum(out[r0:r1, cols], (ink[y0 + r0:y0 + r1, x0:x1][:, cols] > 0).astype(np.uint8))
+    return out
+
+
 def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | None, float]:
     """Classifies a single time-signature number mask against multi-font templates."""
     norm = _normalize_glyph(mask)
@@ -581,11 +629,14 @@ def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | N
     vec /= vnorm
     templates = _digit_templates()
     best_digit, best_score = None, -1.0
-    # Measure left-edge openness in the middle band: '3' is open on the left, while '6' has a solid left curve.
+    # Measure topological cues: left openness, right continuity, upper-right solidity, and bottom-left lobe.
     crop_bin = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0
     ch, cw = crop_bin.shape
     left_mid = float(crop_bin[int(0.25 * ch):max(int(0.25 * ch) + 1, int(0.75 * ch)), :max(1, int(0.32 * cw))].any(axis=1).mean())
     right_mid = float(crop_bin[int(0.25 * ch):max(int(0.25 * ch) + 1, int(0.75 * ch)), max(0, int(0.68 * cw)):].any(axis=1).mean())
+    right_upper = float(crop_bin[int(0.22 * ch):max(int(0.22 * ch) + 1, int(0.48 * ch)), max(0, int(0.65 * cw)):].any(axis=1).mean())
+    right_lower = float(crop_bin[int(0.55 * ch):max(int(0.55 * ch) + 1, int(0.85 * ch)), max(0, int(0.65 * cw)):].any(axis=1).mean())
+    bottom_left = float(crop_bin[int(0.68 * ch):, :max(1, int(0.42 * cw))].mean())
     for digit in allowed:
         if digit == '12' and aspect < 0.95:
             continue
@@ -600,24 +651,54 @@ def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | N
                 score = float(np.dot(vec, tv / tnorm))
                 if score > best_t:
                     best_t = score
-        # Apply mild shape-structure cues (closed loops + left-vs-right openness for 3 vs 6).
+        # Apply shape-structure cues for holes, 3 vs 6 openness, 3 vs 2 lower-right, and 3 vs 4 bottom-left.
         want_holes = _DIGIT_HOLES.get(digit, 0)
         if holes == want_holes:
             best_t += 0.04
         elif abs(holes - want_holes) >= 2:
             best_t -= 0.08
         if digit == '3':
-            if left_mid < 0.65 and right_mid >= 0.70:
+            if bottom_left < 0.35:
+                best_t -= 0.14
+            elif holes == 0 and left_mid < 0.72 and right_mid >= 0.85 and right_lower >= 0.75:
                 best_t += 0.12
-            elif left_mid >= 0.85:
+            elif holes == 0 and left_mid < 0.96 and right_mid >= 0.90 and right_upper >= 0.85 and right_lower >= 0.75:
+                best_t += 0.08
+            elif left_mid >= 0.98 and holes >= 1:
                 best_t -= 0.10
         elif digit == '6':
-            if left_mid >= 0.80:
+            if left_mid >= 0.95 and holes >= 1:
                 best_t += 0.08
-            elif left_mid < 0.55:
+                if right_upper <= 0.75:
+                    best_t += 0.04
+            elif holes == 0 and right_mid >= 0.90 and right_upper >= 0.85:
+                best_t -= 0.14
+            elif left_mid < 0.65:
                 best_t -= 0.12
+        elif digit == '4':
+            if bottom_left <= 0.38 and right_mid >= 0.80:
+                best_t += 0.06
+            elif bottom_left >= 0.60:
+                best_t -= 0.08
         if best_t > best_score:
             best_digit, best_score = digit, best_t
+    # Blend multi-font template matching with local offline TimeNet when weights are present.
+    try:
+        from .classify import classify_time_crop
+        tn_label, tn_prob = classify_time_crop(mask)
+    except Exception:
+        tn_label, tn_prob = None, 0.0
+    if tn_label in allowed and tn_prob >= 0.72:
+        if tn_label == best_digit:
+            return best_digit, max(best_score, tn_prob)
+        # Never let TimeNet override strong topological evidence (4 vs 3 or 3 vs 6).
+        block_override = (
+            (best_digit == '4' and tn_label == '3' and bottom_left <= 0.40)
+            or (best_digit == '3' and tn_label == '6' and holes == 0 and right_mid >= 0.90 and right_upper >= 0.85)
+            or (best_digit == '4' and best_score >= 0.75 and tn_label == '3')
+        )
+        if not block_override and tn_prob >= 0.88 and best_score < 0.78:
+            return tn_label, tn_prob
     return best_digit, best_score
 
 
@@ -631,26 +712,33 @@ def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, s
     if sign.get('common'):
         if sign.get('cut'):
             return (2, 2, 'cut'), 0.95
-        # Check for a vertical cut-time slash extending over and under the C arc.
+        # Check for a vertical cut-time slash extending over and under the C arc (expanding left for split C|).
         free = _free(layers)
-        x0 = max(0, int(sign['x0']) - 1)
-        x1 = min(free.shape[1], int(sign['x1']) + 2)
         y0 = max(0, int(rows[0] - 0.8 * space))
         y1 = min(free.shape[0], int(rows[4] + 0.8 * space) + 1)
-        if x1 > x0 and y1 > y0:
-            crop = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
-                                    np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
+        close_k = np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8)
+        for left_pad in (0.0, 0.8 * space):
+            x0 = max(0, int(sign['x0'] - left_pad) - 1)
+            x1 = min(free.shape[1], int(sign['x1']) + 2)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            crop = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE, close_k)
             ys_all = np.nonzero(crop.any(axis=1))[0]
-            if len(ys_all):
-                c_high = (ys_all[-1] - ys_all[0] + 1) / space
-                mid_x0 = int(0.28 * (x1 - x0))
-                mid_x1 = max(mid_x0 + 1, int(0.76 * (x1 - x0)))
-                col_span = crop[ys_all[0]:ys_all[-1] + 1, mid_x0:mid_x1].mean(axis=0)
-                if c_high >= 2.55 and len(col_span) and float(col_span.max()) >= 0.82:
+            if not len(ys_all):
+                continue
+            c_high = (ys_all[-1] - ys_all[0] + 1) / space
+            c_mid = (y0 + (ys_all[0] + ys_all[-1]) / 2.0 - rows[2]) / space
+            mid_x0 = int(0.28 * (x1 - x0))
+            mid_x1 = max(mid_x0 + 1, int(0.76 * (x1 - x0)))
+            col_span = crop[ys_all[0]:ys_all[-1] + 1, mid_x0:mid_x1].mean(axis=0)
+            if 2.55 <= c_high <= 3.55 and abs(c_mid) <= 0.55 and len(col_span) and float(col_span.max()) >= 0.82:
+                # For the left-expanded search, also verify the vertical slash stands inside the C rather than on a barline.
+                if left_pad == 0.0 or _cut_stroke(crop[ys_all[0]:ys_all[-1] + 1], space):
                     return (2, 2, 'cut'), 0.90
         return (4, 4, 'common'), 0.90
 
     free = _free(layers)
+    ink = layers['ink']
     h, w = free.shape
     x0 = max(0, int(sign['x0']) - 1)
     x1 = min(w, int(sign['x1']) + 2)
@@ -660,10 +748,9 @@ def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, s
     y_bot = min(h, int(bot + 0.35 * space) + 1)
     if x1 - x0 < 3 or y_mid <= y_top + 2 or y_bot <= y_mid + 2:
         return None, 0.0
-    close_k = np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8)
-    upper = cv2.morphologyEx(np.ascontiguousarray(free[y_top:y_mid, x0:x1]), cv2.MORPH_CLOSE, close_k)
-    lower = cv2.morphologyEx(np.ascontiguousarray(free[y_mid:y_bot, x0:x1]), cv2.MORPH_CLOSE, close_k)
-    num, n_conf = _classify_digit(upper, ('2', '3', '4', '6', '9', '12'))
+    upper = _bridge_staff_rows(free, ink, staff, y_top, y_mid, x0, x1)
+    lower = _bridge_staff_rows(free, ink, staff, y_mid, y_bot, x0, x1)
+    num, n_conf = _classify_digit(upper, ('2', '3', '4', '5', '6', '9', '12'))
     den, d_conf = _classify_digit(lower, ('2', '4', '8'))
     if num is None or den is None:
         return None, 0.0
@@ -672,6 +759,41 @@ def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, s
         return None, 0.0
     conf = 0.5 * (n_conf + d_conf)
     return (pair[0], pair[1], None), conf
+
+
+_BAR_LENGTH_METERS: dict[Fraction, tuple[int, int, str | None]] = {
+    Fraction(3, 2): (3, 8, None),
+    Fraction(2): (2, 4, None),
+    Fraction(3): (3, 4, None),
+    Fraction(4): (4, 4, None),
+    Fraction(5): (5, 4, None),
+    Fraction(6): (3, 2, None),
+}
+
+
+def infer_opening_meter(bar_lengths) -> tuple[int, int, str | None] | None:
+    """Infers an opening time signature from bar durations on excerpt pages without a printed opening meter.
+
+    Returns (beats, beat_type, None) when a standard meter accounts for at least half of two or more bars,
+    or None when bars are empty or irregular.
+    """
+    vals: list[Fraction] = []
+    for raw in (bar_lengths or ()):
+        if raw is None:
+            continue
+        length = Fraction(raw).limit_denominator(16)
+        if length > 0:
+            vals.append(length)
+    if len(vals) < 2:
+        return None
+    counts = Counter(vals)
+    first_pos = {}
+    for pos, length in enumerate(vals):
+        first_pos.setdefault(length, pos)
+    best_len = max(counts, key=lambda length: (counts[length], -first_pos[length]))
+    if counts[best_len] < 2 or counts[best_len] / len(vals) < 0.5:
+        return None
+    return _BAR_LENGTH_METERS.get(best_len)
 
 
 def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
@@ -718,7 +840,7 @@ def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
         if len(votes[best_m]) >= 2 or max(votes[best_m]) >= 0.55:
             opening = best_m
 
-    changes: dict[int, list[tuple[float, tuple[int, int, str | None]]]] = {}
+    raw_changes: dict[int, list[tuple[float, tuple[int, int, str | None], float]]] = {}
     for idx, staff in enumerate(staves):
         space = staff['space']
         for sign in times.get(idx, []):
@@ -726,5 +848,22 @@ def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
                 continue
             parsed, conf = read_meter(layers, staff, sign)
             if parsed is not None and conf >= 0.50:
-                changes.setdefault(idx, []).append((float(sign['x0']), parsed))
+                raw_changes.setdefault(idx, []).append((float(sign['x0']), parsed, conf))
+
+    # Reconcile mid-page meter changes across staves of the same system at matching x-columns.
+    changes: dict[int, list[tuple[float, tuple[int, int, str | None]]]] = {}
+    for idx, items in raw_changes.items():
+        staff = staves[idx]
+        space = staff['space']
+        mates = [other for other, mate in enumerate(staves) if mate['system'] == staff['system']]
+        reconciled = []
+        for cx, parsed, conf in items:
+            col_votes: dict[tuple[int, int, str | None], list[float]] = {}
+            for mate in mates:
+                for ox, oparsed, oconf in raw_changes.get(mate, ()):
+                    if abs(ox - cx) <= TIME_PAIR * space:
+                        col_votes.setdefault(oparsed, []).append(oconf)
+            winner = max(col_votes, key=lambda m: (len(col_votes[m]), sum(col_votes[m]))) if col_votes else parsed
+            reconciled.append((cx, winner))
+        changes[idx] = reconciled
     return opening, changes

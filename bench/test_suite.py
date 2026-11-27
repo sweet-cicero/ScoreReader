@@ -250,6 +250,36 @@ def test_end_to_end_synthetic_meter_and_rests() -> None:
     assert len(bar1_rests) == 1 and bar1_rests[0]['length'] == Fraction(2), f'bar 2 half rest wrong: {result["parts"][0][1]}'
 
 
+def test_local_neural_models_and_grammar() -> None:
+    """Offline SymNet, StemNet, TimeNet, and global grammar solver run in pure NumPy and fix an ambiguous bar."""
+    from scorereader.classify import load_stem_weights, load_time_weights, load_weights
+    from scorereader.grammar import solve_system_durations
+
+    assert load_weights() is not None, 'scorereader/symnet.npz missing'
+    assert load_stem_weights() is not None, 'scorereader/stemnet.npz missing'
+    assert load_time_weights() is not None, 'scorereader/timenet.npz missing'
+
+    # Construct a 4/4 bar where one voice misread a half note (2) as a quarter (1), while SymNet + bar sum say half (2).
+    sym_hollow = np.zeros(19, dtype=np.float32)
+    sym_hollow[1] = 0.92
+    sym_hollow[0] = 0.08
+    sym_filled = np.zeros(19, dtype=np.float32)
+    sym_filled[0] = 0.95
+    sym_filled[1] = 0.05
+    bar = [
+        [{'x': 100.0, 'place': 0, 'voice': 1, 'length': Fraction(1), 'stem_x': 110.0, 'head': {'hollow': False, 'symnet': sym_hollow}}],
+        [{'x': 200.0, 'place': 1, 'voice': 1, 'length': Fraction(1), 'stem_x': 210.0, 'head': {'hollow': False, 'symnet': sym_filled}}],
+        [{'x': 300.0, 'place': 2, 'voice': 1, 'length': Fraction(1), 'stem_x': 310.0, 'head': {'hollow': False, 'symnet': sym_filled}}],
+    ]
+    bar2 = [
+        [{'x': 450.0, 'place': 0, 'voice': 1, 'length': Fraction(4), 'stem_x': None, 'head': {'hollow': True}}],
+    ]
+    plans = {0: [bar, bar2]}
+    changed = solve_system_durations(plans, {0: [380.0]}, 20.0, rests=[], meter=(4, 4, None), is_first_system=False)
+    assert changed >= 1, 'grammar solver failed to fix ambiguous 4/4 bar'
+    assert bar[0][0]['length'] == Fraction(2), f'expected first note corrected to 2, got {bar[0][0]["length"]}'
+
+
 TESTS = [
     test_tied_accidental_across_barline,
     test_musicxml_chord_cursor_unequal_lengths,
@@ -259,6 +289,7 @@ TESTS = [
     test_multi_verse_lyrics,
     test_multi_dpi_synthetic_staves_and_notes,
     test_end_to_end_synthetic_meter_and_rests,
+    test_local_neural_models_and_grammar,
 ]
 
 

@@ -1068,6 +1068,19 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
             there = [end for end, left in shows.get(staff['system'], []) if abs(left - staff['x0']) <= SYSTEM_START * staff['space']]
             if guessed[index] and there and ends[index] - float(np.median(there)) >= SYSTEM_START * staff['space']:
                 ends[index] = float(np.median(there))
+    for index, (start, staff) in enumerate(zip(starts, staves)):
+        if start['clef'] is None and start['key'] == 0 and start['time'] is None:
+            # Keep the opening margin tight on a clef-less continuation staff when the clef zone is empty,
+            # so opening half or quarter rests are not clipped.
+            sp = staff['space']
+            free = _free(layers)
+            y0 = max(0, int(staff['rows'][0] - 1.5 * sp))
+            y1 = min(free.shape[0], int(staff['rows'][4] + 1.5 * sp))
+            cx0 = max(0, int(start['left'] + 0.45 * sp))
+            cx1 = min(free.shape[1], int(start['left'] + 1.9 * sp))
+            clef_ink = float(free[y0:y1, cx0:cx1].sum()) / (sp * sp) if cx1 > cx0 and y1 > y0 else 0.0
+            if clef_ink < 0.18:
+                ends[index] = min(ends[index], start['end'] + 0.5 * sp)
     keys = system_keys(starts, [staff['system'] for staff in staves], key)
     if KEY_PLACES and key:
         # A bold key signature that the notes of the staff would begin in: they begin after it.

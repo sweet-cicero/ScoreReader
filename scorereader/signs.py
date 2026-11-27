@@ -673,11 +673,14 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                         'place': head['place'], 'whole': True, 'head': head, 'drop': drop})
     if TANGLE:
         signed = {id(sign['head']) for sign in out} | {id(head) for sign in out for head in sign['drop']}
+        taken = [(sign['x0'], sign['x1'], sign['top'], sign['bottom']) for sign in out]
         for head in full:
             if id(head) not in signed and head['x0'] - TANGLE_NEAR[0] * space > first:
                 sign = tangle_sign(layers, staff, head, own)
-                if sign:
+                if sign and not any(sign['x0'] <= x1 and x0 <= sign['x1'] and sign['top'] <= bottom and top <= sign['bottom']
+                                    for x0, x1, top, bottom in taken):
                     out.append(dict(sign, head=head, drop=lying(sign, small)))
+                    taken.append((sign['x0'], sign['x1'], sign['top'], sign['bottom']))
     if FADED_SHARP:
         signed = {id(sign['head']) for sign in out} | {id(head) for sign in out for head in sign['drop']}
         taken = [(sign['x0'], sign['x1'], sign['top'], sign['bottom']) for sign in out]

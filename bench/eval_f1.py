@@ -341,7 +341,7 @@ def match_staves(expected_staves: list[list[tuple]], actual_staves: list[list[tu
     return list(best) if best else [None] * len(expected_staves)
 
 
-def split_parts(tokens: list[tuple]) -> tuple[list[tuple], list[tuple]]:
+def split_parts(tokens: list[tuple], rests: list[dict] | None = None) -> tuple[list[tuple], list[tuple]]:
     counts: dict[str, int] = {}
     for tok in tokens:
         counts[tok[3]] = counts.get(tok[3], 0) + 1
@@ -349,9 +349,13 @@ def split_parts(tokens: list[tuple]) -> tuple[list[tuple], list[tuple]]:
     upper: list[tuple] = []
     lower: list[tuple] = []
     ends: dict[str, Fraction | None] = {'upper': None, 'lower': None}
+    rest_spans: dict[str, list[tuple[Fraction, Fraction]]] = {'upper': [], 'lower': []}
 
     def busy(part: str, onset: Fraction) -> bool:
         return ends[part] is not None and ends[part] > onset
+
+    def resting(part: str, onset: Fraction) -> bool:
+        return any(on <= onset < end for on, end in rest_spans[part])
 
     def put(part: str, tok: tuple, onset: Fraction) -> None:
         (upper if part == 'upper' else lower).append(tok)
@@ -360,6 +364,13 @@ def split_parts(tokens: list[tuple]) -> tuple[list[tuple], list[tuple]]:
     if len(voices) == 2:
         mean = {v: sum(t[2] for t in tokens if t[3] == v) / counts[v] for v in voices}
         high_v, low_v = sorted(voices, key=lambda v: -mean[v])
+        for r in (rests or []):
+            if r['len'] <= 0:
+                continue
+            if r['voice'] == high_v:
+                rest_spans['upper'].append((r['on'], r['on'] + r['len']))
+            elif r['voice'] == low_v:
+                rest_spans['lower'].append((r['on'], r['on'] + r['len']))
         for onset, grp in itertools.groupby(tokens, key=lambda t: t[0]):
             grp_list = list(grp)
             high = [t for t in grp_list if t[3] == high_v]
@@ -374,30 +385,50 @@ def split_parts(tokens: list[tuple]) -> tuple[list[tuple], list[tuple]]:
                 chord = sorted(high or low, key=lambda t: -t[2])
                 other = 'lower' if high else 'upper'
                 own = 'upper' if high else 'lower'
+                other_free = not busy(other, onset) and not resting(other, onset)
                 if len(chord) > 1:
-                    put('upper', chord[0], onset)
-                    put('lower', chord[-1], onset)
+                    if other_free:
+                        put('upper', chord[0], onset)
+                        put('lower', chord[-1], onset)
+                    else:
+                        put(own, chord[0] if own == 'upper' else chord[-1], onset)
                 else:
                     put(own, chord[0], onset)
-                    if not busy(other, onset):
+                    if other_free:
                         put(other, chord[0], onset)
         return upper, lower
 
+    for r in (rests or []):
+        if r['len'] <= 0:
+            continue
+        if r['voice'] == '1':
+            rest_spans['upper'].append((r['on'], r['on'] + r['len']))
+        elif r['voice'] == '2':
+            rest_spans['lower'].append((r['on'], r['on'] + r['len']))
     for onset, grp in itertools.groupby(tokens, key=lambda t: t[0]):
         chord = sorted(grp, key=lambda t: -t[2])
+        ur, lr = resting('upper', onset), resting('lower', onset)
         if len(chord) > 1:
-            put('upper', chord[0], onset)
-            put('lower', chord[-1], onset)
+            if ur and not lr:
+                put('lower', chord[-1], onset)
+            elif lr and not ur:
+                put('upper', chord[0], onset)
+            else:
+                put('upper', chord[0], onset)
+                put('lower', chord[-1], onset)
             continue
         note = chord[0]
-        ub, lb = busy('upper', onset), busy('lower', onset)
+        ub, lb = busy('upper', onset) or ur, busy('lower', onset) or lr
         if ub and not lb:
             put('lower', note, onset)
         elif lb and not ub:
             put('upper', note, onset)
         elif ub and lb:
-            to_u = abs(note[2] - upper[-1][2]) <= abs(note[2] - lower[-1][2])
-            put('upper' if to_u else 'lower', note, onset)
+            if upper and lower:
+                to_u = abs(note[2] - upper[-1][2]) <= abs(note[2] - lower[-1][2])
+                put('upper' if to_u else 'lower', note, onset)
+            else:
+                put('upper' if note[3] == '1' else 'lower', note, onset)
         else:
             put('upper', note, onset)
             put('lower', note, onset)
@@ -518,7 +549,7 @@ def score_case(folder: Path, case: dict, truth: dict) -> dict:
         if len(parts) == 1:
             split = {parts[0]: rd}
         else:
-            up, lo = split_parts(rd)
+            up, lo = split_parts(rd, act_r_raw)
             split = {parts[0]: up, parts[-1]: lo}
             for mid in parts[1:-1]:
                 split[mid] = []

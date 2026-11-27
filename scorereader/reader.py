@@ -17,9 +17,13 @@ from .drone import letter_marks, start_breves, without_breves
 from .fermatas import fermatas, on_fermata
 from .layers import read_layers
 from .meter import COMMON_ROWS, mid_signs, page_meter
+from . import meter as _meter_mod
 from .music import MIDDLE, agree_lengths, bar_sums, build_staff, full_sum, held, key_alters, musicxml, pitch_of, staff_columns
 from . import music as _music
+from . import classify
+from . import grammar as _grammar
 from . import headnet
+from . import rests as _rests_mod
 from .rests import block_rests, eighth_rests, in_rest, quarter_rests, rest_dot
 from .signs import bar_signs, note_signs
 from .starts import read_start, read_starts
@@ -145,6 +149,8 @@ def voice_rests(staff: dict, built: list[list[dict]], plan: list, bars: list[flo
         if quarter:
             # A quarter or short rest belongs to the voice named by its vertical shift, when that voice leaves room.
             voice = 1 if block['middle'] <= -REST_QUARTER else 2 if block['middle'] >= REST_QUARTER else None
+            if voice is None and len(gaps) == 1:
+                voice = next(iter(gaps))
             if voice in gaps:
                 rest_len = Fraction(block.get('length', 1))
                 key = (number, voice) + gaps[voice]
@@ -226,13 +232,41 @@ def other_time(head: dict, staves: list[dict], starts: list[dict], times: dict, 
     return False
 
 
+def _rest_length(rest: dict, empty_bar: bool, bar_beats: Fraction | None) -> Fraction:
+    """Computes the musical duration of a rest, using bar_beats only for hanging whole-bar rests in empty bars."""
+    kind = rest.get('kind', 'quarter')
+    length = Fraction(rest.get('length', 1))
+    if kind == 'block' and rest.get('hangs') and not rest.get('sits'):
+        return bar_beats if (bar_beats is not None and empty_bar) else Fraction(4)
+    return length
+
+
+def _voice_free_before(cols: list[list[dict]], target_x: float) -> dict[int, Fraction]:
+    """Simulates build_staff() onset progression over columns strictly before target_x."""
+    free = {1: Fraction(0), 2: Fraction(0)}
+    last_onset, last_shortest = None, None
+    for column in sorted(cols, key=lambda c: c[0]['x']):
+        if column[0]['x'] >= target_x:
+            break
+        voices = {ev['voice'] for ev in column}
+        onset = max(free[v] for v in voices)
+        if last_onset is not None and onset <= last_onset:
+            onset = last_onset + last_shortest
+        for v in voices:
+            free[v] = onset + min(ev['length'] for ev in column if ev['voice'] == v)
+        last_onset = onset
+        last_shortest = min(ev['length'] for ev in column)
+    return free
+
+
 def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[float],
                          rest_list: list[dict], space: float,
                          bar_beats: Fraction | None = None) -> tuple[list[list[list[dict]]], list[dict]]:
-    """Inserts shared-column rests into bar plans before build_staff() so all active voices rest and advance onsets.
+    """Inserts shared-column and non-spanned rests into bar plans before build_staff() so onsets advance cleanly.
 
-    Returns (updated_plan, leftover_single_voice_rests) where leftover rests overlap another voice's notes or
-    stand shifted toward one voice (handled by voice_rests()).
+    Returns (updated_plan, leftover_single_voice_rests) where leftover rests overlap another voice's notes,
+    represent a silent voice's hanging whole-bar rest in a bar with notes, or are spanned by another voice
+    (handled by voice_rests()).
     """
     if not rest_list:
         return plan, []
@@ -243,34 +277,129 @@ def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[f
             m_idx = sum(1 for x in edges if x < bar[0][0]['x'])
             bar_map[m_idx] = [list(col) for col in bar]
 
-    leftover: list[dict] = []
+    by_bar: dict[int, list[dict]] = {}
     for rest in sorted(rest_list, key=lambda r: r['x']):
         m_idx = sum(1 for x in edges if x < rest['x'])
+        by_bar.setdefault(m_idx, []).append(rest)
+
+    leftover: list[dict] = []
+    for m_idx in sorted(by_bar):
+        m_rests = by_bar[m_idx]
         cols = bar_map.get(m_idx)
-        # Check if any note in this measure stands in the same x-columns as the rest.
         bar_events = [ev for col in (cols or []) for ev in col if not ev.get('rest')]
-        overlaps_note = any(rest['x0'] - 0.55 * space <= ev['x'] <= rest['x1'] + 0.55 * space for ev in bar_events)
-        kind = rest.get('kind', 'quarter')
-        middle = float(rest.get('middle', 0.0))
-        shifted = (kind in ('quarter', 'eighth', '16th') and abs(middle) >= 0.75) or (
-            kind == 'block' and abs(middle) >= 1.15)
-        if overlaps_note or shifted:
-            leftover.append(rest)
-            continue
-        length = Fraction(rest.get('length', 1))
-        if kind == 'block' and rest.get('hangs') and not rest.get('sits'):
-            length = bar_beats if (bar_beats is not None and not bar_events) else Fraction(4)
-        if cols is None:
-            # Whole-bar rest in an otherwise empty measure.
-            if kind == 'block' or length >= 2:
-                bar_map[m_idx] = [[{'x': float(rest['x']), 'place': 0, 'voice': 1, 'head': {},
-                                    'length': bar_beats or length, 'stem_x': None, 'rest': True}]]
-            continue
         active_voices = sorted({ev['voice'] for ev in bar_events}) or [1]
-        rest_col = [{'x': float(rest['x']), 'place': 0, 'voice': v, 'head': {},
-                     'length': length, 'stem_x': None, 'rest': True} for v in active_voices]
-        cols.append(rest_col)
-        cols.sort(key=lambda col: col[0]['x'])
+
+        free_rests: list[dict] = []
+        first_note_x = min((ev['x'] for ev in bar_events), default=float('inf'))
+        for rest in m_rests:
+            overlaps_note = any(rest['x0'] - 0.55 * space <= ev['x'] <= rest['x1'] + 0.55 * space for ev in bar_events)
+            kind = rest.get('kind', 'quarter')
+            # Route hanging whole-bar rests of a silent voice (1-voice solo bar, or standing alongside/after notes)
+            # to voice_rests(), while keeping leading whole rests before a 2-voice entry when barlines were missed.
+            silent_voice_whole = (
+                kind == 'block' and rest.get('hangs') and not rest.get('sits') and bool(bar_events)
+                and (len(active_voices) == 1 or rest['x'] >= first_note_x)
+            )
+            if overlaps_note or silent_voice_whole:
+                leftover.append(rest)
+                continue
+            free_rests.append(rest)
+
+        # Pair vertically stacked shifted rests at the same x-column into one shared rest column.
+        paired: set[int] = set()
+        candidates: list[tuple[float, int, int]] = []
+        for i in range(len(free_rests)):
+            mi = float(free_rests[i].get('middle', 0.0))
+            if abs(mi) < 0.75:
+                continue
+            for j in range(i + 1, len(free_rests)):
+                mj = float(free_rests[j].get('middle', 0.0))
+                if (mi <= -0.75 and mj >= 0.75) or (mj <= -0.75 and mi >= 0.75):
+                    dx = abs(float(free_rests[i]['x']) - float(free_rests[j]['x']))
+                    if dx <= 0.8 * space:
+                        candidates.append((dx, i, j))
+        candidates.sort()
+        for _, i, j in candidates:
+            if i in paired or j in paired:
+                continue
+            paired.add(i)
+            paired.add(j)
+            r_up, r_dn = (free_rests[i], free_rests[j]) if float(free_rests[i].get('middle', 0.0)) < 0 else (free_rests[j], free_rests[i])
+            rx = 0.5 * (float(r_up['x']) + float(r_dn['x']))
+            len_up = _rest_length(r_up, not bar_events, bar_beats)
+            len_dn = _rest_length(r_dn, not bar_events, bar_beats)
+            rest_col = [
+                {'x': rx, 'place': 0, 'voice': 1, 'head': {}, 'length': len_up, 'stem_x': None, 'rest': True},
+                {'x': rx, 'place': 0, 'voice': 2, 'head': {}, 'length': len_dn, 'stem_x': None, 'rest': True},
+            ]
+            bar_map.setdefault(m_idx, []).append(rest_col)
+
+        # Insert remaining unpaired non-overlapping rests when centered, in empty bars, or unspanned.
+        for idx, rest in enumerate(free_rests):
+            if idx in paired:
+                continue
+            kind = rest.get('kind', 'quarter')
+            middle = float(rest.get('middle', 0.0))
+            shifted = (kind in ('quarter', 'eighth', '16th') and abs(middle) >= 0.75) or (
+                kind == 'block' and abs(middle) >= 1.15)
+            length = _rest_length(rest, not bar_events, bar_beats)
+
+            if not bar_events:
+                # Keep whole, half, quarter, eighth, and 16th rests in empty or anacrusis bars.
+                rv = (1 if middle < 0 else 2) if shifted else 1
+                bar_map.setdefault(m_idx, []).append([
+                    {'x': float(rest['x']), 'place': 0, 'voice': rv, 'head': {},
+                     'length': length, 'stem_x': None, 'rest': True}
+                ])
+                continue
+
+            if not shifted:
+                rest_col = [{'x': float(rest['x']), 'place': 0, 'voice': v, 'head': {},
+                             'length': length, 'stem_x': None, 'rest': True} for v in active_voices]
+                bar_map[m_idx].append(rest_col)
+                continue
+
+            # Single shifted rest with no overlapping note: insert when no other voice spans across it.
+            rv = 1 if middle < 0 else 2
+            first_x = min(ev['x'] for ev in bar_events)
+            last_x = max(ev['x'] for ev in bar_events)
+            if rest['x'] < first_x:
+                voices_here = active_voices if len(active_voices) == 1 else [rv]
+                bar_map[m_idx].append([
+                    {'x': float(rest['x']), 'place': 0, 'voice': v, 'head': {},
+                     'length': length, 'stem_x': None, 'rest': True} for v in voices_here
+                ])
+                continue
+
+            if len(active_voices) == 1:
+                if kind == 'block' and first_x < rest['x'] < last_x:
+                    xs = sorted(ev['x'] for ev in bar_events)
+                    steps = sorted(b - a for a, b in zip(xs, xs[1:]) if b - a > 0.3 * space)
+                    left = [x for x in xs if x < rest['x0'] - 0.5 * space]
+                    right = [x for x in xs if x > rest['x1'] + 0.5 * space]
+                    even = bool(left and right and steps) and right[0] - left[-1] <= ALONE_STEP * steps[len(steps) // 2]
+                    if even:
+                        leftover.append(rest)
+                        continue
+                bar_map[m_idx].append([
+                    {'x': float(rest['x']), 'place': 0, 'voice': v, 'head': {},
+                     'length': length, 'stem_x': None, 'rest': True} for v in active_voices
+                ])
+                continue
+
+            # Two-voice bar after the first note: check whether the other voice spans across this rest.
+            free = _voice_free_before(bar_map[m_idx], float(rest['x']))
+            other = 3 - rv
+            if free[other] > free[rv]:
+                leftover.append(rest)
+            else:
+                bar_map[m_idx].append([
+                    {'x': float(rest['x']), 'place': 0, 'voice': rv, 'head': {},
+                     'length': length, 'stem_x': None, 'rest': True}
+                ])
+
+        if m_idx in bar_map:
+            bar_map[m_idx].sort(key=lambda col: col[0]['x'])
 
     updated = [bar_map[k] for k in sorted(bar_map)]
     return updated, leftover
@@ -512,17 +641,77 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     kept = without_breves(layers, heads, letters)
     letters = start_breves(layers, heads, kept, letters)
     heads = kept
-    # A second look at the kind of each head by the small network (scorereader.headnet), unless it is switched off.
-    net = headnet.weights()
-    if net and HEADNET_FLIP is not None and heads:
-        for head, (filled, hollow, none) in zip(heads, headnet.kinds(grey, heads, space, headnet.load(net))):
-            head['net'] = (float(filled), float(hollow), float(none))
-            if (filled if head['hollow'] else hollow) >= HEADNET_FLIP:
-                head['hollow'] = not head['hollow']
-                head['net_flip'] = True
-    # Detect printed eighth and sixteenth rests free of notes and barlines, and apply augmentation dots on rests.
+    # Local offline neural verification (SymNet + StemNet), trained strictly without holdout pages.
+    # Passing --headnet off disables neural overrides for pure-rules ablation.
+    neural_on = headnet.weights() is not None
+    sym_w = classify.load_weights() if neural_on else None
+    if sym_w is not None and heads:
+        pts = [(h['staff'], float(h['cx']), float(h['cy'])) for h in heads]
+        probs_all = classify.classify_points(layers, pts, sym_w)
+        kept_heads = []
+        for head, probs in zip(heads, probs_all):
+            head['symnet'] = probs
+            p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
+            p_filled, p_hollow = float(probs[0]), float(probs[1])
+            # Reject high-confidence non-heads (dynamics, rests, fermatas, noise); require stricter
+            # rejection for stemmed hollow heads with clear interior holes so real notes are never dropped.
+            hole = float(head.get('hole', 0.0) or 0.0)
+            drop_thr = 0.015 if (head['stems'] and head['hollow'] and hole >= 0.15) else 0.05
+            if p_head < drop_thr and not head.get('dot'):
+                continue
+            # Flip filled <-> hollow on stemmed heads only when visual ink cues do not contradict SymNet.
+            if head['stems']:
+                has_tails = any(head.get('tails', {}).values()) or bool(head.get('flag_ink'))
+                if head['hollow']:
+                    if has_tails and p_filled >= 0.85 and p_hollow <= 0.10:
+                        head['hollow'] = False
+                        head['net_flip'] = True
+                    elif not has_tails and hole < 0.20 and p_filled >= 0.92 and p_hollow <= 0.05:
+                        head['hollow'] = False
+                        head['net_flip'] = True
+                elif not has_tails and (hole > 0.0 or head.get('slit')) and p_hollow >= 0.90 and p_filled <= 0.08:
+                    # Do not hard-flip solid hole==0 filled heads before grammar.py; let grammar.py decide jointly.
+                    head['hollow'] = True
+                    head['net_flip'] = True
+            kept_heads.append(head)
+        heads = kept_heads
+
+    stem_w = classify.load_stem_weights() if neural_on else None
+    if stem_w is not None and heads:
+        stem_items = []
+        stem_refs = []
+        for head in heads:
+            if head['hollow'] or not head['stems']:
+                continue
+            for stem in head['stems']:
+                stem_items.append((head['staff'], float(stem['x']), float(stem['end']), stem['direction']))
+                stem_refs.append((head, stem))
+        if stem_items:
+            s_probs = classify.classify_stems(layers, stem_items, stem_w)
+            for (head, stem), sp in zip(stem_refs, s_probs):
+                stem['stemnet'] = sp
+                direction = stem['direction']
+                cur_t = head.get('tails', {}).get(direction, 0)
+                unwitnessed = any(m.get('beam') and not m.get('witness') for m in stem.get('marks', []))
+                if cur_t == 0 and not unwitnessed and float(sp[1]) >= 0.92 and float(sp[0]) <= 0.06:
+                    head.setdefault('tails', {})[direction] = 1
+                    head['stemnet_flip'] = True
+                elif cur_t == 1 and float(sp[0]) >= 0.93 and float(sp[1]) <= 0.05 and not head.get('triplet'):
+                    head.setdefault('tails', {})[direction] = 0
+                    head['stemnet_flip'] = True
+                elif cur_t == 1 and float(sp[2]) >= 0.93 and float(sp[1]) <= 0.05:
+                    head.setdefault('tails', {})[direction] = 2
+                    head['stemnet_flip'] = True
+                elif cur_t == 2 and float(sp[1]) >= 0.94 and float(sp[2]) <= 0.04:
+                    head.setdefault('tails', {})[direction] = 1
+                    head['stemnet_flip'] = True
+
+    # Detect printed eighth and sixteenth rests plus optional neural rest candidates, then apply rest dots.
     short_rests = eighth_rests(layers, ends, heads, bars)
     all_rests = rests + blocks + short_rests
+    neural_rests_fn = getattr(_rests_mod, 'neural_rest_candidates', None)
+    if neural_rests_fn is not None and neural_on:
+        all_rests = all_rests + neural_rests_fn(layers, ends, heads, bars, all_rests, weights=sym_w)
     for rest in all_rests:
         base_len = Fraction(rest.get('length', 1))
         if base_len in (Fraction(2), Fraction(1), Fraction(1, 2)) and rest_dot(layers, rest):
@@ -530,22 +719,59 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             rest['dot'] = True
     opening_meter, meter_changes = page_meter(layers, begin['starts'], times, ends)
     effective_meter = opening_meter or meter_before
-    bar_beats = Fraction(effective_meter[0] * 4, effective_meter[1]) if effective_meter else None
     parts = [[] for _ in range(width)]
     notes, part_notes = [], []
     plans = {index: staff_columns(staff, [head for head in heads if head['staff'] == index], bars[index], space)
              for index, staff in enumerate(staves)}
+    # Infer an opening meter on excerpt pages that have mid-page meter changes and no printed opening meter.
+    infer_fn = getattr(_meter_mod, 'infer_opening_meter', None)
+    if opening_meter is None and meter_before is None and meter_changes and infer_fn is not None:
+        first_change_sys = min(staves[idx]['system'] for idx in meter_changes)
+        pre_sys_ids = sorted({staff['system'] for staff in staves if staff['system'] < first_change_sys})
+        if not pre_sys_ids:
+            pre_sys_ids = sorted({staff['system'] for staff in staves})
+        pre_sums = [
+            value
+            for sys_id in pre_sys_ids
+            for value in bar_sums({idx: plans[idx] for idx, st in enumerate(staves) if st['system'] == sys_id},
+                                  bars, space, rests)
+        ]
+        inferred = infer_fn(pre_sums)
+        if inferred is not None:
+            opening_meter = inferred
+            effective_meter = inferred
+    bar_beats = Fraction(effective_meter[0] * 4, effective_meter[1]) if effective_meter else None
+    # Attach StemNet probabilities to plan events for the global music-grammar solver.
+    for plan in plans.values():
+        for bar in plan:
+            for col in bar:
+                for ev in col:
+                    head = ev.get('head') or {}
+                    direction = 'up' if ev.get('voice') == 1 else 'down'
+                    st_match = next((s for s in head.get('stems', []) if s['direction'] == direction), None)
+                    if st_match is not None and st_match.get('stemnet') is not None:
+                        ev['stemnet'] = st_match['stemnet']
     # Music check: the voices of a system agree on the length of each step from column to column.
     agreed = 0
     if CHECK:
+        sys_ids = sorted({staff['system'] for staff in staves})
         systems = [{index: plans[index] for index, staff in enumerate(staves) if staff['system'] == system}
-                   for system in sorted({staff['system'] for staff in staves})]
+                   for system in sys_ids]
         # The sum that most bars of the page have: a bar with one open step is as long (scorereader.music.BAR_FULL).
         # On a page whose bars keep their length, a bar that is too long is looked at too (scorereader.music.BAR_OVER).
         sums = [value for own in systems for value in bar_sums(own, bars, space, rests)]
         full, steady = full_sum(sums), full_sum(sums, _music.BAR_OVER) if _music.BAR_OVER else None
-        for own in systems:
+        cur_sys_meter = effective_meter
+        for sys_idx, own in zip(sys_ids, systems):
             agreed += agree_lengths(own, bars, space, rests, full, steady)
+            sys_changes = {idx: meter_changes[idx] for idx in own if idx in meter_changes}
+            agreed += _grammar.solve_system_durations(
+                own, bars, space, all_rests, cur_sys_meter,
+                is_first_system=(sys_idx == 0), meter_changes=sys_changes or None,
+            )
+            if sys_changes:
+                last_ch = max((item for chs in sys_changes.values() for item in chs), key=lambda item: item[0])
+                cur_sys_meter = last_ch[1]
     # The ison of a chant page (one staff for the melody): the letters over the staff name its note (scorereader.drone).
     # It is a part of its own after the melody; its notes are in no list of notes, so no syllable is set under them.
     drone, holding = [], {}
@@ -575,23 +801,30 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         first = len(parts[staff['number']])
         staff_edges = [x for x in sorted(bars[index]) if staff['x0'] + 2 * space < x < staff['x1'] - space]
         change_bars = {sum(1 for x in staff_edges if x < cx): m for cx, m in meter_changes.get(index, [])}
+        active_bar_meter = effective_meter
         for number, bar in enumerate(built):
             bar_entry = {'notes': bar, 'clef': clefs[index], 'key': keys[index]}
             if opening_meter is not None and staff['system'] == 0 and number == 0:
                 bar_entry['time'] = opening_meter
+                active_bar_meter = opening_meter
             elif number in change_bars:
                 bar_entry['time'] = change_bars[number]
+                active_bar_meter = change_bars[number]
             parts[staff['number']].append(bar_entry)
             if quiet.get(number):
                 parts[staff['number']][-1]['rests'] = quiet[number]
+            bar_target = Fraction(active_bar_meter[0] * 4, active_bar_meter[1]) if active_bar_meter else None
+            bar_end = max((item['onset'] + item['length'] for item in bar), default=Fraction(0))
+            bar_sum_ok = (bar_end == bar_target) if (bar_target is not None and bar) else None
             for note in bar:
                 if note.get('rest'):
                     continue
                 head = note.pop('head')
                 part_notes.append(note)
                 stem = next((s for s in head['stems'] if (s['direction'] == 'up') == (note['voice'] == 1)), None)
+                conf = _grammar.note_confidence(note, head, stem, bar_sum_ok=bar_sum_ok)
                 notes.append(dict(note, staff=index, bar=number, onset=float(note['onset']), length=float(note['length']),
-                                  agreed=note.get('agreed', False), votes=note.get('votes'),
+                                  agreed=note.get('agreed', False), votes=note.get('votes'), confidence=conf,
                                   mark={'wide': int(head['x1'] - head['x0'] + 1), 'high': int(head['y1'] - head['y0'] + 1),
                                         'y': float(head['cy']), 'at': float(head['place']), 'hollow': bool(head['hollow']),
                                         'hole': float(head.get('hole', 0)), 'core': head.get('core'), 'alt': head.get('alt'), 'thin': bool(head.get('thin')), 'dot': bool(head.get('dot')), 'triplet': bool(head.get('triplet')),

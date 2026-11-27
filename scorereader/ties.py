@@ -447,9 +447,91 @@ def _to_bar(way: dict, x: int, first: int, last: int, staff_bar: tuple, layers: 
     return good
 
 
+def _stem_bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float,
+              layers: dict | None = None, staff_heads: list[dict] | None = None) -> bool:
+    """Is there a tie bow on the stem side of two heads that share one stem direction (for example inside a triplet)?
+    Requires an opposing-voice head on the notehead side of both notes (the engraving reason a tie moves to the stem
+    side), matching concavity (U-curve below down-stems, arch above up-stems), high visibility, symmetric ends,
+    and no thin stroke passing past either head at the bow's height (which rejects multi-note phrase slurs)."""
+    ways = {stem['direction'] for head in (one, two) for stem in head['stems']}
+    if ways not in ({'down'}, {'up'}) or not one['stems'] or not two['stems'] or one['hollow'] or two['hollow']:
+        return False
+    if staff_heads is None:
+        return False
+    first, last = int(one['x1']) + 1, int(two['x0']) - 1
+    if not TIE_LEAST * space <= last - first <= 4.5 * space:
+        return False
+    down = ways == {'down'}
+    other_dir = 'up' if down else 'down'
+    for head in (one, two):
+        if not any(other is not head and abs(other['cx'] - head['cx']) <= 0.6 * space
+                   and ((down and other['cy'] < head['cy']) or (not down and other['cy'] > head['cy']))
+                   and any(stem['direction'] == other_dir for stem in other['stems'])
+                   for other in staff_heads):
+            return False
+    height, width = thin.shape
+    near = int(round(TIE_HIGH * space))
+    if down:
+        stem_far = max(stem['end'] for head in (one, two) for stem in head['stems'])
+        top = max(0, int(round(max(one['cy'], two['cy']) + near)))
+        bottom = min(height, int(round(stem_far + 1.0 * space)) + 1)
+    else:
+        stem_far = min(stem['end'] for head in (one, two) for stem in head['stems'])
+        top = max(0, int(round(stem_far - 1.0 * space)))
+        bottom = min(height, int(round(min(one['cy'], two['cy']) - near)) + 1)
+    if bottom <= top + 2:
+        return False
+    pencil = (lambda way, column: _soft_bow(layers, way, column, one, two)) if TIE_SOFT and layers is not None else (lambda way, column: False)
+    start_lo = max(0, int(round(one['cx'])))
+    start_hi = min(last, first + int(round(1.1 * space)))
+    end_lo = max(first, last - int(round(1.1 * space)))
+    end_hi = max(start_lo + 1, int(two['x0']) - 2) if down else min(width - 1, int(round(two['cx'])))
+    tried = set()
+    for column in range(start_lo, start_hi, 2):
+        found = np.nonzero(thin[top:bottom, column])[0]
+        starts, before = [], None
+        for row in found:
+            if before is None or row != before + 1:
+                starts.append(row + top)
+            before = row
+        for row in starts:
+            if any(abs(row - other) <= 3 for other in tried):
+                continue
+            way = _follow(thin, lines, column, float(row), end_hi, space)
+            if way is None:
+                continue
+            tried.add(int(round(way['rows'][min(len(way['rows']) - 1, 2)])))
+            count = len(way['rows'])
+            if way['end'] < end_lo or count < TIE_LEAST * space:
+                continue
+            if way['seen'] < 0.90 * count or way['seen'] + way['hidden'] < TIE_SEEN[1] * count:
+                continue
+            if abs(float(way['rows'][0] - way['rows'][-1])) > 0.25 * space:
+                continue
+            if not _is_bow(way, space):
+                continue
+            along = np.linspace(-1.0, 1.0, count)[way['shown']]
+            bend = float(np.polyfit(along, way['rows'][way['shown']], 2)[0])
+            if (down and bend >= 0) or (not down and bend <= 0):
+                continue
+            # Reject multi-note phrase slurs that continue left of one or right of two at the bow's height.
+            band_y = int(round(0.25 * space))
+            left_pass = thin[max(0, int(way['rows'][0]) - band_y):min(height, int(way['rows'][0]) + band_y + 1),
+                             max(0, int(one['x0'] - 0.9 * space)):max(0, int(one['x0'] - 0.25 * space))]
+            right_pass = thin[max(0, int(way['rows'][-1]) - band_y):min(height, int(way['rows'][-1]) + band_y + 1),
+                              min(width, int(two['x1'] + 0.25 * space)):min(width, int(two['x1'] + 0.9 * space))]
+            if (left_pass.size and left_pass.any(axis=0).mean() >= 0.5) \
+                    or (right_pass.size and right_pass.any(axis=0).mean() >= 0.5):
+                continue
+            if pencil(way, column):
+                continue
+            return True
+    return False
+
+
 def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float,
          core: np.ndarray | None = None, swell: np.ndarray | None = None, layers: dict | None = None,
-         staff_bar: tuple | None = None) -> bool:
+         staff_bar: tuple | None = None, staff_heads: list[dict] | None = None) -> bool:
     """Is there a bow from the head `one` to the head `two`? `core` is the thin ink for the flat bow (TIE_FLAT).
     With `layers`, a bow in pencil is no bow (TIE_SOFT). `staff_bar`: the staff's rows and the columns of its stems,
     for a bow that ends at a bar line (TIE_BAR)."""
@@ -458,7 +540,9 @@ def _bow(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
     if TIE_BAR and staff_bar is not None and layers is not None \
             and _way(thin, lines, one, two, space, False, None, None, layers, staff_bar):
         return True
-    return bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True, None, None, layers)
+    if bool(TIE_FLAT) and core is not None and _way(core, lines, one, two, space, True, None, None, layers):
+        return True
+    return _stem_bow(thin, lines, one, two, space, layers, staff_heads)
 
 
 def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float, low: bool,
@@ -472,9 +556,15 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
     if last - first < TIE_LEAST * space:
         return False
     side, high = int(round(TIE_SIDE * space)), int(round(TIE_HIGH * space))
+    # Dotted notes and long stemless whole-note ties can start slightly past TIE_SIDE (after the dot or a crossing mark).
+    side_start = side
+    if one.get('dot'):
+        side_start = max(side_start, int(round((TIE_SIDE + 0.6) * space)))
+    if not one['stems'] and last - first >= 6.0 * space:
+        side_start = max(side_start, int(round(1.25 * space)))
     top, bottom = max(0, int(one['cy']) - high), min(thin.shape[0], int(one['cy']) + high + 1)
     tried = set()
-    for column in range(first, min(last, first + side), 2):
+    for column in range(first, min(last, first + side_start), 2):
         found = np.nonzero(thin[top:bottom, column])[0]
         starts, before = [], None
         for row in found:
@@ -547,7 +637,8 @@ def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, la
     when it lies in the rows of the words (the line after a syllable). `in_line`: only the ways that begin inside a
     staff line beside the head (see TIE_BREAK_LINE)."""
     first = int(head['x1']) + 1
-    side, high = int(round(TIE_SIDE * space)), int(round(TIE_HIGH * space))
+    reach = TIE_SIDE + 0.8 if head.get('dot') else TIE_SIDE
+    side, high = int(round(reach * space)), int(round(TIE_HIGH * space))
     top, bottom = max(0, int(head['cy']) - high), min(thin.shape[0], int(head['cy']) + high + 1)
     best = None
     for column in range(first, min(last, first + side), 2):
@@ -567,7 +658,32 @@ def _half(thin: np.ndarray, lines: np.ndarray, words: list[dict], head: dict, la
             starts = [row for row in hidden if not any(abs(row - other) <= 3 for other in starts)]
         for row in starts:
             way = _follow(thin, lines, column, float(row), last, space)
-            if way is None or (best is not None and len(way['rows']) <= best['count']):
+            if way is None:
+                continue
+            if not in_line:
+                # Trim a long blind stretch inside a staff line (for example an incoming bow followed into a clef).
+                shown = way['shown']
+                blind_run = 0
+                cut = None
+                for idx, vis in enumerate(shown):
+                    if vis:
+                        blind_run = 0
+                    else:
+                        blind_run += 1
+                        if blind_run >= 1.5 * space and idx - blind_run + 1 >= 0.5 * space:
+                            cut = idx - blind_run + 1
+                            break
+                if cut is not None:
+                    while cut > 0 and not shown[cut - 1]:
+                        cut -= 1
+                    if int(shown[:cut].sum()) >= 2:
+                        way = {
+                            'rows': way['rows'][:cut], 'shown': shown[:cut],
+                            'seen': int(shown[:cut].sum()), 'hidden': int(way['hide'][:cut].sum()),
+                            'end': column + cut - 1, 'tail': 0, 'along': way['along'],
+                            'hide': way['hide'][:cut],
+                        }
+            if best is not None and len(way['rows']) <= best['count']:
                 continue
             passing = thin[max(0, int(row - 0.25 * space)):int(row + 0.25 * space) + 1,
                            max(0, int(head['x0'] - 1.0 * space)):max(0, int(head['x0'] - 0.3 * space))]
@@ -615,7 +731,7 @@ def _over_break(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict)
             if go is None and not tied:
                 continue
             if not tied and go['long'] >= TIE_BREAK[4] and go['seen'] >= TIE_BREAK[5] and go['togo'] <= TIE_BREAK[6]:
-                mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'])
+                mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'], dot=False)
                 come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - int(staves[target]['x0']), space)
                 tied = come is not None and come['long'] >= TIE_BREAK[7] and come['seen'] >= TIE_BREAK[8]
             if tied:
@@ -625,7 +741,7 @@ def _over_break(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict)
                         if other is not two and round(other['place']) == place and voices[id(other)] != voices[id(two)] \
                                 and -TIE_BREAK_BOTH[0] * space <= other['x0'] - two['x1'] <= TIE_BREAK_BOTH[1] * space \
                                 and not other.get('tie_stop'):
-                            mirror = dict(other, x0=width - 1 - other['x1'], x1=width - 1 - other['x0'])
+                            mirror = dict(other, x0=width - 1 - other['x1'], x1=width - 1 - other['x0'], dot=False)
                             come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - int(staves[target]['x0']), space)
                             if come is not None and come['long'] >= TIE_BREAK[7] and come['seen'] >= TIE_BREAK[8]:
                                 found.append((one, other))
@@ -673,7 +789,7 @@ def _over_page(layers: dict, heads: list[dict], thin: np.ndarray, voices: dict, 
             if two is None or two.get('tie_stop') or two['cx'] > first + TIE_PAGE[7] * space \
                     or any(voices[id(other)] & voices[id(two)] for other in own if two['x0'] - other['x1'] >= 0.5 * space):
                 continue
-            mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'])
+            mirror = dict(two, x0=width - 1 - two['x1'], x1=width - 1 - two['x0'], dot=False)
             begin = max(int(staff['x0']), int(two['x0'] - TIE_PAGE[6] * space))
             come = _half(flipped, flipped_lines, flipped_words, mirror, width - 1 - begin, space)
             if come is not None and come['long'] >= TIE_PAGE[4] and come['seen'] >= TIE_PAGE[5]:
@@ -825,7 +941,7 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
                     break
             if two is None:
                 continue
-            tied = _bow(thin, lines, one, two, space, core, swell, layers, staff_bar) \
+            tied = _bow(thin, lines, one, two, space, core, swell, layers, staff_bar, own) \
                 or bool(TIE_LINE and _in_line(layers, one, two, space)) \
                 or (bold is not None and _way(bold, lines, one, two, space, False, TIE_BOLD))
             if tied:

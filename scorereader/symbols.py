@@ -1392,6 +1392,35 @@ def thick_marks(layers: dict) -> list[dict]:
                                                       rest=[x + float(columns.mean()), y + float(rows.mean())], space=space, taken=taken))
                         if taken:
                             cut = (mask & box, holes & box, x, y), (rest, holes & ~box, x, y)
+                if cut is None and 1.8 * wide <= own_wide <= 2.7 * wide and 1.45 * high <= own_high <= 2.3 * high:
+                    # A whole note touching a stemmed filled note a second apart: one hollow oval around the hole,
+                    # one solid filled head beside it diagonally with a single stem on the filled head's side.
+                    if not diag_ways:
+                        diag_ways = {name: _way(layers, mark, up, right) for name, up, right in
+                                     (('up_right', True, True), ('up_left', True, False),
+                                      ('down_right', False, True), ('down_left', False, False))}
+                    up_stems = [diag_ways[name] for name in ('up_right', 'up_left') if is_stem(diag_ways.get(name), space)]
+                    down_stems = [diag_ways[name] for name in ('down_right', 'down_left') if is_stem(diag_ways.get(name), space)]
+                    if bool(up_stems) != bool(down_stems):
+                        box = np.zeros_like(mask)
+                        box[max(0, int(round(cy - 0.55 * high))):int(round(cy + 0.55 * high)) + 1,
+                            max(0, int(round(cx - 0.68 * wide))):int(round(cx + 0.68 * wide)) + 1] = True
+                        rest = mask & ~box
+                        if rest.any():
+                            rows, columns = np.nonzero(rest)
+                            rest_cx, rest_cy = float(columns.mean()), float(rows.mean())
+                            own = np.pad(rest[rows.min():rows.max() + 1, columns.min():columns.max() + 1], 1).astype(np.uint8)
+                            circle = 2 * float(cv2.distanceTransform(own, cv2.DIST_L2, 5).max()) / high
+                            stem_list = up_stems if up_stems else down_stems
+                            want_up = rest_cy < cy
+                            if rest.sum() >= 0.45 * wide * high and abs(rest_cx - cx) >= 0.65 * wide \
+                                    and 0.25 * space <= abs(rest_cy - cy) <= 0.85 * space and circle >= 0.55 \
+                                    and bool(up_stems) == want_up \
+                                    and any((stem['mid'] - (x + cx)) * (rest_cx - cx) >= 0.3 * wide * abs(rest_cx - cx) for stem in stem_list):
+                                whole_part = _mark(mask & box, holes & box, x, y, mark['blob'])
+                                if whole_part and whole_part['x1'] - whole_part['x0'] + 1 >= 0.9 * wide \
+                                        and _rim(layers, whole_part) >= RIM:
+                                    cut = (mask & box, holes & box, x, y), (rest, holes & ~box, x, y)
                 if cut:
                     parts = [_mark(part, inside, px, py, mark['blob']) for part, inside, px, py in cut]
         elif PAIR_STEM and mark['hole'] < HOLLOW and (pair := _pair_at_stem(layers, mask, holes, x, y, wide, high, mark['blob'])):
@@ -2198,7 +2227,8 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
                     return 7.0 if place > 0 else -7.0
         if LEDGER_SHORT and LEDGER_SHORT[0] <= abs(place) < LEDGER_SHORT[1] and _short_line(layers, head, place > 0, space):
             return 7.0 if place > 0 else -7.0
-        if NO_LEDGER and 4.6 < abs(place) <= NO_LEDGER_FIVE:
+        low = 4.75 if not head['stems'] else 4.6
+        if NO_LEDGER and low < abs(place) <= NO_LEDGER_FIVE:
             return 5.0 if place > 0 else -5.0     # a head beside the staff with no ledger line stands in the first space
         return place
     up = place > 0
@@ -2246,7 +2276,7 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
         high = min(layers['head'][1], head['y1'] - head['y0'] + 1)
         centre = head['y0'] + high / 2 if up else head['y1'] - high / 2
     past = (last - centre) if up else (centre - last)      # how far the head's middle is past its last ledger line
-    limit = 0.27
+    limit = 0.35 if head['hollow'] and (head['y1'] - head['y0'] + 1) < 0.9 * layers['head'][1] else 0.27
     if LEDGER_SIT and not head['hollow']:
         before = (merged[1] if up else merged[-2]) if len(merged) > 1 else staff['rows'][0 if up else -1]
         if abs(last - before) <= LEDGER_SIT[1] * space:
@@ -2262,7 +2292,11 @@ def ledger_place(layers: dict, staff: dict, head: dict) -> float | None:
             # Paper between the line and the staff: the head is no head on the line. Its mark is the half moon and
             # the line under it, so its measured place lies near the line.
             sits, reach = True, 2.0
-    steps = 2 * len(merged) + (1 if sits else 0 if past >= -0.27 * space else -1)
+    if 0.90 * space < past <= 1.35 * space and abs((4 + 2 * len(merged) + 2) - abs(place)) <= 0.8:
+        extra = 2
+    else:
+        extra = 1 if sits else 0 if past >= -0.27 * space else -1
+    steps = 2 * len(merged) + extra
     found = float(4 + steps) if up else float(-4 - steps)
     if abs(found) < abs(place) - 2.2:
         return None       # too few ledger lines for a head this far from the staff: a letter over a hyphen
@@ -2964,14 +2998,16 @@ def _glued_whole(layers: dict, mark: dict) -> list[dict] | None:
     if not all(way and past[0] * space <= way['past'] <= past[1] * space and way['slim'] >= past[0] * space
                for way in (up, down)):
         return None
-    if not apart[0] * space <= up['mid'] - down['mid'] <= apart[1] * space:
+    same_stroke = abs(up['mid'] - down['mid']) <= 0.25 * space and up['mid'] <= mark['x0'] + 0.4 * own_wide
+    if not (apart[0] * space <= up['mid'] - down['mid'] <= apart[1] * space or same_stroke):
         return None
     stems = {name: _way(layers, mark, name == 'up', True) for name in ('up', 'down')}
     fits = {name: bool(is_stem(way, space) and long[0] * space <= way['past'] <= long[1] * space)
             for name, way in stems.items()}
     mask = layers['thick'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
     holes = layers['holes'][mark['y0']:mark['y1'] + 1, mark['x0']:mark['x1'] + 1] > 0
-    if fits['down'] and at[0] * space <= stems['down']['mid'] - up['mid'] <= at[1] * space:
+    gap_lo, gap_hi = (apart[0] + at[0], apart[1] + at[1]) if same_stroke else (at[0], at[1])
+    if fits['down'] and gap_lo * space <= stems['down']['mid'] - up['mid'] <= gap_hi * space:
         # The head begins at its stem. The bars of the sharp reach over the stem: the rows of the head are those
         # of the mark past them.
         cut = int(stems['down']['mid']) - mark['x0'] - max(1, int(round(0.08 * space)))
@@ -3606,6 +3642,10 @@ def read_symbols(layers: dict) -> dict:
                     and WHOLE[2] * layers['head'][1] <= high <= WHOLE[3] * layers['head'][1]
             # No word stands in the staff: there a whole note may be as round as the letter o.
             oval = lying(mark, WHOLE_STAFF if WHOLE_STAFF and abs(place) <= 4.6 else WHOLE[0])
+            # A thick-ring whole note in the staff is wider than a page head and slightly rounder than WHOLE[0].
+            if not oval and hollow and abs(place) <= 4.6 and mark['hole'] >= 0.15 \
+                    and wide >= 1.25 * layers['head'][0] and lying(mark, 1.05):
+                oval = True
             oval = oval or id(mark) in twins     # a whole note of a chord: see WHOLE_TWIN
             if LEDGER_WHOLE and not hollow and 'tail_of' not in mark and abs(place) > 4.6:
                 lined = _ledger_whole(layers, layers['staves'][staff], mark)
@@ -4124,7 +4164,8 @@ def hole_heads(layers: dict, heads: list[dict], ends: list[float], bars: dict[in
                 # oval that is as high as wide, and fills little of its box.
                 if not (is_open and OPEN_ALONE and wide >= OPEN_SLANT[0] * high and area <= OPEN_SLANT[1] * wide * high):
                     continue
-            if paper is not ragged and paper is not lean and paper is not open_lean and not HOLE_HEADS[3] <= area / (wide * high) <= HOLE_HEADS[4]:
+            fill_min = 0.53 if (is_open and OPEN_ALONE and wide < HOLE_HEADS[2] * high) else HOLE_HEADS[3]
+            if paper is not ragged and paper is not lean and paper is not open_lean and not fill_min <= area / (wide * high) <= HOLE_HEADS[4]:
                 continue
             inside = [head for head in heads + out
                       if head['x0'] - 2 <= cx <= head['x1'] + 2 and head['y0'] - 2 <= cy <= head['y1'] + 2]
@@ -4741,29 +4782,143 @@ def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list
     space = layers['space']
     wide, high = layers['head']
     reach = int(round(0.3 * space))
+    thick, free = layers['thick'], layers['free']
+
+    def oval_ok(part: np.ndarray) -> bool:
+        h_p, w_p = part.shape
+        rows, columns = max(1, int(round(0.3 * h_p))), max(1, int(round(0.3 * w_p)))
+        return not (max(part[:rows, :columns].mean(), part[-rows:, -columns:].mean()) > STEM_GONE[4]
+                    or min(part[:rows, -columns:].mean(), part[-rows:, :columns].mean()) < STEM_GONE[5]
+                    or not STEM_GONE[6] <= part.mean() <= STEM_GONE[7])
+
+    def size_ok(cand: dict, min_wide: float = STEM_GONE[0]) -> tuple[bool, bool]:
+        ow, oh = cand['x1'] - cand['x0'] + 1, cand['y1'] - cand['y0'] + 1
+        if not min_wide * wide <= ow <= STEM_GONE[1] * wide or oh < STEM_GONE[2] * high:
+            return False, False
+        filling = oh > STEM_GONE[3] * high
+        if filling and not _fills_space(layers, cand, heads):
+            return False, False
+        return True, filling
+
+    def attach_gone(cand: dict) -> None:
+        if not GONE_STEM:
+            return
+        (over, on_top), (under, on_foot) = _gone_stem(layers, cand, True), _gone_stem(layers, cand, False)
+        # Pieces at one side only, and no short stem at the other side: the ink in a column can be another note's.
+        if over and not under and not on_foot:
+            cand['stems'].append(over)
+        elif under and not over and not on_top:
+            cand['stems'].append(under)
+
+    orphan_by_mark = {o['mark']: o for o in orphans if o.get('mark') is not None}
     found = []
+    handled: set[int] = set()
     for head in orphans:
-        if head['stems'] or head['hollow'] or any(head is other for other in heads):
-            continue
-        own_wide, own_high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
-        if not STEM_GONE[0] * wide <= own_wide <= STEM_GONE[1] * wide or own_high < STEM_GONE[2] * high:
-            continue
-        filling = own_high > STEM_GONE[3] * high
-        if filling and not _fills_space(layers, head, heads):
+        if id(head) in handled or head['stems'] or head['hollow'] or any(head is other for other in heads):
             continue
         if any(other['x0'] <= head['cx'] <= other['x1'] and other['y0'] <= head['cy'] <= other['y1'] for other in heads):
             continue
-        # One piece of ink with another mark: the halves of a quarter rest, a number, a letter.
-        if any(number != head['mark'] and other['blob'] == head['blob'] and other['kind'] is not None
-               for number, other in enumerate(marks)):
+        own_wide, own_high = head['x1'] - head['x0'] + 1, head['y1'] - head['y0'] + 1
+        same = [(number, other) for number, other in enumerate(marks)
+                if number != head['mark'] and other['blob'] == head['blob'] and other['kind'] is not None]
+        if same:
+            # Two stemless filled heads a third apart cut from one blob whose hairline stem the scan lost.
+            if len(same) == 1 and same[0][1]['kind'] == 'head':
+                twin = orphan_by_mark.get(same[0][0])
+                if twin is not None and id(twin) not in handled and not twin['stems'] and not twin['hollow'] \
+                        and not any(twin is other for other in heads) \
+                        and not any(other['x0'] <= twin['cx'] <= other['x1'] and other['y0'] <= twin['cy'] <= other['y1'] for other in heads) \
+                        and abs(twin['cx'] - head['cx']) <= 0.3 * space \
+                        and 0.7 * space <= abs(twin['cy'] - head['cy']) <= 1.3 * space:
+                    ok1, fill1 = size_ok(head, 0.82)
+                    ok2, fill2 = size_ok(twin, 0.82)
+                    if ok1 and ok2:
+                        p1 = thick[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0
+                        p2 = thick[twin['y0']:twin['y1'] + 1, twin['x0']:twin['x1'] + 1] > 0
+                        if oval_ok(p1) and oval_ok(p2):
+                            y0 = min(head['y0'], twin['y0'])
+                            y1 = max(head['y1'], twin['y1'])
+                            x0 = min(head['x0'], twin['x0'])
+                            x1 = max(head['x1'], twin['x1'])
+                            ay0, ay1 = max(0, y0 - reach), min(free.shape[0], y1 + 1 + reach)
+                            ax0, ax1 = max(0, x0 - reach), min(free.shape[1], x1 + 1 + reach)
+                            around = free[ay0:ay1, ax0:ax1]
+                            inside_mask = np.zeros(around.shape, bool)
+                            for c in (head, twin):
+                                inside_mask[c['y0'] - ay0:c['y1'] + 1 - ay0, c['x0'] - ax0:c['x1'] + 1 - ax0] = True
+                            ring_cells = int((~inside_mask).sum())
+                            ring_ink = float(around[~inside_mask].sum())
+                            if ring_ink <= STEM_GONE[8] * max(1, ring_cells):
+                                for cand, filling in ((head, fill1), (twin, fill2)):
+                                    cand['gone'] = True
+                                    if filling and GONE_SPACE_SEEN is not None:
+                                        GONE_SPACE_SEEN.append({'cx': cand['cx'], 'cy': cand['cy'],
+                                                                'high': cand['y1'] - cand['y0'] + 1, 'page_high': high})
+                                    attach_gone(cand)
+                                    handled.add(id(cand))
+                                    found.append(cand)
+                                # Share a recovered stem between the two heads of the third-interval chord.
+                                if head['stems'] and not twin['stems']:
+                                    s = head['stems'][0]
+                                    twin['stems'].append(dict(s, length=abs(twin['cy'] - s['end'])))
+                                elif twin['stems'] and not head['stems']:
+                                    s = twin['stems'][0]
+                                    head['stems'].append(dict(s, length=abs(head['cy'] - s['end'])))
             continue
-        part = layers['thick'][head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0
-        rows, columns = max(1, int(round(0.3 * own_high))), max(1, int(round(0.3 * own_wide)))
-        if max(part[:rows, :columns].mean(), part[-rows:, -columns:].mean()) > STEM_GONE[4] \
-                or min(part[:rows, -columns:].mean(), part[-rows:, :columns].mean()) < STEM_GONE[5] \
-                or not STEM_GONE[6] <= part.mean() <= STEM_GONE[7]:
+        ok, filling = size_ok(head)
+        if not ok:
+            # Two stemless filled heads a second apart merged diagonally (no hairline stem survived the scan).
+            if abs(head['place']) <= 4.6 and 1.25 * wide <= own_wide <= 1.85 * wide and 1.25 * high <= own_high <= 1.85 * high:
+                part = thick[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0
+                cr, cc = max(1, int(round(0.35 * own_high))), max(1, int(round(0.35 * own_wide)))
+                falling = max(part[:cr, -cc:].mean(), part[-cr:, :cc].mean()) <= 0.10 \
+                    and min(part[:cr, :cc].mean(), part[-cr:, -cc:].mean()) >= 0.45
+                rising = max(part[:cr, :cc].mean(), part[-cr:, -cc:].mean()) <= 0.10 \
+                    and min(part[:cr, -cc:].mean(), part[-cr:, :cc].mean()) >= 0.45
+                if falling != rising:
+                    around = free[max(0, head['y0'] - reach):head['y1'] + 1 + reach,
+                                  max(0, head['x0'] - reach):head['x1'] + 1 + reach]
+                    inside = free[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1]
+                    if (float(around.sum()) - float(inside.sum())) <= STEM_GONE[8] * max(1, around.size - inside.size):
+                        cut = min(own_wide, int(round(wide)))
+                        tall = min(own_high, int(round(high)))
+                        boxes = ((0, 0, cut, tall), (own_wide - cut, own_high - tall, own_wide, own_high)) if falling \
+                            else ((own_wide - cut, 0, own_wide, tall), (0, own_high - tall, cut, own_high))
+                        sub_parts = [part[by0:by1, bx0:bx1] for bx0, by0, bx1, by1 in boxes]
+                        if all(0.62 <= sp_mask.mean() <= 0.86
+                               and 2 * float(cv2.distanceTransform(np.pad(sp_mask.astype(np.uint8), 1), cv2.DIST_L2, 5).max()) >= 0.55 * high
+                               for sp_mask in sub_parts):
+                            staff = layers['staves'][head['staff']]
+                            pair = []
+                            for (bx0, by0, bx1, by1), sp_mask in zip(boxes, sub_parts):
+                                ys, xs = np.nonzero(sp_mask)
+                                if not len(ys):
+                                    pair = []
+                                    break
+                                cx = float(head['x0'] + bx0 + xs.mean())
+                                cy = float(head['y0'] + by0 + ys.mean())
+                                item = {
+                                    'x0': int(head['x0'] + bx0 + xs.min()), 'y0': int(head['y0'] + by0 + ys.min()),
+                                    'x1': int(head['x0'] + bx0 + xs.max()), 'y1': int(head['y0'] + by0 + ys.max()),
+                                    'cx': cx, 'cy': cy, 'staff': head['staff'], 'place': pitch_place(staff, cy),
+                                    'hollow': False, 'hole': 0.0, 'stems': [], 'mark': head['mark'],
+                                    'blob': head['blob'], 'core': head['core'], 'alt': None, 'ledgers': [], 'gone': True,
+                                }
+                                attach_gone(item)
+                                pair.append(item)
+                            if len(pair) == 2:
+                                if pair[0]['stems'] and not pair[1]['stems']:
+                                    s = pair[0]['stems'][0]
+                                    pair[1]['stems'].append(dict(s, length=abs(pair[1]['cy'] - s['end'])))
+                                elif pair[1]['stems'] and not pair[0]['stems']:
+                                    s = pair[1]['stems'][0]
+                                    pair[0]['stems'].append(dict(s, length=abs(pair[0]['cy'] - s['end'])))
+                                handled.add(id(head))
+                                found.extend(pair)
             continue
-        free = layers['free']
+        part = thick[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0
+        if not oval_ok(part):
+            continue
         around = free[max(0, head['y0'] - reach):head['y1'] + 1 + reach, max(0, head['x0'] - reach):head['x1'] + 1 + reach]
         inside = free[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1]
         if (float(around.sum()) - float(inside.sum())) > STEM_GONE[8] * max(1, around.size - inside.size):
@@ -4771,13 +4926,8 @@ def gone_stems(layers: dict, heads: list[dict], orphans: list[dict], marks: list
         head['gone'] = True
         if filling and GONE_SPACE_SEEN is not None:
             GONE_SPACE_SEEN.append({'cx': head['cx'], 'cy': head['cy'], 'high': own_high, 'page_high': high})
-        if GONE_STEM:
-            (over, on_top), (under, on_foot) = _gone_stem(layers, head, True), _gone_stem(layers, head, False)
-            # Pieces at one side only, and no short stem at the other side: the ink in a column can be another note's.
-            if over and not under and not on_foot:
-                head['stems'].append(over)
-            elif under and not over and not on_top:
-                head['stems'].append(under)
+        attach_gone(head)
+        handled.add(id(head))
         found.append(head)
     return found
 

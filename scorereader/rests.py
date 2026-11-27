@@ -50,8 +50,43 @@ CROSS = (1.9, 2.5, 1.3, 1.9, 0.3, 0.75, 0.35, 0.7, 0.1, 1.6, 0.5, 0.35)
 #                                      have a waist; 43 of them are of this size, in the middle of a staff, with two
 #                                      legs: the six rests (three scans of one hymn), 22 signs of common time, 13
 #                                      pairs of whole notes, a number and an eighth rest. The rule reads the six.
-OUTSIDE = 1.0                        # its middle lies in the staff or at most this many staff spaces outside it
+OUTSIDE = 1.45                       # its middle lies in the staff or at most this many staff spaces outside it
 REACH = 0.2                          # a head whose middle lies in the rest, or this many staff spaces outside it, is no note
+
+
+def _symnet_weights(weights: dict | None = None) -> dict | None:
+    """Returns SymNet weights when neural classification is enabled, or None when disabled."""
+    if weights is not None:
+        return weights
+    try:
+        from . import classify, headnet
+        if headnet.weights() is None:
+            return None
+        return classify.load_weights()
+    except Exception:
+        return None
+
+
+def _overlaps_music(x0: float, x1: float, y0: float, y1: float, space: float,
+                    staff_heads: list[dict], staff_bars: list[float],
+                    staff_existing: list[dict] | None = None) -> bool:
+    """Returns True when a candidate box intersects a barline, notehead, stem, or existing rest."""
+    if any(x0 - 0.2 * space <= bx <= x1 + 0.2 * space for bx in staff_bars):
+        return True
+    if any(x0 <= h['x1'] + 0.15 * space and x1 >= h['x0'] - 0.15 * space
+           and y0 <= h['y1'] + 0.2 * space and y1 >= h['y0'] - 0.2 * space
+           for h in staff_heads):
+        return True
+    if any(x0 - 0.25 * space <= s['x'] <= x1 + 0.25 * space
+           and y0 <= max(h['cy'], s['end']) and y1 >= min(h['cy'], s['end'])
+           for h in staff_heads for s in h.get('stems', [])):
+        return True
+    if staff_existing and any(
+            x0 <= r['x1'] + 0.15 * space and x1 >= r['x0'] - 0.15 * space
+            and y0 <= r['bottom'] + 0.2 * space and y1 >= r['top'] - 0.2 * space
+            for r in staff_existing):
+        return True
+    return False
 
 
 def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
@@ -63,7 +98,7 @@ def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
     space = layers['space']
     bare = layers['bare'].astype(np.uint8)
     out = []
-    seen: list[tuple[int, float]] = []
+    seen: list[tuple[int, float, float]] = []
 
     def _scan_mask(mask: np.ndarray, staff_filter: int | None = None, y_offset: int = 0) -> None:
         count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
@@ -88,12 +123,12 @@ def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
             if x <= ends[index]:
                 continue
             cx = x + wide / 2
-            if any(si == index and abs(sx - cx) <= 0.6 * space for si, sx in seen):
+            if any(si == index and abs(sx - cx) <= 0.6 * space and abs(sy - at) <= 1.2 * space for si, sx, sy in seen):
                 continue
             piece = labels[y:y + high, x:x + wide] == number
             if not _rest_shape(piece, space):
                 continue
-            seen.append((index, cx))
+            seen.append((index, cx, at))
             out.append({'staff': index, 'x': cx, 'x0': x, 'x1': x + wide, 'top': gy, 'bottom': gy + high,
                         'middle': (at - layers['staves'][index]['rows'][2]) / space,
                         'kind': 'quarter', 'length': Fraction(1)})
@@ -101,8 +136,8 @@ def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
     # First scan raw bare mask (exact compatibility), then scan staff-line-bridged bare mask for cut rests.
     _scan_mask(bare)
     for index, staff in enumerate(layers['staves']):
-        y0 = max(0, int(staff['rows'][0] - 1.5 * space))
-        y1 = min(bare.shape[0], int(staff['rows'][4] + 1.5 * space) + 1)
+        y0 = max(0, int(staff['rows'][0] - (OUTSIDE + 1.8) * space))
+        y1 = min(bare.shape[0], int(staff['rows'][4] + (OUTSIDE + 1.8) * space) + 1)
         if y1 <= y0:
             continue
         bridge_h = max(3, int(round(staff['thick'] + 2))) | 1
@@ -122,10 +157,10 @@ def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
             if index is None or x <= ends[index]:
                 continue
             cx = x + wide / 2
-            if any(si == index and abs(sx - cx) <= 0.6 * space for si, sx in seen):
+            if any(si == index and abs(sx - cx) <= 0.6 * space and abs(sy - at) <= 1.2 * space for si, sx, sy in seen):
                 continue
             if _cross_shape(labels[y:y + high, x:x + wide] == number, space):
-                seen.append((index, cx))
+                seen.append((index, cx, at))
                 out.append({'staff': index, 'x': cx, 'x0': x, 'x1': x + wide, 'top': y, 'bottom': y + high,
                             'middle': (at - layers['staves'][index]['rows'][2]) / space,
                             'cross': True, 'kind': 'quarter', 'length': Fraction(1)})
@@ -213,6 +248,39 @@ SIT = (0.0, 0.2)                     # sits on a line where its bottom is from t
 #                                      (the bottom of a half rest: the line is ink under the block)
 
 
+def _block_core(box: np.ndarray, space: float) -> tuple[int, int, float, float]:
+    """Computes core column bounds, fill, and squareness, ignoring thin ledger-line wings."""
+    high, wide = box.shape
+    col_heights = box.sum(axis=0)
+    core_cols = np.nonzero(col_heights >= 0.35 * space)[0]
+    if len(core_cols) and high >= 0.38 * space:
+        cx0, cx1 = int(core_cols[0]), int(core_cols[-1]) + 1
+        core_box = box[:, cx0:cx1]
+    else:
+        cx0, cx1 = 0, wide
+        core_box = box
+    fill = float(core_box.mean()) if core_box.size else 0.0
+    square = float((core_box.sum(axis=0) >= 0.8 * high).mean()) if core_box.size else 0.0
+    return cx0, cx1, fill, square
+
+
+def _block_length(box: np.ndarray, y: int, high: int, rows: list[float], hangs: bool, sits: bool,
+                  core_wide: int) -> Fraction:
+    """Returns whole-rest (4) or half-rest (2) duration from line attachment and ledger wings."""
+    if hangs and not sits:
+        return Fraction(4)
+    if sits and not hangs:
+        return Fraction(2)
+    if box.shape[1] > core_wide + 2 and high >= 4:
+        top_w = int(box[:2].any(axis=0).sum())
+        bot_w = int(box[-2:].any(axis=0).sum())
+        if top_w >= bot_w + 3:
+            return Fraction(4)
+        if bot_w >= top_w + 3:
+            return Fraction(2)
+    return Fraction(4) if abs(y - rows[1]) < abs(y + high - rows[2]) else Fraction(2)
+
+
 def block_rests(layers: dict, ends: list[float], measure: bool = False) -> list[dict]:
     """The printed whole and half rests of a page, as quarter_rests() gives the quarter rests, with 'kind' 'block'.
     With measure, every piece of the size of a block with its measures ('fill', 'square', 'middle'), and 'rest'
@@ -226,7 +294,7 @@ def block_rests(layers: dict, ends: list[float], measure: bool = False) -> list[
     out = []
     for number in range(1, count):
         x, y, wide, high = (int(value) for value in stats[number][:4])
-        if not (0.8 * space <= wide <= 1.9 * space and 0.25 * space <= high <= 0.95 * space):
+        if not (0.8 * space <= wide <= 3.0 * space and 0.25 * space <= high <= 0.95 * space):
             continue
         at = y + high / 2
         index = next((index for index, staff in enumerate(layers['staves'])
@@ -235,32 +303,51 @@ def block_rests(layers: dict, ends: list[float], measure: bool = False) -> list[
         if index is None or x <= ends[index]:
             continue
         box = ink[y:y + high, x:x + wide]
-        fill = float(box.mean())
-        square = float((box.sum(axis=0) >= 0.8 * high).mean())
         middle = (at - layers['staves'][index]['rows'][2]) / space
+        if abs(middle) > BLOCK[6] or wide > BLOCK[1] * space:
+            cx0, cx1, fill, square = _block_core(box, space)
+        else:
+            cx0, cx1 = 0, wide
+            fill = float(box.mean())
+            square = float((box.sum(axis=0) >= 0.8 * high).mean())
+        bwide = cx1 - cx0
+        bx0, bx1 = x + cx0, x + cx1
         rows = layers['staves'][index]['rows']
         lines = [rows[0] + step * (rows[4] - rows[0]) / 4 for step in range(-2, 7)]
         hangs = any(-HANG[0] * space <= y - line <= HANG[1] * space for line in lines)
         sits = any(SIT[0] * space <= y + high - line <= SIT[1] * space for line in lines)
+
+        def _open_side_clear(is_hanging: bool) -> bool:
+            pad_h = max(2, int(round(0.25 * space)))
+            cy0, cy1 = (y + high + 1, min(ink.shape[0], y + high + 1 + pad_h)) if is_hanging else (max(0, y - pad_h), y)
+            return cy1 > cy0 and float(ink[cy0:cy1, bx0:bx1].mean()) <= 0.12
+
         # Engraved whole/half rests can be 0.36..0.50 spaces tall; accept crisp rectangles sitting on line 3 or hanging from line 4.
-        slim_block = (0.90 * space <= wide <= 1.80 * space and 0.36 * space <= high < BLOCK[2] * space
+        slim_block = (0.90 * space <= bwide <= 1.80 * space and 0.36 * space <= high < BLOCK[2] * space
                       and fill >= 0.84 and square >= 0.82
                       and ((abs(y - rows[1]) <= 0.18 * space and hangs) or (abs(y + high - rows[2]) <= 0.22 * space and sits)))
-        if slim_block:
-            # Verify empty paper on the open side of the rectangle (not a beam or staff smudge).
-            pad_h = max(2, int(round(0.25 * space)))
-            check_y0, check_y1 = (y + high + 1, min(ink.shape[0], y + high + 1 + pad_h)) if hangs else (max(0, y - pad_h), y)
-            if check_y1 <= check_y0 or float(ink[check_y0:check_y1, x:x + wide].mean()) > 0.12:
-                slim_block = False
-        rest = (BLOCK[0] * space <= wide <= BLOCK[1] * space and BLOCK[2] * space <= high <= BLOCK[3] * space
-                and fill >= BLOCK[4] and square >= BLOCK[5] and abs(middle) <= BLOCK[6]) or slim_block
-        if rest or measure:
-            length = Fraction(4) if (hangs and not sits) or (abs(y - rows[1]) < abs(y + high - rows[2])) else Fraction(2)
-            found = {'staff': index, 'x': x + wide / 2, 'x0': x, 'x1': x + wide, 'top': y, 'bottom': y + high,
+        if slim_block and not _open_side_clear(hangs and not sits):
+            slim_block = False
+        # Accept ledger-line whole and half rests outside the staff up to |middle| <= 3.4.
+        ledger_block = (BLOCK[6] < abs(middle) <= 3.4
+                        and BLOCK[0] * space <= bwide <= BLOCK[1] * space
+                        and 0.42 * space <= high <= BLOCK[3] * space
+                        and ((fill >= BLOCK[4] and square >= BLOCK[5]) or (fill >= 0.80 and square >= 0.85))
+                        and (hangs or sits))
+        if ledger_block and not _open_side_clear(hangs and not sits):
+            ledger_block = False
+        in_staff_block = (BLOCK[0] * space <= bwide <= BLOCK[1] * space
+                          and BLOCK[2] * space <= high <= BLOCK[3] * space
+                          and fill >= BLOCK[4] and square >= BLOCK[5]
+                          and abs(middle) <= BLOCK[6])
+        rest = in_staff_block or slim_block or ledger_block
+        if rest or (measure and wide <= 1.9 * space):
+            length = _block_length(box, y, high, rows, hangs, sits, bwide)
+            found = {'staff': index, 'x': (bx0 + bx1) / 2, 'x0': bx0, 'x1': bx1, 'top': y, 'bottom': y + high,
                      'middle': middle, 'kind': 'block', 'length': length,
                      'hangs': hangs, 'sits': sits}
             if measure:
-                found.update(fill=fill, square=square, wide=wide / space, high=high / space, rest=rest)
+                found.update(fill=fill, square=square, wide=bwide / space, high=high / space, rest=rest)
             out.append(found)
     return out
 
@@ -284,7 +371,8 @@ def rest_dot(layers: dict, rest: dict) -> bool:
     return False
 
 
-def eighth_rests(layers: dict, ends: list[float], heads: list[dict], bars: dict[int, list[float]]) -> list[dict]:
+def eighth_rests(layers: dict, ends: list[float], heads: list[dict], bars: dict[int, list[float]],
+                 weights: dict | None = None) -> list[dict]:
     """Detects printed eighth rests (1/2 beat) and sixteenth rests (1/4 beat) standing free of notes and barlines."""
     space = layers['space']
     bare = layers['bare'].astype(np.uint8)
@@ -310,14 +398,8 @@ def eighth_rests(layers: dict, ends: list[float], heads: list[dict], bars: dict[
             cx, cy = x + wide / 2.0, gy + high / 2.0
             if abs(cy - rows[2]) > 1.25 * space:
                 continue
-            # Reject anything overlapping a detected notehead, stem, or barline.
-            if any(abs(cx - bx) <= 0.45 * space for bx in staff_bars):
-                continue
-            if any(h['x0'] - 0.35 * space <= cx <= h['x1'] + 0.35 * space and h['y0'] - 0.5 * space <= cy <= h['y1'] + 0.5 * space
-                   for h in staff_heads):
-                continue
-            if any(abs(s['x'] - cx) <= 0.45 * space and min(h['cy'], s['end']) <= cy <= max(h['cy'], s['end'])
-                   for h in staff_heads for s in h.get('stems', [])):
+            # Reject any candidate that overlaps a barline, notehead bbox, or stem span.
+            if _overlaps_music(x, x + wide, gy, gy + high, space, staff_heads, staff_bars):
                 continue
             piece = labels[y:y + high, x:x + wide] == k
             fill = float(piece.mean())
@@ -358,4 +440,154 @@ def eighth_rests(layers: dict, ends: list[float], heads: list[dict], bars: dict[
                 'kind': '16th' if is_16th else 'eighth',
                 'length': Fraction(1, 4) if is_16th else Fraction(1, 2),
             })
+    sym_w = _symnet_weights(weights)
+    if sym_w is not None and out:
+        from . import classify
+        pts = [(r['staff'], float(r['x']), float((r['top'] + r['bottom']) / 2.0)) for r in out]
+        probs_all = classify.classify_points(layers, pts, sym_w)
+        gated = []
+        for rest, probs in zip(out, probs_all):
+            p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
+            p_rest = float(probs[4] + probs[5] + probs[6] + probs[7] + probs[8])
+            if p_head >= 0.45 or p_rest < 0.15:
+                continue
+            gated.append(rest)
+        out = gated
     return out
+
+
+_NEURAL_REST_MAP = {
+    4: ('block', Fraction(4)),
+    5: ('block', Fraction(2)),
+    6: ('quarter', Fraction(1)),
+    7: ('eighth', Fraction(1, 2)),
+    8: ('16th', Fraction(1, 4)),
+}
+
+
+def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
+                           bars: dict[int, list[float]], existing: list[dict],
+                           weights: dict | None = None, threshold: float = 0.85) -> list[dict]:
+    """Finds isolated non-head marks and near-miss blocks, and classifies them with local SymNet.
+
+    Returns an empty list when SymNet weights are disabled or unavailable.
+    """
+    sym_w = _symnet_weights(weights)
+    if sym_w is None:
+        return []
+    from . import classify
+    space = layers['space']
+    bare = layers['bare'].astype(np.uint8)
+    free = layers['free'].astype(np.uint8)
+    ink = layers['ink'] > 0
+    staves = layers['staves']
+    heads_by_staff = {i: [h for h in heads if h['staff'] == i] for i in range(len(staves))}
+    existing_by_staff = {i: [r for r in existing if r['staff'] == i] for i in range(len(staves))}
+    cands: list[dict] = []
+
+    # Group A: isolated non-head connected components on staff-line-bridged bare ink.
+    for index, staff in enumerate(staves):
+        rows = staff['rows']
+        y0 = max(0, int(rows[0] - 3.2 * space))
+        y1 = min(bare.shape[0], int(rows[4] + 3.2 * space) + 1)
+        if y1 <= y0:
+            continue
+        bridge_h = max(3, int(round(staff['thick'] + 2))) | 1
+        region = cv2.morphologyEx(np.ascontiguousarray(bare[y0:y1]), cv2.MORPH_CLOSE, np.ones((bridge_h, 1), np.uint8))
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
+        sh = heads_by_staff[index]
+        sb = bars.get(index, [])
+        se = existing_by_staff[index]
+        for k in range(1, count):
+            x, y, wide, high, _ = (int(v) for v in stats[k])
+            if x <= ends[index] + 0.2 * space or x + wide > staff['x1']:
+                continue
+            if not (0.35 * space <= wide <= 1.45 * space and 1.05 * space <= high <= 3.6 * space):
+                continue
+            gy = y + y0
+            cx, cy = x + wide / 2.0, gy + high / 2.0
+            middle = (cy - rows[2]) / space
+            if abs(middle) > 3.5:
+                continue
+            if _overlaps_music(x, x + wide, gy, gy + high, space, sh, sb, se):
+                continue
+            piece = labels[y:y + high, x:x + wide] == k
+            pad = (~np.pad(piece, 1)).astype(np.uint8)
+            hc, hlab, hstats, _ = cv2.connectedComponentsWithStats(pad, connectivity=4)
+            if any(hlab[0, 0] != j and hstats[j, cv2.CC_STAT_AREA] >= 0.06 * space * space for j in range(1, hc)):
+                continue
+            cands.append({
+                'staff': index, 'x': cx, 'cy': cy, 'x0': x, 'x1': x + wide, 'top': gy, 'bottom': gy + high,
+                'middle': middle, 'is_block': False,
+            })
+
+    # Group B: near-miss rectangular blocks on free ink (including ledger-line wings).
+    count, _, stats, _ = cv2.connectedComponentsWithStats(free, connectivity=8)
+    for k in range(1, count):
+        x, y, wide, high = (int(v) for v in stats[k][:4])
+        if not (0.8 * space <= wide <= 3.0 * space and 0.28 * space <= high <= 1.0 * space):
+            continue
+        at = y + high / 2.0
+        index = next((i for i, staff in enumerate(staves)
+                      if staff['rows'][0] - 2.0 * space <= at <= staff['rows'][4] + 2.0 * space
+                      and staff['x0'] <= x and x + wide <= staff['x1']), None)
+        if index is None or x <= ends[index]:
+            continue
+        rows = staves[index]['rows']
+        middle = (at - rows[2]) / space
+        if abs(middle) > 3.5:
+            continue
+        box = ink[y:y + high, x:x + wide]
+        cx0, cx1, fill, square = _block_core(box, space)
+        bwide = cx1 - cx0
+        bx0, bx1 = x + cx0, x + cx1
+        if not (0.80 * space <= bwide <= 1.95 * space and fill >= 0.70 and square >= 0.40):
+            continue
+        sh = heads_by_staff[index]
+        sb = bars.get(index, [])
+        se = existing_by_staff[index]
+        if _overlaps_music(bx0, bx1, y, y + high, space, sh, sb, se):
+            continue
+        lines = [rows[0] + step * (rows[4] - rows[0]) / 4 for step in range(-2, 7)]
+        hangs = any(-HANG[0] * space <= y - line <= HANG[1] * space for line in lines)
+        sits = any(SIT[0] * space <= y + high - line <= SIT[1] * space for line in lines)
+        cands.append({
+            'staff': index, 'x': (bx0 + bx1) / 2.0, 'cy': at, 'x0': bx0, 'x1': bx1, 'top': y, 'bottom': y + high,
+            'middle': middle, 'is_block': True, 'hangs': hangs, 'sits': sits,
+            'block_length': _block_length(box, y, high, rows, hangs, sits, bwide),
+        })
+
+    if not cands:
+        return []
+    pts = [(c['staff'], float(c['x']), float(c['cy'])) for c in cands]
+    probs_all = classify.classify_points(layers, pts, sym_w)
+    found: list[dict] = []
+    for cand, probs in zip(cands, probs_all):
+        cls_idx = int(np.argmax(probs))
+        prob = float(probs[cls_idx])
+        if cls_idx not in _NEURAL_REST_MAP or prob < threshold:
+            continue
+        # Enforce geometry compatibility between tall rests and flat block rests.
+        if cand['is_block'] and cls_idx not in (4, 5):
+            continue
+        if not cand['is_block'] and cls_idx not in (6, 7, 8):
+            continue
+        # Prevent duplicate overlapping detections inside this neural batch.
+        if any(r['staff'] == cand['staff']
+               and cand['x0'] <= r['x1'] + 0.15 * space and cand['x1'] >= r['x0'] - 0.15 * space
+               and cand['top'] <= r['bottom'] + 0.2 * space and cand['bottom'] >= r['top'] - 0.2 * space
+               for r in found):
+            continue
+        kind, length = _NEURAL_REST_MAP[cls_idx]
+        entry = {
+            'staff': cand['staff'], 'x': cand['x'], 'x0': cand['x0'], 'x1': cand['x1'],
+            'top': cand['top'], 'bottom': cand['bottom'], 'middle': cand['middle'],
+            'kind': kind, 'length': length, 'neural': True, 'prob': prob,
+        }
+        if cand['is_block']:
+            entry['hangs'] = cand['hangs']
+            entry['sits'] = cand['sits']
+            if cand['hangs'] != cand['sits']:
+                entry['length'] = cand['block_length']
+        found.append(entry)
+    return found
