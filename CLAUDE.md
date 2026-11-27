@@ -1906,6 +1906,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   later steps that test hollow heads: a worn filled head that the first form made hollow was taken by the step for a cell
   along a staff line, where the network had read it later as a half note, and the count called the lost note a gain by
   its line-up. Read the first form's pages with the whole reader before the full pass.
+- A limit of a head's size that a census of other prints set is measured as this print measures its heads. One print
+  draws its heads in a space from line to line, so the box of a filled head without a stem reaches through both lines
+  and is 1.25 to 1.39 of the page's heads, where `STEM_GONE` allows 1.08; the page's read heads with stems that touch
+  both lines are as high. A mark that fills its space is such a head where its top and bottom lie in the rows of the
+  two lines (`symbols.GONE_SPACE`). A heavy sharp or natural fills its space in the same way: it stands before its
+  head, at the head's height. The census of every mark that only the height refused (21 on LitChoir's pages, none on
+  the fresh set) named the shape, and the limits of the guard stand in the middle of the gaps that it showed.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
