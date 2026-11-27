@@ -34,7 +34,10 @@ after it. The owner decided against a local language model. The owner allowed Te
 (11 November 2026: "we can use tesseract, if it will help, but may eventually have to improve upon it"; 16 November
 2026, of its larger language files: "use the big one"): it is an
 optional step (`--tesseract`, `scorereader/ocr.py`), the reader works without it, and the own letter reader stays and
-must catch up with it. The notes are read by rules; the one model is the second look of `headnet.py`, which can be switched off.
+must catch up with it. The notes are read by rules; the one model of the notes is the second look of `headnet.py`, which
+can be switched off. The words have one more: PaddleOCR's network that reads a line of text (Apache-2.0), a further
+reader beside Tesseract's larger files where its folder is named (`textnet.py`; the owner, 27 November 2026: "Yes,
+from PyPI", on the condition that it gains without losses).
 
 Not reached yet (with the small network of round 113, each page read by the network that never saw its hymn): 88.0 %
 of the drawn notes over all 364 counted scores (99.3 % on software-made PDFs, 84.8 % on scans; 105 scores at 99 % or
@@ -2029,7 +2032,10 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   folds stay outside git. The shipped weights saw LitChoir's own pages, the kit's among them: every reading that
   measures on those pages names its weights (`SCOREREADER_HEADNET`: the fold that never saw the hymn, or `off`), and
   a reading of the fresh set names the shipped weights. The one exception is `scorereader/ocr.py`: it calls the Tesseract
-  program for the rows of the words, only when it is asked for, and no note may depend on it. The kit's
+  program for the rows of the words, only when it is asked for, and no note may depend on it. `scorereader/textnet.py`
+  runs PaddleOCR's text network (PP-OCRv6 small, Apache-2.0) with OpenCV's own `cv2.dnn` (OpenCV 5), for the words
+  only and only where its folder is named; the network is not in the repository: `bench/textnet_get.py` takes it from
+  the onnxocr package on PyPI and checks it by its SHA-256. The kit's
   copisteria environment (`$SCOREREADER_KIT/tools/copisteria/.venv/bin/python`, after
   `source "$SCOREREADER_KIT/env.sh"`) has all of it and runs the yardstick too.
 - homr and Audiveris have the AGPL-3.0 licence. Do not copy their code into this repository. copisteria's code has

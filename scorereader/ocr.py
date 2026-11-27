@@ -4,6 +4,8 @@ Tesseract is a small text reader that runs on this computer (Apache-2.0 licence)
 notes are read by rules alone, and the words can be read by the letter shapes of the hymn (scorereader.lyrics). Where
 Tesseract is installed and asked for, it reads each row of words as one line of text, and this step cuts the line
 into the syllables of the row with their places, so that scorereader.lyrics.set_under() can set them under the notes.
+Further readers give second opinions on a row that the first reading leaves in doubt: Tesseract's larger language
+files, and a text network that OpenCV runs (scorereader.textnet), each where its folder is named (SECOND).
 
 The rows are the reader's own (scorereader.words): Tesseract never sees the notes.
 """
@@ -19,7 +21,7 @@ import tempfile
 import cv2
 import numpy as np
 
-from . import setting
+from . import setting, textnet
 
 PROGRAM = 'tesseract'    # the program's name, or its path (SCOREREADER_TESSERACT names another)
 LANGUAGE = 'eng'         # the language file (SCOREREADER_OCR_LANGUAGE names another, as 'eng+ell')
@@ -296,6 +298,39 @@ MEND_ALIKE = 2           # a word that every reading of a row holds with the sam
 #                          is sure of: it is a true word of the hymn that the list lacks more often than a misread,
 #                          and it is mended only as a sure word is (1: every size of the first file; 2: every size
 #                          of every file; 0: off)
+# A text network (scorereader.textnet) is a further reader beside the further language files: its folder is named among
+# them (SECOND), and its reading is read at one size, after theirs, where no reading before it is whole. It is no
+# reading that every reading of the row holds (MEND_ALIKE, SURE_ALIKE) and gives no single word to the reading that
+# is kept (OTHER_SIZE, PAIR_OTHER, MEND_BEFORE, PAIR): it is chosen as a whole row, by the list, or not at all.
+TEXTNET_BOX = 0.5        # the network gives a word the columns of its signs, a part of a letter off at each end (the box
+#                          of 'will' cut the w and ran past the l): each end of the box is moved to the ink of the row's
+#                          band, out to the end of a letter that it cuts (this many band heights at most, and not into
+#                          the next word) and in past the paper that it holds. The rules that read the ink in a word's
+#                          box ask the letters, as Tesseract's box gives them: with the network's boxes the letters of a
+#                          row from a typewriter stood unevenly, and a gap inside 'tion' cut it (None: off)
+TEXTNET_ALIKE = 0.5      # where the tokens of the reading of the first size that lie in a word of the network's reading
+#                          (this share of each token's width) hold the same letters and part them otherwise than the
+#                          network's word, by a space or a hyphen, they are that word: two readers that agree on the
+#                          letters have read the page, and Tesseract keeps the spaces and hyphens that the network leaves
+#                          out ('sakesu' is 'sakes u-', 'mercies' is 'mer-cies', '7.May' is '7. May') and leaves out the
+#                          line of a held syllable that the network reads as dashes ('was------' is 'was'), each as sure
+#                          as the surer of the two. Where they part it as the network does, the network's word stays:
+#                          the token adds only its stray signs and capitals ('-=va-' for 'va-', 'tHe' for 'the'). A
+#                          hyphen of the network's own in the box of a token that came with its hyphen is that hyphen
+#                          (None: off)
+TEXTNET_JOINS = 0.5      # the network leaves out thin hyphens and the lines of held syllables: where the reading of the
+#                          first size holds a hyphen between two words of the network's reading (within this many heights
+#                          of the band of the gap), the first of them is joined to the next (None: off)
+TEXTNET_ONE = 90         # a word of the network's reading of one letter or digit that it is less sure of than this (of 100)
+#                          is no word where no token of the reading of the first size with a letter or a digit lies in its
+#                          columns, and is as sure as Tesseract is of that token where one does (so that the rules for a
+#                          short word that Tesseract is not sure of act on it): the network reads a bar line, a brace or a
+#                          speck at the start of a row as 'I', 'l' or 'U' (29 to 82), and its true words of one letter as
+#                          99 (None: off)
+TEXTNET_MORE = True      # the network's reading is kept only where it holds more letters in words of the list than the
+#                          reading that stands (as well as fewer outside it, SECOND_MORE): a reading that left a misread
+#                          syllable out holds fewer letters outside the list only because it is shorter ('Na-11-vi-iy')
+TEXTNET_OTHERS = False   # the network's reading also gives single words to the reading that is kept (see above)
 MEND_WHOLE = True        # a reading with a mended word is not whole: the row is read at the other sizes too, and
 #                          the reading that fits best is kept ('Theel' mended, and a syllable left out beside it)
 OTHER_SIZE = (0.7, 2)    # with a list of words: the row is read at three sizes and one reading is kept. A word of it
@@ -388,16 +423,20 @@ def second_files() -> list[str]:
     """The folders of further language files of Tesseract (SCOREREADER_OCR_SECOND: one folder, or several with the
     path separator between them), each when it holds the file of the language that is read. Tesseract comes with a
     small file; its standard and its 'best' file hold a larger network that reads other words wrongly than the
-    small one, and than each other. See SECOND."""
+    small one, and than each other. See SECOND. A folder that holds a text network (scorereader.textnet) that OpenCV
+    can run is such a further reader too."""
     language = setting('OCR_LANGUAGE', LANGUAGE)
     folders = [folder for folder in (setting('OCR_SECOND') or '').split(os.pathsep) if folder] if SECOND else []
     return [folder for folder in folders
-            if all(os.path.exists(os.path.join(folder, name + '.traineddata')) for name in language.split('+'))]
+            if all(os.path.exists(os.path.join(folder, name + '.traineddata')) for name in language.split('+'))
+            or textnet.holds(folder)]
 
 
 def _line(crop: np.ndarray, folder: str, name: str, files: str | None = None) -> list[tuple[str, int, int, float]]:
     """The words of one line of text: (text, left, right, how sure) each, in the crop's px. `files`: the folder of
-    another language file than the one that Tesseract comes with."""
+    another language file than the one that Tesseract comes with, or of a text network (scorereader.textnet)."""
+    if files and textnet.holds(files):
+        return textnet.line(crop, files)
     path = os.path.join(folder, name + '.png')
     cv2.imwrite(path, crop)
     # One thread: on a line of text Tesseract's threads only wait for each other, most of all on a busy computer.
@@ -1989,6 +2028,108 @@ def _other_before(row: list[dict], others: list[list[dict]], known: dict[str, in
         + [part for word in after for part in word]
 
 
+def _net_box(words: list[tuple[str, float, float, float]], grey: np.ndarray,
+             band: dict) -> list[tuple[str, float, float, float]]:
+    """The words of the text network's reading, each with its box moved to the ink of the row (see TEXTNET_BOX)."""
+    top, bottom = int(band['top']), int(band['bottom'])
+    if bottom <= top or not words:
+        return words
+    ink = (grey[top:bottom + 1] < 128).any(axis=0)
+    reach = int(TEXTNET_BOX * (bottom - top))
+    found = []
+    for number, (text, left, right, sure) in enumerate(words):
+        first, last = max(0, int(round(left))), min(len(ink) - 1, int(round(right)))
+        if first > last or not ink[first:last + 1].any():
+            found.append((text, left, right, sure))
+            continue
+        low = max(0, first - reach, int(round(words[number - 1][2])) + 1 if number else 0)
+        high = min(len(ink) - 1, last + reach, int(round(words[number + 1][1])) - 1 if number + 1 < len(words) else len(ink) - 1)
+        while first > low and ink[first] and ink[first - 1]:
+            first -= 1                  # out to the start of the letter that the box cuts
+        while last < high and ink[last] and ink[last + 1]:
+            last += 1
+        while not ink[first]:
+            first += 1                  # in past the paper
+        while not ink[last]:
+            last -= 1
+        found.append((text, float(first), float(last), sure))
+    return found
+
+
+def _net_one(words: list[tuple[str, float, float, float]],
+             first: list[tuple[str, float, float, float]]) -> list[tuple[str, float, float, float]]:
+    """The words of the text network's reading without the stray ones of one sign (see TEXTNET_ONE)."""
+    def signs(text: str) -> int:
+        return sum(sign.isalnum() for sign in text)
+
+    found = []
+    for text, left, right, sure in words:
+        if signs(text) == 1 and sure < TEXTNET_ONE:
+            seen = [token[3] for token in first if signs(token[0]) and min(right, token[2]) > max(left, token[1])]
+            if not seen:
+                continue
+            sure = min(sure, min(seen))      # as sure as Tesseract is of its sign there, for the rules of short words
+        found.append((text, left, right, sure))
+    return found
+
+
+def _net_alike(words: list[tuple[str, float, float, float]],
+               first: list[tuple[str, float, float, float]]) -> list[tuple[str, float, float, float]]:
+    """The words of the text network's reading, each replaced by the tokens of the first size that lie in it where they
+    hold the same letters and part them otherwise (see TEXTNET_ALIKE)."""
+    def letters(text: str) -> str:
+        return ''.join(sign for sign in text.lower() if sign.isalpha())
+
+    def parting(texts: list[str]) -> tuple[frozenset[int], bool]:
+        # Where the words part: after how many letters or digits a space or a hyphen stands, and whether a hyphen or a
+        # line follows the last of them.
+        places, count, after = set(), 0, False
+        for text in texts:
+            after = after or count > 0
+            for sign in text:
+                if sign.isalnum():
+                    if after and count:
+                        places.add(count)
+                    count, after = count + 1, False
+                elif sign in JOINS:
+                    after = after or count > 0
+        tail = False
+        for text in texts:
+            for sign in text:
+                tail = False if sign.isalnum() else tail or sign in JOINS
+        return frozenset(places), tail
+
+    found, taken = [], []      # the words with whether they are the network's own; the boxes of tokens with a hyphen
+    for text, left, right, sure in words:
+        inside = [token for token in first
+                  if (any(sign.isalnum() for sign in token[0]) or not token[0].strip(JOINS))
+                  and min(right, token[2]) - max(left, token[1]) >= TEXTNET_ALIKE * max(token[2] - token[1], 1e-6)]
+        if inside and letters(text) and letters(''.join(token[0] for token in inside)) == letters(text) \
+                and parting([token[0] for token in inside]) != parting([text]):
+            found.extend(((token[0], token[1], token[2], max(token[3], sure)), False) for token in inside)
+            taken.extend((token[1], token[2]) for token in inside if any(sign in JOINS for sign in token[0]))
+        else:
+            found.append(((text, left, right, sure), True))
+    # A hyphen of the network's own in the box of a token that came with its hyphen is that hyphen ('sal - -=va-').
+    return [word for word, own in found
+            if not own or word[0].strip(JOINS) or not any(left <= (word[1] + word[2]) / 2 <= right for left, right in taken)]
+
+
+def _net_joins(words: list[tuple[str, float, float, float]], first: list[tuple[str, float, float, float]],
+               near: float) -> list[tuple[str, float, float, float]]:
+    """The words of the text network's reading, each joined to the next where the reading at the first size holds a
+    hyphen in the gap between them (see TEXTNET_JOINS)."""
+    marks = [(left + right) / 2 if not text.strip(JOINS) else right
+             for text, left, right, _ in first if text and text[-1] in JOINS]
+    found = list(words)
+    for number in range(len(found) - 1):
+        (text, left, right, sure), after = found[number], found[number + 1]
+        if text and text[-1] not in JOINS and after[0] and after[0][0] not in JOINS \
+                and any(right - near <= mark <= after[1] + near for mark in marks):
+            found[number] = (text + '-', left, right, sure)
+    return found
+
+
 def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool = True,
           ways: dict[str, tuple[str, ...]] | None = None, more: tuple[int, ...] = ()) -> list[dict]:
     """The syllables of a row from the reading that fits best. `read(size)` gives Tesseract's words at one size.
@@ -2002,11 +2143,13 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
     firsts: set[str] = set()       # the words that the list lacks, as the first file read them
     firm: set[str] | None = None   # those of them that every size of the first file read alike
     same: list[set[str]] = []
+    others = second_files()
+    nets = {size for size in more if SECOND and size >= SECOND and textnet.holds(others[size // SECOND - 1])}
 
     def alike() -> set[str]:
         # The words that every reading of the row holds with the same letters (see MEND_ALIKE), read when first asked.
         if not same:
-            sizes = (HIGH,) + tuple(AGAIN or ()) + (tuple(size for size in more if size > 0) if MEND_ALIKE > 1 else ())
+            sizes = (HIGH,) + tuple(AGAIN or ()) + (tuple(size for size in more if size > 0 and size not in nets) if MEND_ALIKE > 1 else ())
             bare = (lambda words: _no_bow(words, grey, band, known)) if BOW and known and mend else (lambda words: words)
             same.append(set.intersection(*(
                 {''.join(sign for part in word for sign in part['text'].lower() if sign.isalpha())
@@ -2015,7 +2158,7 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
 
     def short(text: str, left: float, right: float) -> bool:
         # A short word that every reading of the row holds with the same letters in its columns (see SURE_ALIKE).
-        sizes = (HIGH,) + tuple(AGAIN or ()) + tuple(size for size in more if size > 0)
+        sizes = (HIGH,) + tuple(AGAIN or ()) + tuple(size for size in more if size > 0 and size not in nets)
         if not (SECOND and any(size >= SECOND for size in sizes)):
             return False
         letters = ''.join(sign for sign in text.lower() if sign.isalpha())
@@ -2028,7 +2171,13 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
             break             # a row without its dashes is read only where no other reading is a row (see FEW_DASHES)
         again = size < 0 or bool(SECOND and size >= SECOND)      # a second look: another picture or another file
         second = again and size > 0
-        row, fit, whole = _text_row(read(size), grey, band, known, mend, again and (best is None or best[1] < 0),
+        words = read(size)
+        if size in nets:     # the text network's reading, with what Tesseract read of spaces and hyphens
+            words = _net_box(words, grey, band) if TEXTNET_BOX else words
+            words = _net_one(words, read(HIGH)) if TEXTNET_ONE else words
+            words = _net_alike(words, read(HIGH)) if TEXTNET_ALIKE else words
+            words = _net_joins(words, read(HIGH), TEXTNET_JOINS * (band['bottom'] - band['top'])) if TEXTNET_JOINS else words
+        row, fit, whole = _text_row(words, grey, band, known, mend, again and (best is None or best[1] < 0),
                                     mending=bool(SECOND_MEND) or not second, agreed=firsts if second else frozenset(),
                                     first_file=not second,
                                     alike=alike if MEND_ALIKE and known else None,
@@ -2037,7 +2186,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
         if not again:
             firsts |= lacking
             firm = lacking if firm is None else firm & lacking
-        rows.append(row)
+        if size not in nets or TEXTNET_OTHERS:
+            rows.append(row)         # the text network's reading is a whole row only (see TEXTNET_OTHERS)
         if (again and CROSS_LIST and not mend and best is not None and best[1] >= 0
                 and not (known and _held(row, known)[0] > _held(best[0], known)[0])):
             continue
@@ -2045,6 +2195,8 @@ def _pick(read, grey: np.ndarray, band: dict, known: dict[str, int], mend: bool 
             (held, total), (old, before) = _held(row, known, SECOND_MORE), _held(best[0], known, SECOND_MORE)
             if not (total - held < before - old and held >= old):
                 continue
+            if TEXTNET_MORE and size in nets and held <= old:
+                continue        # the network's reading must hold more of the list (see TEXTNET_MORE)
             if SECOND_FIRM and firm and firm - lacking and total < before:
                 continue
         if best is None or fit > best[1]:
@@ -2136,7 +2288,8 @@ def read_rows(layers: dict, page: int = 0, lex=None, before: dict | None = None)
 
             readers.append((read, (() if bare is None else tuple(-size for size in (HIGH,) + tuple(AGAIN or ())))
                             + (tuple(SECOND * (file + 1) + size for file in range(len(others))
-                                     for size in (HIGH,) + tuple(AGAIN or ())) if known else ())
+                                     for size in ((HIGH,) if textnet.holds(others[file]) else (HIGH,) + tuple(AGAIN or ())))
+                               if known else ())
                             + (() if clear is None else tuple(-FEW_SIZE - size for size in (HIGH,) + tuple(AGAIN or ())))))
         if CLEF:
             # Each row knows the columns of the clef of the staff over it (see CLEF).

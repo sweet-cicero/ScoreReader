@@ -63,6 +63,12 @@ Tesseract's own repositories) misread other words than the small one does, so th
 `--second <folder>` names the folder of such a file, and a row that the small file leaves in doubt is read with it
 too. They do not replace the small file: put in its place, the standard file read fewer words right.
 
+A text network can be such a second opinion too: PaddleOCR's small reader of a line of text (Apache-2.0), which OpenCV 5
+runs. It reads words written by hand and rows in capitals that Tesseract misreads. `python bench/textnet_get.py
+<folder>` fetches it once (from PyPI, 21 MB), and `--second` names its folder after the language files'. Its reading of
+a row is kept only where it fits the word list better than Tesseract's readings, and where the two agree on the letters
+Tesseract's spaces and hyphens are kept.
+
 ## How it works
 
 ```mermaid
@@ -135,6 +141,7 @@ The words of a scan:
 | `letters.py` | Groups the letters of a hymn by their shape. |
 | `lyrics.py` | Names those shapes with the word list and sets the syllables under the notes. |
 | `ocr.py` | The optional Tesseract step, with the word list to tidy what it reads. |
+| `textnet.py` | An optional second opinion on a row of words: a text network that OpenCV runs. |
 
 Everything else:
 
