@@ -1970,6 +1970,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   is a flat only where it finds no sharp (`starts.GLUED_WIDE`). A trial that an earlier round stopped at a mark that it
   named by sight is read against the typed hymn before that mark becomes a guard: the "Arabic half-flat" of round 136 is
   typed Ab4 at its own note, and the A4 that the trial lost was the next note of the bar, which the flat holds.
+- A rule that measures from the end of a staff misses what stands inside the bar line that ends it. A final bar line of
+  two strokes closes cells of paper with the staff lines between its strokes, read as whole and half notes with the
+  thick stroke as a stem, and their middles stand 0.5 to 0.85 staff spaces before the end, where `END_MARK` stops at
+  0.5. The bar line says where it begins (`symbols.END_DOUBLE`: two strokes that fill the staff's rows at its end, and
+  a mark at or past the first). A false note that goes can give back a true one that it cut short: the whole note
+  before the bar line had been a half note. A rule that takes marks is listed mark by mark at its own step: 21 marks on
+  17 pages, and only 10 pages differ, because the other marks had made no note of the written music.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
