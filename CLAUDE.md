@@ -2009,6 +2009,13 @@ it is no wrapper of another reader. copisteria, homr and Audiveris are yardstick
   circle of 0.44 of a head's height against 0.55 or more). A pages pass showed it where no count moved: the new head
   stood a step off with the wrong length, and a dotted half note elsewhere on the page lost its dot. Read the notes of
   every page that a first form changes, also where its score does not move.
+- A shape that a census found too common for a rule on its own can be rare where an older rule already asks. Two heads
+  whose short stems cross were 18 places in the music of LitChoir's scans (quarter rests, sharps and true notes), and no
+  rule (round 149). Asked only where both heads lie in one stroke as wide as a joined sharp, with their stems in it
+  (`signs.SHARP_FILLED`, at `JOINED_HEAD`'s step), they were one place among 86 such pairs: the heavy sharp whose
+  middle the scan filled. The voices that touch hold their stems away from each other, a chord holds one way. A rule
+  that takes the false heads of a sign also gives the sign to its note: the heads alone left the note without its
+  sharp.
 - `experiments/` holds the record of the first tests.
 
 ## Rules
