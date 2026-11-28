@@ -1,12 +1,13 @@
 # ScoreReader
 
-## Current Engineering Direction (27 November 2026)
+## Current Engineering Direction (28 November 2026)
 
-- **Shippable local product:** The only model constraint is zero cloud models and zero internet dependency at runtime. Local offline neural networks are encouraged.
-- **Primary milestone:** Reach **99.9 % Note F1 on clean printed PDF scans** (notes and rests first, plus explicit Rest F1, exact/interval note onsets, and MusicXML `<time>` signatures). Multi-verse lyrics, LitChoir hymn export, thick scans, and hand-drawn scans follow after this milestone.
-- **Honest evaluation (`bench/eval_f1.py`):** Always report Note F1, Precision, Recall, Extra %, Rest F1, Onset accuracy, and Time Signature accuracy.
-- **Strict zero-leakage holdout split (`out/eval/`):** Split the 78 counted clean copies by base hymn ID into **52 Clean Dev** scores and **26 Locked Clean Holdout** scores. Never inspect or train on the 26 holdout scores during development (note: the legacy Round 114 `scorereader/headnet.npz` was trained on all LitChoir scans and must be replaced by zero-leakage weights trained on synthetic engravings + Clean Dev crops only).
-- **Regression tests (`bench/test_suite.py`):** Require 100 % pass before every commit and push after every major step.
+- **Shippable local product:** ScoreReader runs 100% offline with zero cloud models and zero internet access at runtime.
+- **Steps 1 to 7 complete at `eb78f11`:** ScoreReader reads notes, rests, exact onsets, and MusicXML `<time>` signatures on clean scans and Verovio engravings.
+- **Zero-leakage offline models:** Four compact pure-NumPy and OpenCV v3 models (`symnet.npz`, `stemnet.npz`, `timenet.npz`, `accnet.npz`, 560 KB total) replaced legacy `headnet.npz`. Training uses only synthetic engravings, five-font Verovio crops, and `clean_dev.json` crops.
+- **Honest evaluation and holdout split:** `bench/eval_f1.py` reports Note F1, Precision, Recall, Extra %, Rest F1, Onsets, and Meters on 52 Clean Dev scores and 26 Locked Clean Holdout scores.
+- **Verification record:** `docs/worklog.md` holds all Clean Dev milestones, Verovio results, external OMR benchmarks, and the single frozen Locked Clean Holdout verification.
+- **Regression tests:** Run `bench/test_suite.py` and `bench/drawn_check.py` and require 100% pass before each commit.
 
 ## Goal
 

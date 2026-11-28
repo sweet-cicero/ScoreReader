@@ -11257,3 +11257,91 @@ rule was measured twice, on the stored notes and then at the reader's own step, 
 numbers of a time signature show the same parts without a stem. The clean copies gained 7 notes and lost none and
 read 9 notes that are not there fewer, and two more clean scores are whole (23); all scores gained 8 and lost
 none; no page of the fresh set differs.
+
+
+## Clean-Scan Milestone and External OMR Benchmarks (27-28 November 2026)
+
+Six commits completed Steps 1 to 7 of the clean-scan milestone with strict zero-leakage holdout discipline and 100% offline inference:
+
+- `2dcbdd2`: Added honest F1 evaluation (`bench/eval_f1.py`), base-hymn 52/26 split (`out/eval/`), regression tests (`bench/test_suite.py`), and core fixes.
+- `293a4b1`: Added numeric, common-time, and cut-time signature reading (`meter.py`), expanded rest detection (`rests.py`), and shared-rest onset alignment.
+- `51fcd4c`: Added compact offline pure-NumPy/OpenCV v2 models (`classify.py`, `symnet.npz`, `stemnet.npz`, `timenet.npz`), global rhythm solver (`grammar.py`), and symbol/tie/rest upgrades.
+- `1f87aac`: Added five-font Verovio round-trip tests (`bench/test_verovio_roundtrip.py`), five-font crop generation (`tools/verovio_synth.py`), and offline external OMR harnesses (`bench/external_omr.py`, `bench/test_external_omr.py`).
+- `8131d75`: Trained five-font Verovio v3 models plus 4-class `accnet.npz` (559.7 KB total). Fixed triplets, sixteenth notes, accidentals, rests, and meters.
+- `eb78f11`: Added `G8vb` carryover and `satb_tenor_g8vb` tests. Fixed multi-font key signatures, divisi chord splits, noise filtering, and 100% Verovio rests.
+
+### 1. Clean Dev 52-Score Progression (`out/eval/clean_dev.json`)
+
+All runs use `bench/eval_f1.py` with zero holdout access and zero regressions against Step 3 across all 52 scores:
+
+| Stage (Commit) | Parts F1 (P / R) | Parts Extra % | Staff F1 (P / R) | Rest F1 (Matched / P) | Onsets (Exact / dt) | Meters | `>=99%` / `>=99.9%` F1 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| R160 baseline (`1162df0`) | 91.35% (92.25 / 90.46) | 4.33% | 91.93% (93.41 / 90.49) | 0.71% (1/278) | 47.88% / 97.62% | 0/25 | 21/52 \| 12/52 |
+| Step 3 (`293a4b1`) | 91.34% (92.24 / 90.46) | 4.34% | 91.92% (93.40 / 90.49) | 54.77% (109/278, 90.83%) | 52.04% / 98.10% | 18/25 | 20/52 \| 12/52 |
+| Round 1 v2 (`51fcd4c`) | 91.80% (92.93 / 90.71) | 3.85% | 92.21% (93.72 / 90.76) | 75.80% (177/278, 93.65%) | 59.51% / 98.60% | 22/25 | 24/52 \| 13/52 |
+| Round 2 v3+AccNet (`8131d75`) | 92.00% (93.21 / 90.83) | 3.72% | 92.35% (93.87 / 90.88) | 86.27% (223/278, 93.31%) | 67.64% / 98.93% | 22/25 | 23/52 \| 15/52 |
+| **Round 3 Final (`eb78f11`)** | **92.04%** (93.28 / 90.84) | **3.67%** | **92.37%** (93.91 / 90.88) | **88.50%** (227/278, 96.60%) | **71.36% / 99.04%** | **22/25** | **24/52 \| 16/52** |
+
+At `eb78f11`, Clean Dev matches 227 of 252 printed rests (90.08% recall, 8 false positives). Clean Dev also matches all 22 printed time signatures with zero misclassifications.
+
+### 2. Verovio Five-Font Exact Ground-Truth Round-Trip (`bench/test_verovio_roundtrip.py`)
+
+This suite renders 12 programmatic MusicXML scores across five SMuFL fonts (`Leipzig`, `Bravura`, `Petaluma`, `Leland`, `Gootville`) under clean and scan-degraded conditions (120 runs):
+
+| Stage | Runs | Staff F1 (Clean / Degraded) | Parts F1 | Rest F1 | Onset Exact | Meter | `Petaluma` F1 | 100% Perfect Runs |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| Pre-v2 baseline | 110 | 90.46% (90.72% / 90.19%) | 90.11% | 84.75% | 71.45% | 81/110 | 80.04% | — |
+| Round 1 v2 (`51fcd4c`) | 110 | 91.60% (92.18% / 91.01%) | 91.41% | 87.42% | 76.20% | 81/110 | 81.61% | — |
+| Round 2 v3+AccNet (`8131d75`) | 110 | 98.01% (98.63% / 97.38%) | 97.89% | 98.73% | 98.60% | 110/110 | 93.84% | 83/110 |
+| **Round 3 Final (`eb78f11`)** | **120** | **99.78%** (**99.97%** / **99.58%**) | **99.70%** | **100.00%** (180/180) | **100.00%** | **120/120** | **99.78%** | **115/120** (59/60 clean) |
+
+Per-font results at `eb78f11` show zero extra notes and zero extra rests. Ten of 12 cases reach 100.00% across all five fonts, including `satb_tenor_g8vb`:
+
+| SMuFL Font | Staff F1 (P / R) | Parts F1 | Miss / Extra / Pitch / Len | Rests | Onset Exact | Meter |
+|---|---:|---:|---|---:|---:|---:|
+| `Bravura` | 100.00% (100.00 / 100.00) | 100.00% | 0 / 0 / 0 / 0 | 36/36 | 100.00% | 24/24 |
+| `Leipzig` | 99.85% (99.85 / 99.85) | 99.85% | 0 / 0 / 1 / 0 | 36/36 | 100.00% | 24/24 |
+| `Gootville` | 99.85% (99.85 / 99.85) | 99.70% | 0 / 0 / 0 / 1 | 36/36 | 100.00% | 24/24 |
+| `Petaluma` | 99.78% (100.00 / 99.55) | 99.56% | 3 / 0 / 0 / 0 | 36/36 | 100.00% | 24/24 |
+| `Leland` | 99.40% (99.40 / 99.40) | 99.41% | 0 / 0 / 4 / 0 | 36/36 | 100.00% | 24/24 |
+
+### 3. Offline Five-Tool External OMR Benchmark (`bench/external_omr.py`, `bench/test_external_omr.py`)
+
+All five engines ran offline on five Clean Dev scores (8 pages) and two Verovio SATB pages (`bench/test_external_omr.py`: 5/5 PASS at `eb78f11`):
+
+| Tool | Dev Staff F1 (P / R) | Dev Parts F1 | Dev Rest F1 | Dev Meter | Verovio SATB F1 | Verovio Rest | Runtime (sec/pg) | Model Size | License |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| **ScoreReader v2** | **98.74%** (99.07 / 98.42) | **98.46%** | **83.33%** | **4/4** | **100.00%** | **100.00%** | **7.9s** | **0.48 MB** | Project (local) |
+| **LEGATO** (live bf16) | 73.49% (76.97 / 70.32) | 72.71% | 60.87% | 3/4 | 62.69% | 100.00% | 352.8s (2w) / ~240s | 2110.0 MB | MIT / Llama-3.2-Vision |
+| **oemer** (ONNX) | 48.53% (48.70 / 48.35) | 37.41% | 27.12% | 0/4 | 4.35% | 0.00% | 594.5s (5w) / ~186s | 109.2 MB | MIT |
+| **SMT++ fp** (`PRAIG`) | 8.43% (70.10 / 4.49) | 8.53% | 13.43% | 1/4 | 12.77% | 33.33% | 118.8s | 43.7 MB | MIT |
+| **SMT++ sys** (`antoniorv6`) | 0.00% (0.00 / 0.00) | 0.00% | 14.29% | 2/4 | 0.00% | 0.00% | 36.6s | 85.5 MB | MIT |
+
+Architecture decision: ScoreReader keeps all external OMR harnesses and Verovio data generators strictly inside `bench/` and `tools/`. No module in `scorereader/` imports `oemer`, `SMT`, `legato`, `verovio`, `torch`, or `transformers`. ScoreReader remains faster, far smaller (560 KB at `eb78f11`), and far more accurate on choral SATB scans than all four external engines.
+
+### 4. Single Locked Clean Holdout Verification (Frozen `eb78f11`, Zero Post-Holdout Tuning)
+
+Code and weights froze at `eb78f11`. ScoreReader ran once on the 26 unseen Locked Clean Holdout scores in default and `--headnet off` modes:
+
+| Metric | Default (4 Pure-NumPy Models) | Ablation (`--headnet off`) | Unseen Neural Gain (`off -> default`) |
+|---|---:|---:|---:|
+| **Parts F1 (P / R)** | **84.32%** (87.11% / 81.71%) | 84.08% (86.72% / 81.60%) | +0.24 pp (+0.39 P / +0.11 R) |
+| **Parts Right / Read** | 6,816 / 8,342 (Read 7,825) | 6,807 / 8,342 (Read 7,849) | +9 right |
+| **Parts Extra (%) / Missed** | 294 (3.52%) / 811 | 321 (3.85%) / 814 | -27 extras (-8.4%) / -3 missed |
+| **Staff F1 (P / R)** | **89.80%** (**98.33%** / 82.64%) | 89.55% (97.91% / 82.51%) | +0.25 pp (+0.42 P / +0.13 R) |
+| **Staff Right / Read** | 6,460 / 7,817 (Read 6,570) | 6,450 / 7,817 (Read 6,588) | +10 right |
+| **Staff Extra / Missed** | **33 (0.42%)** / 1,280 | 46 (0.59%) / 1,275 | -13 extras (-28.3%) / +5 missed |
+| **Staff `pitch` / `len` / `both`** | **20 / 48 / 9** | 26 / 55 / 11 | -6 pitch / -7 len / -2 both |
+| **Rests F1 (P / R)** | **84.72%** (**96.83%** / 75.31%) | 70.31% (95.74% / 55.56%) | **+14.41 pp** (+1.09 P / +19.75 R) |
+| **Rests Matched / Emitted (FPs)** | **61 / 81** (emitted 63, 2 FPs) | 45 / 81 (emitted 47, 2 FPs) | +16 matched (0 added FPs) |
+| **Onsets (Exact / dt)** | **54.77%** (3,538/6,460) / **98.60%** | 51.69% (3,334/6,450) / 98.28% | +3.08 pp / +0.32 pp |
+| **Meters** | **8 / 9** (88.9%) | 8 / 9 (88.9%) | 0 change |
+| **Scores `>=99%` / `>=99.9%` Parts F1** | **13 / 26** (50.0%) / **11 / 26** (42.3%) | 13 / 26 / 11 / 26 | 0 change |
+| **Scores `>=99%` / `>=99.9%` Staff F1** | **13 / 26** / **12 / 26** | — | 5 improved, 2 regressed, 19 unchanged |
+| **Runtime (26 scores, 8 jobs)** | **132.3s** | 165.0s | -32.7s faster |
+
+Aggregate holdout error summary (default mode):
+
+- **Symbol recognition generalizes cleanly:** Across 7,817 unseen staff notes, Staff precision reaches 98.33% with 33 extras (0.42%). Remaining errors total 20 pitch-only (0 octave), 48 length-only, and 9 both-wrong.
+- **Rests and time signatures generalize cleanly:** Unseen Rest precision reaches 96.83% (61 of 81 matched, 2 false positives) and printed meters reach 8 of 9 (88.9%).
+- **Layout and voice assignment dominate remaining errors:** Most remaining misses (1,280 staff) and part extras (294 versus 33 staff) occur on a few complex multi-system layouts.

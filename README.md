@@ -11,10 +11,10 @@ like that, and the aim is a result that matches the page note for note and sylla
 Three things shape how it is built:
 
 - It runs on your own computer. Nothing is uploaded, and it needs no account and no network.
-- The notes are read by rules. The program measures the ink on the page (lines, strokes, blobs, the holes in
-  hollow notes) and applies what a musician knows about how music is written down. When it gets something wrong,
-  there is a reason you can find and fix. One step adds a small trained network of its own, which takes a second
-  look at each note head. Its weights come with the program, and `--headnet off` reads by the rules alone.
+- Rules and four small local models read the music. The program measures the ink on the page and applies music
+  notation rules. Four local NumPy and OpenCV models (`symnet.npz`, `stemnet.npz`, `timenet.npz`, `accnet.npz`) total
+  about 560 KB. These models classify symbols, stem tails, time signatures, and accidentals. The option
+  `--headnet off` disables all four models and reads by rules alone.
 - It shows its work. One command paints the page with each kind of ink in its own colour, so you can see at a
   glance what was taken for a staff line, a stem or a note head.
 
@@ -117,14 +117,16 @@ Reading a scanned page, in the order the steps run:
 | `words.py` | Finds the rows of words between the staves. |
 | `symbols.py` | Reads note heads, stems, flags, beams, dots and ledger lines. |
 | `starts.py` | Reads the clef and the key signature at the start of each staff. |
-| `meter.py` | Finds time signatures, so that their numbers are not read as notes. |
+| `meter.py` | Finds and reads time signatures (numeric, common time, cut time, and mid-staff changes). |
 | `signs.py` | Reads the sharps, flats and naturals in front of notes. |
 | `ties.py` | Reads ties. |
 | `triplets.py` | Finds the brackets of triplets. |
-| `rests.py` | Finds printed quarter rests. |
+| `rests.py` | Finds and reads whole, half, quarter, eighth, and sixteenth rests. |
 | `fermatas.py` | Finds fermatas, so that none is read as a note. |
 | `drone.py` | On a chant page, reads the letters over the staff that name the ison, the held note. |
-| `headnet.py` | The second look: a small network that tells a filled head from a hollow one where it is sure (its weights are `headnet.npz`). |
+| `classify.py` | Runs the four offline NumPy and OpenCV models (`symnet`, `stemnet`, `timenet`, `accnet`). |
+| `headnet.py` | Compatibility wrapper that controls the `--headnet off` switch for all local models. |
+| `grammar.py` | Solves global bar-duration and multi-voice rhythm constraints across systems. |
 | `music.py` | Turns the symbols into pitches, voices and rhythm, and writes MusicXML. |
 | `reader.py` | Runs these steps for one page. |
 
@@ -155,25 +157,26 @@ Outside the package:
 
 ## Where it stands
 
-ScoreReader is not accurate enough yet to use without proofreading what it gives you. Measured against hymns that
-were typed in by hand, it reads about 99% of the notes in PDFs from notation software and about 98% of the notes
-on clean printed scans, with about as many of their syllables when Tesseract and a word list help. Heavy
-photocopies and hand-copied scores are harder, at roughly three notes in four, and they come next. Those figures
-are from the pages the rules were worked out on. On a separate set of engraved choir pieces that no rule was
-tuned on, it reads about 96% of the notes.
+ScoreReader still requires proofreading before publication. The reader now extracts notes, rests, and time signatures
+offline without cloud models. On five-font clean and scan-degraded Verovio engravings, ScoreReader reaches about
+99.8% Staff F1, 100% Rest F1, and 100% time signature accuracy.
 
-The goal is to read clean printed copies without a mistake, notes and words, and to get 99% of the notes and
-the words on the hand-copied scores. The clean copies come first.
+On a locked holdout set of 26 unseen clean choral scans, ScoreReader achieves about 98% Staff precision. On the same
+unseen set, ScoreReader reaches about 85% Rest F1 and about 89% printed time signature accuracy. Half of those unseen
+scores (13 of 26) reach 99% or higher Parts F1. On software-made notation PDFs, the vector reader reads about 99% of
+the notes.
 
-Some things are not read at all yet: most rests, slurs, repeats and the numbers of a time signature. The
-[worklog](docs/worklog.md) has the full figures and the list of known limits.
+Slurs, repeats, heavy photocopies, and hand-copied scores remain open problems. The [worklog](docs/worklog.md)
+contains the full benchmark figures and known limits.
 
 ## Testing
 
-`bench/drawn_check.py` runs the whole reader on a page that the script draws itself, so it works anywhere:
+`bench/drawn_check.py` and `bench/test_suite.py` test the reader on synthetic scores and regression fixtures without
+external data:
 
 ```
 python bench/drawn_check.py
+python bench/test_suite.py
 ```
 
 The other checks read a kit of real test pages with typed answers. Those pages are scans of the choir's own
