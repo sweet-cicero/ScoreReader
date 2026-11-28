@@ -597,9 +597,13 @@ def _way(thin: np.ndarray, lines: np.ndarray, one: dict, two: dict, space: float
                     return True
                 continue
             ends = bool(TIE_ENDS) and not low and _ends(way, column, first, last, space)
-            if way['end'] < last - side and not (TIE_TO_LINE and way['end'] + way['tail'] >= last - side
-                                                 and way['end'] >= last - TIE_TO_LINE[0] * space
-                                                 and count >= TIE_TO_LINE[1] * (last - way['end'])) and not ends:
+            # A long, high-visibility bow on a degraded print may break just past a barline slightly before TIE_SIDE.
+            long_degraded = (not low and count >= 5.0 * space and way['end'] >= last - int(round(1.20 * space))
+                             and way['seen'] >= 0.80 * count and way['seen'] + way['hidden'] >= 0.95 * count)
+            if way['end'] < last - side and not long_degraded and not (
+                    TIE_TO_LINE and way['end'] + way['tail'] >= last - side
+                    and way['end'] >= last - TIE_TO_LINE[0] * space
+                    and count >= TIE_TO_LINE[1] * (last - way['end'])) and not ends:
                 continue
             if abs(way['rows'][-1] - two['cy']) > high:
                 continue
@@ -929,9 +933,10 @@ def read_ties(layers: dict, heads: list[dict], before: list | None = None) -> li
                     two = other
                     break
                 # The other note of a chord stands beside the second head, not between the two: it is in its column
-                # and has its stems. (A note of another voice there shows that this voice went on to another place.)
+                # and has its stems (or is a second-interval chord partner offset by one head width at the same beat).
                 if TIE_COLUMN and any(round(head['place']) == place and abs(head['cx'] - other['cx']) <= TIE_COLUMN * space
                                       and (voices[id(head)] == voices[id(other)]
+                                           or abs(round(other['place']) - place) <= 1
                                            or (TIE_SHARED and voices[id(other)] and voices[id(other)] < voices[id(head)]))
                                       for head in own[number + 1:] if head is not other):
                     continue

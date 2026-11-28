@@ -157,7 +157,7 @@ def _attrs(
     fifths: int | None = None,
     time_sig: tuple[int, int, str | None] | None = None,
     staves: int | None = None,
-    clefs: list[tuple[int, str, int]] | None = None,
+    clefs: list[tuple[int, str, int] | tuple[int, str, int, int]] | None = None,
 ) -> str:
     parts = ['<attributes>']
     if divisions is not None:
@@ -170,8 +170,11 @@ def _attrs(
         parts.append(f'<time{sa}><beats>{b}</beats><beat-type>{bt}</beat-type></time>')
     if staves is not None:
         parts.append(f'<staves>{staves}</staves>')
-    for num, sign, line in (clefs or []):
-        parts.append(f'<clef number="{num}"><sign>{sign}</sign><line>{line}</line></clef>')
+    for clef_spec in (clefs or []):
+        num, sign, line = clef_spec[0], clef_spec[1], clef_spec[2]
+        oct_chg = clef_spec[3] if len(clef_spec) > 3 else 0
+        oct_xml = f'<clef-octave-change>{oct_chg}</clef-octave-change>' if oct_chg else ''
+        parts.append(f'<clef number="{num}"><sign>{sign}</sign><line>{line}</line>{oct_xml}</clef>')
     parts.append('</attributes>')
     return ''.join(parts)
 
@@ -209,7 +212,7 @@ def _satb_bar(
 
 
 def build_roundtrip_suite() -> list[dict[str, Any]]:
-    """Builds the 11-case programmatic ground-truth MusicXML benchmark suite."""
+    """Builds the 12-case programmatic ground-truth MusicXML benchmark suite."""
     cases: list[dict[str, Any]] = []
 
     # 1. SATB 4-part hymn in D major (+2 sharps), 4/4, ties across barline, 2nd/3rd chords
@@ -660,6 +663,159 @@ def build_roundtrip_suite() -> list[dict[str, Any]]:
         'staves': 2,
         'voices_per_staff': [2, 2],
         'features': ['divisi_2nd_3rd', 'satb', 'meter_common'],
+    })
+
+    # 12. 2-staff TTBB men's choir with printed Tenor G8vb (clef-octave-change=-1) + Bass F4, G major (+1 sharp), 4/4, 8 bars (2 systems).
+    # Uses 2 staves (not 3) so ScoreReader's 3-staff choir shortcut cannot mask missed printed-8 detection.
+    m12 = [
+        _satb_bar(
+            [_n('B', 3, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('C', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('D', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('E', 4, 4, 'quarter', stem='up', voice=1, staff=1)],
+            [_n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('A', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('B', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('C', 4, 4, 'quarter', stem='down', voice=2, staff=1)],
+            [_n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('C', 3, 4, 'quarter', stem='up', voice=5, staff=2)],
+            [_n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('A', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('B', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('C', 3, 4, 'quarter', stem='down', voice=6, staff=2)],
+            16,
+            prefix=_attrs(
+                divisions=4,
+                fifths=1,
+                time_sig=(4, 4, None),
+                staves=2,
+                clefs=[(1, 'G', 2, -1), (2, 'F', 4)],
+            ),
+        ),
+        _satb_bar(
+            [_n('D', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('C', 4, 2, 'eighth', stem='up', voice=1, staff=1, beam1='begin'),
+             _n('B', 3, 2, 'eighth', stem='up', voice=1, staff=1, beam1='end'),
+             _n('A', 3, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('B', 3, 4, 'quarter', stem='up', voice=1, staff=1)],
+            [_n('B', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('A', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('F', 3, 4, 'quarter', alter=1, stem='down', voice=2, staff=1),
+             _n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1)],
+            [_n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2)],
+            [_n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('C', 3, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('D', 3, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2)],
+            16,
+        ),
+        _satb_bar(
+            [_n('C', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('B', 3, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('A', 3, 4, 'quarter', stem='up', voice=1, staff=1),
+             _r(4, 'quarter', voice=1, staff=1, display=('E', 4))],
+            [_n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('F', 3, 4, 'quarter', alter=1, stem='down', voice=2, staff=1),
+             _r(4, 'quarter', voice=2, staff=1, display=('E', 3))],
+            [_n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _r(4, 'quarter', voice=5, staff=2, display=('A', 3))],
+            [_n('C', 3, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('D', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _r(4, 'quarter', voice=6, staff=2, display=('A', 2))],
+            16,
+        ),
+        _satb_bar(
+            [_n('B', 3, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('C', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('D', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('C', 4, 4, 'quarter', stem='up', voice=1, staff=1)],
+            [_n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('A', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('B', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('A', 3, 4, 'quarter', stem='down', voice=2, staff=1)],
+            [_n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2)],
+            [_n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('A', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('B', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('A', 2, 4, 'quarter', stem='down', voice=6, staff=2)],
+            16,
+        ),
+        _satb_bar(
+            [_n('D', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('E', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('D', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('C', 4, 4, 'quarter', stem='up', voice=1, staff=1)],
+            [_n('B', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('C', 4, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('B', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('A', 3, 4, 'quarter', stem='down', voice=2, staff=1)],
+            [_n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('C', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2)],
+            [_n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('C', 3, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('B', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('A', 2, 4, 'quarter', stem='down', voice=6, staff=2)],
+            16,
+        ),
+        _satb_bar(
+            [_n('B', 3, 2, 'eighth', stem='up', voice=1, staff=1, beam1='begin'),
+             _n('C', 4, 2, 'eighth', stem='up', voice=1, staff=1, beam1='end'),
+             _n('D', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('C', 4, 4, 'quarter', stem='up', voice=1, staff=1),
+             _n('B', 3, 4, 'quarter', stem='up', voice=1, staff=1)],
+            [_n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('B', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('A', 3, 4, 'quarter', stem='down', voice=2, staff=1),
+             _n('G', 3, 4, 'quarter', stem='down', voice=2, staff=1)],
+            [_n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('E', 3, 4, 'quarter', stem='up', voice=5, staff=2),
+             _n('D', 3, 4, 'quarter', stem='up', voice=5, staff=2)],
+            [_n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('C', 3, 4, 'quarter', stem='down', voice=6, staff=2),
+             _n('G', 2, 4, 'quarter', stem='down', voice=6, staff=2)],
+            16,
+        ),
+        _satb_bar(
+            [_n('B', 3, 8, 'half', stem='up', voice=1, staff=1),
+             _n('A', 3, 8, 'half', stem='up', voice=1, staff=1)],
+            [_n('G', 3, 8, 'half', stem='down', voice=2, staff=1),
+             _n('F', 3, 8, 'half', alter=1, stem='down', voice=2, staff=1)],
+            [_n('D', 3, 8, 'half', stem='up', voice=5, staff=2),
+             _n('D', 3, 8, 'half', stem='up', voice=5, staff=2)],
+            [_n('D', 3, 8, 'half', stem='down', voice=6, staff=2),
+             _n('D', 2, 8, 'half', stem='down', voice=6, staff=2)],
+            16,
+        ),
+        _satb_bar(
+            [_n('G', 3, 16, 'whole', voice=1, staff=1)],
+            [_n('D', 3, 16, 'whole', voice=2, staff=1)],
+            [_n('B', 2, 16, 'whole', voice=5, staff=2)],
+            [_n('G', 2, 16, 'whole', voice=6, staff=2)],
+            16,
+        ),
+    ]
+    cases.append({
+        'id': 'satb_tenor_g8vb',
+        'musicxml': _wrap(m12, 'TTBB Tenor G8vb'),
+        'staves': 2,
+        'voices_per_staff': [2, 2],
+        'features': ['satb', 'clef_g8vb', 'keysig_sharps', 'meter_4_4', 'beamed_8th'],
     })
 
     return cases

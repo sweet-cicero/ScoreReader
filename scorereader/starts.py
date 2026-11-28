@@ -29,7 +29,7 @@ PAIR_FLAT = (0.4, 0.45, 0.75, 1.4)   # two strokes are a flat with a high bowl, 
 #                              this share of its height, and the left one is this high (None: every pair is a sharp)
 FIT = 1.3                    # a sign may stand this many pitch places from its place in the order
 FLAT_DRIFT = (-0.5, 0.3)     # the left edge of a flat's stroke moves at most this far to the left and to the right, in staff spaces
-STEP = (0.45, 1.7)           # the next sign of a key signature begins this far right of the last, in staff spaces
+STEP = (0.45, 1.85)          # the next sign of a key signature begins this far right of the last, in staff spaces
 PRIOR = 1.5                  # the weight of the custom of choir music among the witnesses for a clef (a clef's shape is 1)
 FIRST = (1.6, 6.5)           # the first sign begins this far right of the clef's left edge, in staff spaces
 USUAL_START = 1.5   # a staff whose notes seem to begin this many staff spaces later than on the page's other staves begins as they do (0: off)
@@ -299,6 +299,37 @@ def stroke_sides(layers: dict, stroke: dict, space: float) -> dict | None:
             'foot': (float(np.median([span[0] for span in foot])) - edge0) / space}
 
 
+def _has_left_arc(layers: dict, stroke: dict, space: float) -> bool:
+    """Returns True when connected ink extends to the left of both the upper and lower halves of a stroke.
+
+    A cut-time symbol has a curved C arc on both sides of its center slash. A flat stem has no left arc.
+    """
+    free = _free(layers)
+    height, width = free.shape
+    x0 = max(0, int(stroke['x0'] - 1.1 * space))
+    x1 = min(width, int(stroke['x1'] + 0.5 * space) + 1)
+    y0 = max(0, int(stroke['top']))
+    y1 = min(height, int(stroke['bottom']) + 1)
+    left_cut = int(stroke['x0']) - x0 - 1
+    if left_cut < 2 or y1 - y0 < 4 or x1 <= x0:
+        return False
+    _, labels = cv2.connectedComponents(free[y0:y1, x0:x1], connectivity=8)
+    own = np.unique(labels[:, max(0, int(stroke['x0']) - x0):min(x1 - x0, int(stroke['x1']) - x0 + 1)])
+    kept = np.isin(labels, own[own > 0])
+    left_mask = kept[:, :left_cut]
+    mid = left_mask.shape[0] // 2
+    upper, lower = left_mask[:mid], left_mask[mid:]
+    u_cols = np.flatnonzero(upper.any(axis=0))
+    l_cols = np.flatnonzero(lower.any(axis=0))
+    if not len(u_cols) or not len(l_cols):
+        return False
+    u_reach = (int(stroke['x0']) - (x0 + int(u_cols[0]))) / space
+    l_reach = (int(stroke['x0']) - (x0 + int(l_cols[0]))) / space
+    u_ink = float(upper.sum()) / (space * space)
+    l_ink = float(lower.sum()) / (space * space)
+    return u_reach >= 0.50 and l_reach >= 0.50 and u_ink >= 0.15 and l_ink >= 0.15 and (u_ink + l_ink) >= 0.45
+
+
 def _foot_cut(layers: dict, stroke: dict, space: float) -> dict | None:
     """The stroke cut at the last row that holds ink of its own (see FLAT_FOOT), or None where its lowest row holds
     such ink or the cut stroke is lower than FLAT_FOOT."""
@@ -396,8 +427,9 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
             used.add(id(left))
             used.add(id(right))
             break
+    max_wide = 1.2 if beams else 1.35
     for stroke in slim:
-        if id(stroke) in used or stroke['wide'] > 1.2:
+        if id(stroke) in used or stroke['wide'] > max_wide:
             continue
         # A flat: a bare stroke at the top, a bowl at the right of its lower part, and a left edge that stays in place
         # down to the foot.
@@ -411,13 +443,16 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
             # on under it, and its lowest rows hold no ink of its own.
             stroke, sides = cut, cut_sides
         stroke['sides'] = sides
-        if sides and sides['top'] <= 0.65 and 0.3 <= sides['bulge'] <= 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
-                and sides['foot'] <= 0.3:
+        cut_slash = (not beams and stroke['wide'] <= 0.45 and stroke['high'] >= 2.5
+                     and abs(stroke['place']) <= 0.6 and _has_left_arc(layers, stroke, space))
+        emitted_sharp = False
+        if not cut_slash and sides and sides['top'] <= 0.65 and 0.3 <= sides['bulge'] <= 1.0 \
+                and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] and sides['foot'] <= 0.3:
             signs.append({'kind': 'flat', 'x0': float(stroke['x0']), 'x1': float(stroke['x0'] + (sides['thick'] + sides['bulge']) * space),
                           'place': pitch_place(staff, stroke['bottom'] - 0.6 * space), 'sides': sides,
                           'bowl_place': pitch_place(staff, sides['bowl']) if sides['bowl'] is not None else None,
                           'top': stroke['top'], 'bottom': stroke['bottom']})
-        elif FLAT_GLUED and sides and sides['top'] <= 0.65 and sides['bulge'] > 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
+        elif not cut_slash and FLAT_GLUED and sides and sides['top'] <= 0.65 and sides['bulge'] > 1.0 and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] \
                 and sides['foot'] <= 0.3 and stroke['wide'] <= 0.45 and (hole := _bowl_hole(layers, stroke, space)):
             # A flat whose bowl touches the ledger line or the head of its note: the ink goes on to the right, but the
             # bowl still closes in its small piece of paper beside the lower part of the stroke.
@@ -428,6 +463,7 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
             # Two strokes that the ink of a small hand joined.
             signs.append({'kind': 'sharp', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'place': stroke['place'],
                           'joined': True, 'top': stroke['top'], 'bottom': stroke['bottom']})
+            emitted_sharp = True
             if FLAT_HEAVY and beams and sides and sides['top'] <= FLAT_HEAVY and sides['bulge'] > 1.0 \
                     and FLAT_DRIFT[0] <= sides['drift'] <= FLAT_DRIFT[1] and sides['foot'] <= 0.3:
                 # The top of a sharp holds its two strokes; a bare stroke there, with the ink of a bowl at the right of
@@ -449,6 +485,12 @@ def sign_candidates(layers: dict, staff: dict, strokes: list[dict], beams: bool 
             signs.append({'kind': 'sharp', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']),
                           'place': pitch_place(staff, (cut['top'] + cut['bottom']) / 2), 'joined': True, 'bow': True,
                           'top': cut['top'], 'bottom': cut['bottom']})
+            emitted_sharp = True
+        if not beams and not emitted_sharp and 0.55 < stroke['wide'] <= max_wide and stroke['high'] <= 3.4:
+            # A wide handwritten sharp can pass the flat-bowl shape test.
+            # Emit a joined sharp candidate for key-signature chains without changing accidental detection.
+            signs.append({'kind': 'sharp', 'x0': float(stroke['x0']), 'x1': float(stroke['x1']), 'place': stroke['place'],
+                          'joined': True, 'top': stroke['top'], 'bottom': stroke['bottom']})
     return sorted(signs, key=lambda sign: sign['x0'])
 
 
@@ -461,6 +503,7 @@ def chain(signs: list[dict], kind: str, clef: str, start: float, least: float, s
     and `present` (a function: is there ink of a sign at this column and pitch place?), two signs that follow each
     other at the places of the second and third sign (or later ones) stand for the whole signature, when ink
     stands where the signs before them must be. Those signs are in the chain with 'gap': True."""
+    clef = 'G' if clef == 'G8vb' else clef
     places = (SHARP_PLACES if kind == 'sharp' else FLAT_PLACES)[clef]
     best, best_miss = [], 0.0
     own = [sign for sign in signs if sign['kind'] == kind]
@@ -523,6 +566,7 @@ def reach_key(start: dict, staff: dict, clef: str, kind: str, count: int) -> lis
     clef and the chain stops before the page's number of signs, the next signs may stand further from the last
     one than STEP allows. A hand spaces its key signature wide. [the chain] when it then has `count` signs, else []."""
     space = staff['space']
+    clef = 'G' if clef == 'G8vb' else clef
     places = (SHARP_PLACES if kind == 'sharp' else FLAT_PLACES)[clef]
     found = list((start['chains'].get((clef, kind)) or ([], 0.0))[0])
     if not found or any(sign.get('gap') for sign in found) or len(found) >= count:
@@ -798,6 +842,7 @@ def key_end(layers: dict, staff: dict, first: float, last: float, clef: str, key
         inside = np.flatnonzero(part)
         marks.append((first + left, first + right - 1, (right - left) / space, (inside[-1] - inside[0] + 1) / space,
                       part.sum() / space / space, pitch_place(staff, top + float((part * np.arange(len(part))).sum() / part.sum()))))
+    clef = 'G' if clef == 'G8vb' else clef
     order, lift = (SHARP_PLACES[clef], 0.0) if key > 0 else (FLAT_PLACES[clef], FLAT_MIDDLE)
     edge = first
     for skip in range(min(len(marks), KEY_PLACES[3] + 1)):
@@ -893,7 +938,9 @@ def vote_key(rows: list[dict], before: int | None = None) -> int:
         # A staff whose clef the copy lost, and that shows no sign, says nothing about the key.
         if row['clef'] or row['key']:
             votes[row['key']] = votes.get(row['key'], 0) + 1
-    key = max(votes, key=lambda value: (votes[value], value != 0)) if votes else 0
+    strong = {row['key'] for row in rows if row['key'] and not row.get('weak')
+              and (not row['clef'] or row.get('key_clef') == row['clef'])}
+    key = max(votes, key=lambda value: (votes[value], value in strong if value != 0 else False, value == 0)) if votes else 0
     if key == 0 and KEY_LOST:
         shown = {}
         clear = {row['key'] for row in rows if row['key'] and row['miss'] <= KEY_LOST[0] and not row.get('weak')}
@@ -1008,7 +1055,9 @@ def read_starts(layers: dict, key_before: int | None = None, clefs_before: list[
     if CLEF_BEFORE and clefs_before and len(clefs_before) == width:
         # The hymn teaches the page: the staves keep their clefs from page to page.
         for number, clef in enumerate(clefs_before):
-            tally[number][clef] += CLEF_BEFORE
+            base_clef = 'G' if clef == 'G8vb' else clef
+            if base_clef in tally[number]:
+                tally[number][base_clef] += CLEF_BEFORE
     clefs, ends = [], []
     # A clef that the copy lost still takes its room: as much as the clefs that the page shows, from the staff's left end.
     rooms = [(start['x1'] - start['left']) / staff['space'] for start, staff in zip(starts, staves) if start['clef']]

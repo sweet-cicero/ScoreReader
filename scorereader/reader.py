@@ -465,7 +465,6 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
         heads = symbols['heads']
         staves = layers['staves']
         begin = read_starts(layers, key_before, clefs_before, key_hymn)
-    system_clefs = {staff['number']: clef for staff, clef in zip(staves, begin['clefs'])}
     key, clefs, ends, keys = begin['key'], list(begin['clefs']), begin['ends'], begin['keys']
     # Notes begin after the clef and the key signature.
     heads = [head for head in heads if head['cx'] > ends[head['staff']] + 0.3 * space]
@@ -634,12 +633,20 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
             p_filled, p_hollow = float(probs[0]), float(probs[1])
             p_whole, p_breve = float(probs[2]), float(probs[3])
-            # Reject high-confidence non-heads (dynamics, rests, fermatas, bar-crossing marks); require
-            # stricter rejection for stemmed hollow heads with clear interior holes.
+            # Reject high-confidence non-heads (dynamics, rests, fermatas, bar-crossing marks).
+            # Protect stemmed hollow heads that have clear interior holes (hole >= 0.15).
             hole = float(head.get('hole', 0.0) or 0.0)
-            drop_thr = 0.015 if (head['stems'] and head['hollow'] and hole >= 0.15) else 0.05
-            if p_head < drop_thr and not head.get('dot'):
+            top_cls = int(probs.argmax())
+            p_top = float(probs[top_cls])
+            strong_hollow = bool(head['stems'] and head['hollow'] and hole >= 0.15)
+            if p_head < 0.02 and top_cls >= 4 and p_top >= 0.90:
                 continue
+            if not head.get('dot'):
+                if strong_hollow:
+                    if p_head < 0.015:
+                        continue
+                elif p_head < 0.05 or (top_cls >= 4 and p_head < 0.36 and p_top > p_head):
+                    continue
             # Flip filled <-> hollow on stemmed heads only when visual ink cues do not contradict SymNet.
             if head['stems']:
                 has_tails = any(head.get('tails', {}).values()) or bool(head.get('flag_ink'))
@@ -718,6 +725,12 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
             if marked and len(marked) >= OCTAVE * len(own):
                 for index in own:
                     clefs[index] = 'G8vb'
+    # When the prior page established G8vb on a staff slot, keep G8vb on continuation pages.
+    if clefs_before and len(clefs_before) == width:
+        for index, staff in enumerate(staves):
+            if clefs[index] == 'G' and clefs_before[staff['number']] == 'G8vb':
+                clefs[index] = 'G8vb'
+    system_clefs = {staff['number']: clef for staff, clef in zip(staves, clefs)}
     # The ison's letters over the staves of a chant page, and the breve that a print sets under a letter for the
     # ison's note: it is no note of the melody (scorereader.drone.BREVE).
     letters = {index: letter_marks(layers, index, clefs[index]) for index in range(len(staves))} if width == 1 else {}

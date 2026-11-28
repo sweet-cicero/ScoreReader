@@ -763,8 +763,11 @@ def _acc_refine(layers: dict, staff: dict, index: int, first: float, full: list[
                 ki = kind_to_idx.get(sign['kind'], 0)
                 p_none, p_own = float(pr[0]), float(pr[ki])
                 heuristic = not (sign.get('pair') or sign.get('joined'))
-                if (heuristic and p_none >= 0.90 and p_own <= 0.06) or (p_none >= 0.97 and p_own <= 0.02):
+                if (heuristic and p_none >= 0.90 and p_own <= 0.06) or (p_none >= 0.90 and p_own <= 0.01):
                     continue
+                best_cls = int(np.argmax(pr[1:])) + 1
+                if best_cls != ki and float(pr[best_cls]) >= 0.96 and p_own <= 0.02 and p_none <= 0.02:
+                    sign = dict(sign, kind=idx_to_kind[best_cls])
                 kept_out.append(sign)
             out = kept_out
     # 2. High-confidence rescue of missed isolated accidentals immediately left of an unsigned head.
@@ -777,8 +780,8 @@ def _acc_refine(layers: dict, staff: dict, index: int, first: float, full: list[
             continue
         x0 = max(int(first) + 1, int(head['x0'] - 1.55 * space))
         x1 = max(x0, int(head['x0'] - 0.10 * space))
-        y0 = max(0, int(head['cy'] - 1.8 * space))
-        y1 = min(bare.shape[0], int(head['cy'] + 1.8 * space))
+        y0 = max(0, int(head['cy'] - 2.3 * space))
+        y1 = min(bare.shape[0], int(head['cy'] + 2.3 * space))
         if x1 - x0 < int(0.35 * space) or y1 - y0 < int(0.8 * space):
             continue
         roi = bare[y0:y1, x0:x1]
@@ -788,7 +791,7 @@ def _acc_refine(layers: dict, staff: dict, index: int, first: float, full: list[
         best_cc = None
         for lab in range(1, ncc):
             cx, cy, cw, ch, area = (int(v) for v in stats[lab])
-            if not (0.35 * space <= cw <= 1.35 * space and 0.9 * space <= ch <= 3.2 * space and area >= 0.18 * space * space):
+            if not (0.35 * space <= cw <= 1.35 * space and 0.9 * space <= ch <= 4.3 * space and area >= 0.18 * space * space):
                 continue
             bx0, by0, bx1, by1 = x0 + cx, y0 + cy, x0 + cx + cw - 1, y0 + cy + ch - 1
             if not (by0 <= head['cy'] + 0.4 * space and by1 >= head['cy'] - 0.4 * space):

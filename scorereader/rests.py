@@ -89,6 +89,80 @@ def _overlaps_music(x0: float, x1: float, y0: float, y1: float, space: float,
     return False
 
 
+def _bridged_sixteenth_rests(layers: dict, ends: list[float], seen: list[tuple[int, float, float]],
+                             sym_w: dict) -> list[dict]:
+    """Recovers sixteenth rests fused to a neighboring note by a thin horizontal staff-line bridge.
+
+    Only emits candidates whose unstripped component was oversized so unmerged rests are never duplicated
+    with eighth_rests(), allowing reader.py's in_rest() filter to strip phantom heads on the rest.
+    """
+    from . import classify
+    space = layers['space']
+    bare = layers['bare'].astype(np.uint8)
+    cands: list[dict] = []
+    for index, staff in enumerate(layers['staves']):
+        rows = staff['rows']
+        y0 = max(0, int(rows[0] - 0.8 * space))
+        y1 = min(bare.shape[0], int(rows[4] + 0.8 * space) + 1)
+        if y1 <= y0:
+            continue
+        bridge_h = max(3, int(round(staff['thick'] + 2))) | 1
+        close_k = np.ones((bridge_h, 1), np.uint8)
+        strip = np.ascontiguousarray(bare[y0:y1])
+        raw_reg = cv2.morphologyEx(strip, cv2.MORPH_CLOSE, close_k)
+        _, rlab, rstats, _ = cv2.connectedComponentsWithStats(raw_reg, connectivity=8)
+        # Zero pure thin horizontal staff-line bridges (paper directly above and below the staff line).
+        cleaned = strip.copy()
+        half_t = max(2, int(round(staff['thick'] / 2.0)) + 2)
+        for row_y in rows:
+            ry = int(round(row_y - y0))
+            r0, r1 = max(0, ry - half_t), min(cleaned.shape[0], ry + half_t + 1)
+            if r0 > 0 and r1 < cleaned.shape[0]:
+                thin = (cleaned[r0 - 1] == 0) & (cleaned[r1] == 0)
+                cleaned[r0:r1, thin] = 0
+        s_reg = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, close_k)
+        cnt, lab, stats, _ = cv2.connectedComponentsWithStats(s_reg, connectivity=8)
+        for k in range(1, cnt):
+            x, y, wide, high, _ = (int(v) for v in stats[k])
+            if x <= ends[index] + 0.3 * space or x + wide > staff['x1']:
+                continue
+            if not (0.85 * space <= wide <= 1.55 * space and 2.0 * space <= high <= 3.2 * space):
+                continue
+            gy = y + y0
+            cx, cy = x + wide / 2.0, gy + high / 2.0
+            middle = (cy - rows[2]) / space
+            if abs(middle) > 1.25:
+                continue
+            if any(si == index and abs(sx - cx) <= 0.6 * space and abs(sy - cy) <= 1.2 * space for si, sx, sy in seen):
+                continue
+            piece = lab[y:y + high, x:x + wide] == k
+            raw_ids = [int(i) for i in np.unique(rlab[y:y + high, x:x + wide][piece]) if i > 0]
+            raw_max_w = max((int(rstats[i][2]) for i in raw_ids), default=0)
+            raw_max_h = max((int(rstats[i][3]) for i in raw_ids), default=0)
+            if raw_max_w <= 1.60 * space and raw_max_h <= 3.5 * space:
+                continue
+            if _max_hole_area(piece, space) >= 0.42:
+                continue
+            cands.append({
+                'staff': index, 'x': cx, 'cy': cy, 'x0': x, 'x1': x + wide, 'top': gy, 'bottom': gy + high,
+                'middle': middle,
+            })
+    if not cands:
+        return []
+    pts = [(c['staff'], float(c['x']), float(c['cy'])) for c in cands]
+    probs_all = classify.classify_points(layers, pts, sym_w)
+    out: list[dict] = []
+    for cand, probs in zip(cands, probs_all):
+        p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
+        if float(probs[8]) >= 0.96 and p_head < 0.02:
+            out.append({
+                'staff': cand['staff'], 'x': cand['x'], 'x0': cand['x0'], 'x1': cand['x1'],
+                'top': cand['top'], 'bottom': cand['bottom'], 'middle': cand['middle'],
+                'kind': '16th', 'length': Fraction(1, 4), 'neural': True, 'prob': float(probs[8]),
+            })
+    return out
+
+
 def quarter_rests(layers: dict, ends: list[float], weights: dict | None = None) -> list[dict]:
     """The printed quarter rests of a page: [{'staff', 'x', 'x0', 'x1', 'top', 'bottom', 'middle', 'kind', 'length'}],
     where 'middle' is how many staff spaces the rest's middle lies under the middle line of its staff.
@@ -174,6 +248,8 @@ def quarter_rests(layers: dict, ends: list[float], weights: dict | None = None) 
             rest for rest, probs in zip(out, probs_all)
             if not (not rest.get('cross') and (float(probs[7]) >= 0.85 or float(probs[8]) >= 0.85) and float(probs[6]) < 0.15)
         ]
+    if sym_w is not None:
+        out = out + _bridged_sixteenth_rests(layers, ends, seen, sym_w)
     return out
 
 
@@ -468,6 +544,9 @@ def eighth_rests(layers: dict, ends: list[float], heads: list[dict], bars: dict[
             p_rest = float(probs[4] + probs[5] + probs[6] + probs[7] + probs[8])
             if p_head >= 0.45 or p_rest < 0.15:
                 continue
+            # Reject quarter rests misread as eighth rests so neural_rest_candidates keeps their 1-beat duration.
+            if float(probs[6]) >= 0.70 and float(probs[7] + probs[8]) < 0.25:
+                continue
             gated.append(rest)
         out = gated
     return out
@@ -570,13 +649,14 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
                 continue
             piece = labels[y:y + high, x:x + wide] == k
             hole_area = _max_hole_area(piece, space)
-            if hole_area >= 0.28:
+            if hole_area >= 0.42:
                 continue
+            has_swing = hole_area < 0.09 and (_slim_rest_swing(piece, space) or _rest_shape(piece, space))
             cands.append({
                 'staff': index, 'x': cx, 'cy': cy, 'x0': x, 'x1': x + wide, 'top': gy, 'bottom': gy + high,
-                'middle': middle, 'is_block': False, 'hole_area': hole_area,
-                'slim_swing': (hole_area < 0.09 and 0.35 * space <= wide <= 0.72 * space
-                               and 1.70 * space <= high <= 2.40 * space and _slim_rest_swing(piece, space)),
+                'middle': middle, 'is_block': False, 'hole_area': hole_area, 'has_swing': has_swing,
+                'slim_swing': (has_swing and 0.35 * space <= wide <= 0.72 * space
+                               and 1.70 * space <= high <= 2.40 * space),
             })
         # Reconnect diagonal eighth rests split in two across a removed staff line without merging adjacent notes.
         small_frags.sort(key=lambda f: (f[1], f[0]))
@@ -645,11 +725,14 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
         lines = [rows[0] + step * (rows[4] - rows[0]) / 4 for step in range(-2, 7)]
         hangs = any(-HANG[0] * space <= y - line <= HANG[1] * space for line in lines)
         sits = any(SIT[0] * space <= y + high - line <= SIT[1] * space for line in lines)
+        # Reject horizontal slurs hanging directly under the top staff line (rows[0]).
+        if hangs and not sits and -2.15 <= middle <= -1.45:
+            continue
         cands.append({
             'staff': index, 'x': (bx0 + bx1) / 2.0, 'cy': at, 'x0': bx0, 'x1': bx1, 'top': y, 'bottom': y + high,
             'middle': middle, 'is_block': True, 'hangs': hangs, 'sits': sits,
             'block_length': _block_length(box, y, high, rows, hangs, sits, bwide),
-            'slim_swing': False,
+            'has_swing': False, 'slim_swing': False,
         })
 
     if not cands:
@@ -658,6 +741,7 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
     probs_all = classify.classify_points(layers, pts, sym_w)
 
     # Pre-score geometry-compatible candidates so cross-staff system alignment can corroborate mid-confidence rests.
+    sys_counts = {i: sum(1 for st in staves if st['system'] == staves[i]['system']) for i in range(len(staves))}
     scored: list[tuple[dict, int, float, np.ndarray]] = []
     for cand, probs in zip(cands, probs_all):
         cls_idx = int(np.argmax(probs))
@@ -667,9 +751,14 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
         if not cand['is_block']:
             hole_area = cand.get('hole_area', 0.0)
             if hole_area >= 0.09:
-                # Allow curled sixteenth rests with closed loops only at very high SymNet confidence.
-                if cls_idx == 8 and prob >= 0.95:
+                # Allow curled sixteenth rests with closed loops only at very high SymNet confidence inside the staff.
+                if cls_idx == 8 and prob >= 0.95 and abs(cand['middle']) <= 1.85:
                     scored.append((cand, cls_idx, prob, probs))
+                continue
+            if cls_idx in (7, 8) and abs(cand['middle']) > 1.85:
+                continue
+            if cls_idx == 6 and sys_counts[cand['staff']] == 1 and not cand.get('has_swing'):
+                # On single-staff melody systems, require a quarter-rest zig-zag swing to reject ornament hooks and detached flags.
                 continue
             if cls_idx not in (6, 7, 8):
                 # Keep slim zig-zag quarter-rest candidates for cross-staff mate rescue when SymNet rules out noteheads.
@@ -706,10 +795,13 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
         if not keep and cls_idx == 6 and prob >= min(threshold, 0.56) and abs(cand['middle']) <= 0.35:
             # Accept centered slim quarter rests above 0.56 (0 FPs across zero-rest Clean Dev scores).
             keep = True
+        if not keep and prob >= min(threshold, 0.38):
+            # Accept rests corroborated directly above or below a high-confidence mate rest on the same system.
+            if _has_mate(cand['staff'], cand['x'], kind, high_anchors, 0.85):
+                keep = True
         if not keep and prob >= min(threshold, 0.48):
-            # Accept mid-confidence rests corroborated by a same-kind rest on another staff of the same system.
-            if _has_mate(cand['staff'], cand['x'], kind, high_anchors, 0.95) \
-                    or _has_mate(cand['staff'], cand['x'], kind, mid_anchors, 0.95):
+            # Accept mid-confidence rests corroborated by a same-kind mate candidate on the same system.
+            if _has_mate(cand['staff'], cand['x'], kind, mid_anchors, 0.95):
                 keep = True
         if not keep and cls_idx == 6 and cand.get('slim_swing') and abs(cand['middle']) <= 0.45:
             # Rescue slim zig-zag quarter rests paired directly above or below a high-confidence mate quarter rest.

@@ -1356,9 +1356,11 @@ def thick_marks(layers: dict) -> list[dict]:
                 line = int(round(layers["staves"][0]["thick"]))
                 if ROOM_SOLID and _loop_room(mask & holes, line, wide, high) and _flag_room(mask, mask & holes, line, wide, high):
                     pass      # a room higher than a head's hole is the loop of a flag: see SOLID_LOOP below
-                elif own_high >= 1.6 * high and own_wide < 1.6 * wide:
+                elif (own_high >= 1.6 * high and own_wide < 1.6 * wide) \
+                        or (own_high >= 1.52 * high and own_wide <= 1.3 * wide and mark['hole'] >= 0.19):
                     over, under = cy - 0.55 * high, own_high - (cy + 0.55 * high)
-                    row = int(round(cy - 0.55 * high)) if over >= 0.6 * high else int(round(cy + 0.55 * high)) if under >= 0.6 * high else None
+                    min_rem = 0.48 * high if (own_wide <= 1.3 * wide and mark['hole'] >= 0.19) else 0.6 * high
+                    row = int(round(cy - 0.55 * high)) if over >= min_rem else int(round(cy + 0.55 * high)) if under >= min_rem else None
                     if row is not None:
                         cut = (mask[:row], holes[:row], x, y), (mask[row:], holes[row:], x, y + row)
                 elif own_wide >= 1.6 * wide and own_high < 1.6 * high:
@@ -1476,14 +1478,50 @@ def thick_marks(layers: dict) -> list[dict]:
             falling = mask[:middle_y, :middle_x].sum() + mask[middle_y:, middle_x:].sum()     # upper left and lower right
             cut, tall = int(round(wide)), int(round(high))
             left, right = np.zeros_like(mask), np.zeros_like(mask)
-            if falling <= 0.35 * rising:
+            diag_lim = 0.42 if mark['hole'] <= 0.02 else 0.35
+            if falling <= diag_lim * rising:
                 left[own_high - tall:, :cut] = mask[own_high - tall:, :cut]
                 right[:tall, own_wide - cut:] = mask[:tall, own_wide - cut:]
                 parts = [_mark(right, holes, x, y, mark['blob']), _mark(left, holes, x, y, mark['blob'])]
-            elif rising <= 0.35 * falling:
+            elif rising <= diag_lim * falling:
                 left[:tall, :cut] = mask[:tall, :cut]
                 right[own_high - tall:, own_wide - cut:] = mask[own_high - tall:, own_wide - cut:]
                 parts = [_mark(left, holes, x, y, mark['blob']), _mark(right, holes, x, y, mark['blob'])]
+        elif mark['hole'] < HOLLOW and 1.55 * wide <= own_wide <= 2.3 * wide and 1.9 * high < own_high <= 2.7 * high:
+            # A three-note chord blob combining a second interval and a third interval across a shared inner stem
+            # (for example two stacked heads on one side of the stem and one offset head on the other side).
+            w_ur, w_dl = _way(layers, mark, True, True), _way(layers, mark, False, False)
+            w_ul, w_dr = _way(layers, mark, True, False), _way(layers, mark, False, True)
+            split_col = None
+            if is_stem(w_ur, space) and x + 0.30 * own_wide <= w_ur['x'] <= x + 0.70 * own_wide \
+                    and is_stem(w_dl, space) and w_dl['x'] <= x + 0.30 * own_wide:
+                split_col = int(round(w_ur['x'] - x))
+            elif is_stem(w_dl, space) and x + 0.30 * own_wide <= w_dl['x'] <= x + 0.70 * own_wide \
+                    and is_stem(w_ur, space) and w_ur['x'] >= x + 0.70 * own_wide:
+                split_col = int(round(w_dl['x'] - x))
+            elif is_stem(w_ul, space) and x + 0.30 * own_wide <= w_ul['x'] <= x + 0.70 * own_wide \
+                    and is_stem(w_dr, space) and w_dr['x'] >= x + 0.70 * own_wide:
+                split_col = int(round(w_ul['x'] - x))
+            if split_col is not None and int(0.6 * wide) <= split_col <= own_wide - int(0.6 * wide):
+                for side_mask, side_holes, sx in ((mask[:, :split_col], holes[:, :split_col], x),
+                                                  (mask[:, split_col:], holes[:, split_col:], x + split_col)):
+                    srows = np.nonzero(side_mask.any(axis=1))[0]
+                    if not len(srows):
+                        continue
+                    r0, r1 = int(srows[0]), int(srows[-1])
+                    sh = r1 - r0 + 1
+                    if sh >= 1.6 * high and side_mask.sum() >= 1.05 * wide * high:
+                        n_st = max(2, int(round(sh / high)))
+                        st_step = sh / n_st
+                        for k in range(n_st):
+                            ra, rb = r0 + int(round(k * st_step)), r0 + int(round((k + 1) * st_step))
+                            sub = _mark(side_mask[ra:rb], side_holes[ra:rb], sx, y + ra, mark['blob'])
+                            if sub and sub['area'] >= 0.25 * wide * high:
+                                parts.append(sub)
+                    else:
+                        sub = _mark(side_mask[r0:r1 + 1], side_holes[r0:r1 + 1], sx, y + r0, mark['blob'])
+                        if sub and sub['area'] >= 0.25 * wide * high:
+                            parts.append(sub)
         parts = [part for part in parts if part and part['area'] >= SMALL * space * space]
         if (len(parts) < 2 or (SOLID_ROOMS and by_holes)) and SOLID_LOOP and mark['hole'] >= HOLLOW:
             # A filled head with paper closed in beside it: the flag of a printed eighth note comes back to its head,
@@ -3550,16 +3588,6 @@ def read_symbols(layers: dict) -> dict:
                     mark['stems'].remove(stem)
                     mark['tail_of'] = other
                     break
-    # Two heads a second apart stand at the two sides of one stem: one of them has the stem at its other side.
-    for mark in marks:
-        if mark['kind'] != 'head' or mark['stems']:
-            continue
-        for name in ('up_left', 'down_right'):
-            way = mark['ways'][name]
-            if is_stem(way, space) and any(other is not mark and other['blob'] == mark['blob'] and other['kind'] == 'head'
-                                           and any(stem['direction'] == way['direction'] and abs(stem['x'] - way['x']) <= 0.35 * space
-                                                   for stem in other['stems']) for other in marks):
-                mark['stems'].append(way)
     if STEM_THROUGH:
         # Two heads a third apart that were one piece of ink and were cut into an upper and a lower mark: the stem of
         # the one runs along the other, which lies between that head and the stem's end. Seen from the near head the
@@ -3615,6 +3643,23 @@ def read_symbols(layers: dict) -> dict:
                        and other['y0'] - reach(other) <= stem['end'] <= other['y1'] + reach(other)
                        and (other['cy'] < mark['cy']) == (stem['direction'] == 'up') for other in heads):
                     mark['stems'].remove(stem)
+    # Two heads a second apart stand at the two sides of one stem: one of them has the stem at its other side.
+    # Run after RIM_STEM so heads whose false rim-stem was just stripped (and degraded pairs split across blobs)
+    # still attach to their partner's shared stem.
+    for mark in marks:
+        if mark['kind'] != 'head' or mark['stems']:
+            continue
+        for name in ('up_left', 'down_right'):
+            way = mark['ways'][name]
+            if is_stem(way, space) and any(
+                    other is not mark and other['kind'] == 'head'
+                    and (other['blob'] == mark['blob']
+                         or (abs(other['cy'] - mark['cy']) <= 1.2 * space
+                             and min(abs(other['x1'] - mark['x0']), abs(mark['x1'] - other['x0'])) <= 0.5 * space))
+                    and any(stem['direction'] == way['direction'] and abs(stem['x'] - way['x']) <= 0.35 * space
+                            for stem in other['stems']) for other in marks):
+                mark['stems'].append(way)
+                mark.pop('tail_of', None)
     if PAIR_SHARP:
         _pair_sharp(layers, marks, space)
     _share_stems(marks, space)
@@ -3677,10 +3722,18 @@ def read_symbols(layers: dict) -> dict:
         if hollow and mark.get('solid_cy') is not None and mark['stems']:
             or_hollow = cy
             hollow, cy = False, mark['solid_cy']
+        if hollow and len(mark['stems']) == 1 and mark['stems'][0]['direction'] == 'down' \
+                and mark['hole'] < 0.16 and mark['y1'] - mark['y0'] + 1 <= 0.78 * space \
+                and mark['stems'][0]['slim'] <= 0.55 * max(1, mark['stems'][0]['past']):
+            p_mid = _symnet_probs(layers, staff, mark['cx'], cy + 0.75 * space)
+            if p_mid is not None and float(p_mid[7] + p_mid[8]) >= 0.85 and float(p_mid[:4].sum()) <= 0.10:
+                continue
         if LINE_SLIT and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems'] \
                 and (_line_slit(layers, mark, layers['staves'][staff])
                      or (LINE_HALVES and _line_halves(layers, mark, layers['staves'][staff]))):
-            hollow = True
+            p_sym = _symnet_probs(layers, staff, mark['cx'], cy) if mark['hole'] == 0.0 else None
+            if p_sym is None or not (float(p_sym[0]) >= 0.70 and float(p_sym[1]) <= 0.28):
+                hollow = True
         slit = slit_place = None
         if SLIT_ONE and not hollow and or_hollow is None and mark['kind'] == 'head' and mark['stems']:
             slit = _slit_one(layers, mark, layers['staves'][staff]) or 'none'
@@ -3711,6 +3764,15 @@ def read_symbols(layers: dict) -> dict:
             if not oval and hollow and abs(place) <= 4.6 and mark['hole'] >= 0.15 \
                     and wide >= 1.25 * layers['head'][0] and lying(mark, 1.05):
                 oval = True
+            # A plump or handwritten whole note (for example with a smaller central hole or rounder aspect)
+            # that SymNet confirms as head_whole with high confidence.
+            if not (hollow and oval) and 'tail_of' not in mark and mark['hole'] >= 0.08 \
+                    and 0.95 * layers['head'][0] <= wide <= 2.2 * layers['head'][0] \
+                    and 0.85 * layers['head'][1] <= high <= 1.55 * layers['head'][1] \
+                    and wide >= 1.02 * high and _rim(layers, mark) >= RIM \
+                    and not (CELL and _cell(layers, mark)) \
+                    and _symnet_whole_prob(layers, staff, mark['cx'], mark['cy']) >= 0.90:
+                hollow = oval = True
             oval = oval or id(mark) in twins     # a whole note of a chord: see WHOLE_TWIN
             if LEDGER_WHOLE and not hollow and 'tail_of' not in mark and abs(place) > 4.6:
                 lined = _ledger_whole(layers, layers['staves'][staff], mark)
@@ -6055,6 +6117,27 @@ def _closed_round(ink: np.ndarray, cx: float, cy: float, reach: float) -> int:
     return count
 
 
+def _symnet_probs(layers: dict, staff: int, cx: float, cy: float) -> np.ndarray | None:
+    """Returns SymNet class probabilities at (staff, cx, cy) when neural classification is enabled, else None."""
+    try:
+        from . import classify, headnet  # noqa: PLC0415
+        if headnet.weights() is None:
+            return None
+        w = classify.load_weights()
+        if w is None:
+            return None
+        probs = classify.classify_points(layers, [(staff, cx, cy)], weights=w)
+        return probs[0] if len(probs) else None
+    except Exception:
+        return None
+
+
+def _symnet_whole_prob(layers: dict, staff: int, cx: float, cy: float) -> float:
+    """Returns SymNet head_whole probability when neural classification is enabled, else 0.0."""
+    probs = _symnet_probs(layers, staff, cx, cy)
+    return float(probs[2]) if probs is not None else 0.0
+
+
 def open_wholes(layers: dict, heads: list[dict], ends: list[float]) -> list[dict]:
     """The whole notes whose thin rim broke (OPEN_WHOLE): hollow heads with no stem, read from their inside where no
     head was read. A print draws a whole note with bold sides and a hairline over and under its inside, and a copy
@@ -6087,9 +6170,13 @@ def open_wholes(layers: dict, heads: list[dict], ends: list[float]) -> list[dict
     holes, ink, open_holes = layers['holes'], layers['ink'], layers['open_holes']
     own = [float((holes[head['y0']:head['y1'] + 1, head['x0']:head['x1'] + 1] > 0).sum()) for head in heads
            if head['hollow'] and not head.get('thin') and not head.get('from_hole')]
-    if len(own) < 3:
-        return []
-    usual = float(np.median(own))
+    sparse_own = len(own) < 3
+    if sparse_own:
+        # On short pages with fewer than 3 closed hollow heads, fall back to nominal hole area only for
+        # high-confidence SymNet-confirmed whole notes.
+        usual = 0.30 * space * space
+    else:
+        usual = float(np.median(own))
     rim = max(2, int(round(HOLE_RIM * space)))
     # The halves of an inside that a line cuts: the line's ink between two pieces of paper, one right over the
     # other, where one of them at least is open.
@@ -6140,7 +6227,10 @@ def open_wholes(layers: dict, heads: list[dict], ends: list[float]) -> list[dict
             partner = any(other['hollow'] and layers['staves'][other['staff']]['system'] == system
                           and abs(other['cx'] - cx) <= OPEN_WHOLE[7] * space for other in heads)
             ok = (not stems and ways >= OPEN_WHOLE[4] and OPEN_WHOLE[5] <= column <= OPEN_WHOLE[6]
-                  and piece <= OPEN_WHOLE[6] and partner)
+                  and piece <= OPEN_WHOLE[6] and (not sparse_own and partner))
+            if not ok and not stems and ways >= OPEN_WHOLE[4] and OPEN_WHOLE[5] <= column <= OPEN_WHOLE[6] \
+                    and piece <= OPEN_WHOLE[6] and _symnet_whole_prob(layers, staff, cx, cy) >= 0.95:
+                ok = True
             outer = 0.0
             if ok:
                 if strokes is None:
@@ -9288,7 +9378,8 @@ def _bow_tip(layers: dict, x: int, y: int, wide: int, high: int, labels: np.ndar
             if other == 0:
                 continue
             start, long = int(stats[other][0]), int(stats[other][2])
-            if not left <= start < right or long < DOT_TIP[1] * space:
+            min_long = 2.5 if (wide <= 0.35 * space and high <= 0.35 * space and wide * high <= 0.09 * space * space) else DOT_TIP[1]
+            if not left <= start < right or long < min_long * space:
                 continue
             begin = labels[:, start:start + int(round(space))] == other
             inked = np.nonzero(begin.any(axis=1))[0]
