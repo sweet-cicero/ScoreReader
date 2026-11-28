@@ -221,6 +221,8 @@ def other_time(head: dict, staves: list[dict], starts: list[dict], times: dict, 
         for sign in signs(index):
             if sign.get('common') and not sign.get('bold'):
                 continue
+            if sign.get('oversized') and staves[index]['system'] > 0:
+                continue
             if not sign['x0'] - 0.2 * space <= head['cx'] <= sign['x1'] + 0.2 * space:
                 continue
             if any(mine['x0'] - space <= sign['x1'] and mine['x1'] + space >= sign['x0'] for mine in signs(own)):
@@ -305,16 +307,14 @@ def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[f
                 continue
             free_rests.append(rest)
 
-        # Pair vertically stacked shifted rests at the same x-column into one shared rest column.
+        # Pair vertically stacked rests at the same x-column into one shared rest column.
         paired: set[int] = set()
         candidates: list[tuple[float, int, int]] = []
         for i in range(len(free_rests)):
             mi = float(free_rests[i].get('middle', 0.0))
-            if abs(mi) < 0.75:
-                continue
             for j in range(i + 1, len(free_rests)):
                 mj = float(free_rests[j].get('middle', 0.0))
-                if (mi <= -0.75 and mj >= 0.75) or (mj <= -0.75 and mi >= 0.75):
+                if abs(mi - mj) >= 1.5 and (abs(mi) >= 0.75 or abs(mj) >= 0.75):
                     dx = abs(float(free_rests[i]['x']) - float(free_rests[j]['x']))
                     if dx <= 0.8 * space:
                         candidates.append((dx, i, j))
@@ -324,7 +324,7 @@ def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[f
                 continue
             paired.add(i)
             paired.add(j)
-            r_up, r_dn = (free_rests[i], free_rests[j]) if float(free_rests[i].get('middle', 0.0)) < 0 else (free_rests[j], free_rests[i])
+            r_up, r_dn = (free_rests[i], free_rests[j]) if float(free_rests[i].get('middle', 0.0)) < float(free_rests[j].get('middle', 0.0)) else (free_rests[j], free_rests[i])
             rx = 0.5 * (float(r_up['x']) + float(r_dn['x']))
             len_up = _rest_length(r_up, not bar_events, bar_beats)
             len_dn = _rest_length(r_dn, not bar_events, bar_beats)
@@ -364,6 +364,14 @@ def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[f
             first_x = min(ev['x'] for ev in bar_events)
             last_x = max(ev['x'] for ev in bar_events)
             if rest['x'] < first_x:
+                if len(active_voices) == 2:
+                    first_col = min((col for col in bar_map[m_idx] if any(not ev.get('rest') for ev in col)),
+                                    key=lambda c: c[0]['x'])
+                    first_voices = {ev['voice'] for ev in first_col if not ev.get('rest')}
+                    if rv not in first_voices:
+                        # The other voice enters at the start of the bar while rv rests; keep in voice_rests().
+                        leftover.append(rest)
+                        continue
                 voices_here = active_voices if len(active_voices) == 1 else [rv]
                 bar_map[m_idx].append([
                     {'x': float(rest['x']), 'place': 0, 'voice': v, 'head': {},
@@ -387,10 +395,14 @@ def _insert_shared_rests(staff: dict, plan: list[list[list[dict]]], bars: list[f
                 ])
                 continue
 
-            # Two-voice bar after the first note: check whether the other voice spans across this rest.
+            # Two-voice bar after the first note: route to voice_rests() when the other voice spans across
+            # this rest or enters next without rv (so build_staff() does not push the other voice forward).
             free = _voice_free_before(bar_map[m_idx], float(rest['x']))
             other = 3 - rv
-            if free[other] > free[rv]:
+            next_note_cols = [col for col in sorted(bar_map[m_idx], key=lambda c: c[0]['x'])
+                              if col[0]['x'] > float(rest['x']) and any(not ev.get('rest') for ev in col)]
+            next_other_only = bool(next_note_cols) and {ev['voice'] for ev in next_note_cols[0] if not ev.get('rest')} == {other}
+            if free[other] > free[rv] or (next_other_only and free[other] <= free[rv]):
                 leftover.append(rest)
             else:
                 bar_map[m_idx].append([
@@ -467,12 +479,14 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     # The pieces of a thick bar line between the staff lines are no heads, and the thin line beside it is no stem.
     heads = without_bar_pieces(layers, heads)
     bars = bar_lines(layers, heads)
+    raw_bars = {index: list(xs) for index, xs in bars.items()}
     # A stem can cross the whole staff as a bar line does, but a head hangs on it.
     for index in bars:
         stems = [stem['x'] for head in heads if head['staff'] == index for stem in head['stems']]
         bars[index] = [x for x in bars[index] if all(abs(x - stem) > 0.4 * space for stem in stems)]
     # A stem from a head at an outer line crosses the staff as a bar line does, and the head's inside stands beside it.
-    for index, found in bar_stems(layers, bars, ends).items():
+    bar_stems_dropped = bar_stems(layers, bars, ends)
+    for index, found in bar_stems_dropped.items():
         bars[index] = [x for x in bars[index] if x not in found]
     # A sign that stands against a bar line was read as a small hollow head with the bar line as its stem.
     at_bars = bar_signs(layers, heads)
@@ -607,6 +621,75 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                         and abs(sign['place'] - head['place']) <= 1.0 and sign['x0'] > ends[head['staff']]:
                     head['sign'] = {'sharp': 1, 'flat': -1, 'natural': 0}[sign['kind']]
     slit_page(heads)
+    # Local offline neural verification (SymNet) before tie reading and barline restoration so
+    # phantom tie-crossing marks do not block barline ties or suppress true barlines.
+    neural_on = headnet.weights() is not None
+    sym_w = classify.load_weights() if neural_on else None
+    if sym_w is not None and heads:
+        pts = [(h['staff'], float(h['cx']), float(h['cy'])) for h in heads]
+        probs_all = classify.classify_points(layers, pts, sym_w)
+        kept_heads = []
+        for head, probs in zip(heads, probs_all):
+            head['symnet'] = probs
+            p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
+            p_filled, p_hollow = float(probs[0]), float(probs[1])
+            p_whole, p_breve = float(probs[2]), float(probs[3])
+            # Reject high-confidence non-heads (dynamics, rests, fermatas, bar-crossing marks); require
+            # stricter rejection for stemmed hollow heads with clear interior holes.
+            hole = float(head.get('hole', 0.0) or 0.0)
+            drop_thr = 0.015 if (head['stems'] and head['hollow'] and hole >= 0.15) else 0.05
+            if p_head < drop_thr and not head.get('dot'):
+                continue
+            # Flip filled <-> hollow on stemmed heads only when visual ink cues do not contradict SymNet.
+            if head['stems']:
+                has_tails = any(head.get('tails', {}).values()) or bool(head.get('flag_ink'))
+                if head['hollow']:
+                    if has_tails and p_filled >= 0.85 and p_hollow <= 0.10:
+                        head['hollow'] = False
+                        head['net_flip'] = True
+                    elif not has_tails and hole < 0.20 and p_filled >= 0.92 and p_hollow <= 0.05:
+                        head['hollow'] = False
+                        head['net_flip'] = True
+                    elif not has_tails and hole < 0.28 and p_filled >= 0.98 and p_hollow <= 0.01:
+                        head['hollow'] = False
+                        head['net_flip'] = True
+                elif not has_tails and ((hole > 0.0 or head.get('slit')) and p_hollow >= 0.90 and p_filled <= 0.08
+                                        or p_hollow >= 0.96 and p_filled <= 0.02):
+                    head['hollow'] = True
+                    head['net_flip'] = True
+            elif head['hollow'] and p_hollow >= 0.92 and p_whole <= 0.03 and p_breve <= 0.03:
+                # A dotted stemless hollow head classified as a half note had its stem lost;
+                # undotted stemless hollow heads convert only in multi-column bars (protecting solo whole notes).
+                if head.get('dot'):
+                    head['half_stemless'] = True
+                else:
+                    head['half_stemless_multi'] = True
+                head['net_flip'] = True
+            kept_heads.append(head)
+        heads = kept_heads
+
+    # Restore barlines that were suppressed only by phantom heads later removed by filters or SymNet.
+    for index, raw_xs in raw_bars.items():
+        if not raw_xs:
+            continue
+        cur_xs = bars.get(index, [])
+        dropped_stems = set(bar_stems_dropped.get(index, ()))
+        surv_heads = [h for h in heads if h['staff'] == index]
+        surv_stems = [s['x'] for h in surv_heads for s in h['stems']]
+        restored = []
+        for bx in raw_xs:
+            if bx in dropped_stems or bx <= ends[index] + 0.5 * space:
+                continue
+            if any(abs(bx - cx) <= 0.4 * space for cx in cur_xs):
+                continue
+            if any(abs(bx - sx) <= 0.4 * space for sx in surv_stems):
+                continue
+            if any(h['x0'] - 0.2 * space <= bx <= h['x1'] + 0.2 * space for h in surv_heads):
+                continue
+            restored.append(bx)
+        if restored:
+            bars[index] = sorted(cur_xs + restored)
+
     # A tie: a bow from a head to the next head of its pitch.
     ties = read_ties(layers, heads, ties_before)
     # Choir rule: in a system of three or more staves, a treble staff over the bass staff is the tenors'.
@@ -641,40 +724,6 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
     kept = without_breves(layers, heads, letters)
     letters = start_breves(layers, heads, kept, letters)
     heads = kept
-    # Local offline neural verification (SymNet + StemNet), trained strictly without holdout pages.
-    # Passing --headnet off disables neural overrides for pure-rules ablation.
-    neural_on = headnet.weights() is not None
-    sym_w = classify.load_weights() if neural_on else None
-    if sym_w is not None and heads:
-        pts = [(h['staff'], float(h['cx']), float(h['cy'])) for h in heads]
-        probs_all = classify.classify_points(layers, pts, sym_w)
-        kept_heads = []
-        for head, probs in zip(heads, probs_all):
-            head['symnet'] = probs
-            p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
-            p_filled, p_hollow = float(probs[0]), float(probs[1])
-            # Reject high-confidence non-heads (dynamics, rests, fermatas, noise); require stricter
-            # rejection for stemmed hollow heads with clear interior holes so real notes are never dropped.
-            hole = float(head.get('hole', 0.0) or 0.0)
-            drop_thr = 0.015 if (head['stems'] and head['hollow'] and hole >= 0.15) else 0.05
-            if p_head < drop_thr and not head.get('dot'):
-                continue
-            # Flip filled <-> hollow on stemmed heads only when visual ink cues do not contradict SymNet.
-            if head['stems']:
-                has_tails = any(head.get('tails', {}).values()) or bool(head.get('flag_ink'))
-                if head['hollow']:
-                    if has_tails and p_filled >= 0.85 and p_hollow <= 0.10:
-                        head['hollow'] = False
-                        head['net_flip'] = True
-                    elif not has_tails and hole < 0.20 and p_filled >= 0.92 and p_hollow <= 0.05:
-                        head['hollow'] = False
-                        head['net_flip'] = True
-                elif not has_tails and (hole > 0.0 or head.get('slit')) and p_hollow >= 0.90 and p_filled <= 0.08:
-                    # Do not hard-flip solid hole==0 filled heads before grammar.py; let grammar.py decide jointly.
-                    head['hollow'] = True
-                    head['net_flip'] = True
-            kept_heads.append(head)
-        heads = kept_heads
 
     stem_w = classify.load_stem_weights() if neural_on else None
     if stem_w is not None and heads:
@@ -692,17 +741,21 @@ def read_page(grey: np.ndarray, places: list[dict], title: str = '', key_before:
                 stem['stemnet'] = sp
                 direction = stem['direction']
                 cur_t = head.get('tails', {}).get(direction, 0)
-                unwitnessed = any(m.get('beam') and not m.get('witness') for m in stem.get('marks', []))
-                if cur_t == 0 and not unwitnessed and float(sp[1]) >= 0.92 and float(sp[0]) <= 0.06:
+                marks = stem.get('marks', [])
+                unwitnessed = any(m.get('beam') and not m.get('witness') for m in marks)
+                has_beam_mark = any(m.get('beam') for m in marks)
+                if cur_t == 0 and not unwitnessed and float(sp[1]) >= 0.95 and float(sp[0]) <= 0.04:
                     head.setdefault('tails', {})[direction] = 1
                     head['stemnet_flip'] = True
-                elif cur_t == 1 and float(sp[0]) >= 0.93 and float(sp[1]) <= 0.05 and not head.get('triplet'):
+                elif cur_t == 1 and (stem.get('beam_only') or unwitnessed) and float(sp[0]) >= 0.93 and float(sp[1]) <= 0.05 and not head.get('triplet'):
+                    # Only hard-downgrade weak or unwitnessed beam marks before grammar; preserve real flags and witnessed beams.
                     head.setdefault('tails', {})[direction] = 0
                     head['stemnet_flip'] = True
                 elif cur_t == 1 and float(sp[2]) >= 0.93 and float(sp[1]) <= 0.05:
                     head.setdefault('tails', {})[direction] = 2
                     head['stemnet_flip'] = True
-                elif cur_t == 2 and float(sp[1]) >= 0.94 and float(sp[2]) <= 0.04:
+                elif cur_t == 2 and has_beam_mark and float(sp[1]) >= 0.94 and float(sp[2]) <= 0.04:
+                    # Only hard-downgrade spurious double-beam marks; preserve printed double flags.
                     head.setdefault('tails', {})[direction] = 1
                     head['stemnet_flip'] = True
 

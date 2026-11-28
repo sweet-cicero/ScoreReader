@@ -52,7 +52,7 @@ from scorereader.fermatas import fermatas
 from scorereader.layers import read_layers
 from scorereader.meter import mid_signs
 from scorereader.music import key_alters
-from scorereader.rests import block_rests, eighth_rests, quarter_rests
+from scorereader.rests import block_rests, eighth_rests, neural_rest_candidates, quarter_rests
 from scorereader.signs import note_signs
 from scorereader.starts import read_starts
 from scorereader.symbols import bar_lines, read_symbols
@@ -263,30 +263,38 @@ def _extract_one_case(task: tuple[dict, str, str, int, int]) -> tuple[list[np.nd
             if si is not None and 0 <= si < len(staves_info):
                 occupied[si].append((float(sg['x0']), float(sg['y0']), float(sg['x1']), float(sg['y1'])))
 
-        # 1. Verified Clean Dev rests (quarter, half, whole, eighth).
+        # 1. Verified Clean Dev rests (quarter, half, whole, eighth, plus verified neural slim rests).
         q_rests = quarter_rests(layers, ends)
         b_rests = block_rests(layers, ends)
         e_rests = eighth_rests(layers, ends, syms['heads'], bars)
+        n_rests = neural_rest_candidates(layers, ends, syms['heads'], bars, q_rests + b_rests + e_rests)
 
         rest_boxes_by_staff: dict[int, list[tuple[float, float, float, float]]] = {i: [] for i in range(len(staves_info))}
-        for r in q_rests + b_rests + e_rests:
+        for r in q_rests + b_rests + e_rests + n_rests:
             si = r['staff']
             if 0 <= si < len(staves_info):
                 rbox = (float(r['x0']), float(r['top']), float(r['x1']), float(r['bottom']))
                 occupied[si].append(rbox)
                 rest_boxes_by_staff[si].append(rbox)
 
-        for r in q_rests:
-            si = r['staff']
+        emitted_rest_pts: set[tuple[int, int]] = set()
+
+        def _take_rest(si: int, r: dict, rcls: str) -> None:
             part_idx = staves_info[si]['number']
-            if part_rest_budget.get(part_idx, Counter())['rest_quarter'] > 0:
-                part_rest_budget[part_idx]['rest_quarter'] -= 1
-                add_crop(grey, bare, staves_info[si], float(r['x']), 0.5 * (r['top'] + r['bottom']),
-                         levels, 'rest_quarter', base_id)
+            if part_rest_budget.get(part_idx, Counter())[rcls] <= 0:
+                return
+            rx_bin = int(round(float(r['x']) / max(1.0, 0.7 * space)))
+            if (si, rx_bin) in emitted_rest_pts:
+                return
+            part_rest_budget[part_idx][rcls] -= 1
+            emitted_rest_pts.add((si, rx_bin))
+            add_crop(grey, bare, staves_info[si], float(r['x']), 0.5 * (r['top'] + r['bottom']),
+                     levels, rcls, base_id)
+
+        for r in q_rests:
+            _take_rest(r['staff'], r, 'rest_quarter')
 
         for r in b_rests:
-            si = r['staff']
-            part_idx = staves_info[si]['number']
             hangs = bool(r.get('hangs'))
             sits = bool(r.get('sits'))
             if hangs and not sits:
@@ -295,29 +303,43 @@ def _extract_one_case(task: tuple[dict, str, str, int, int]) -> tuple[list[np.nd
                 rcls = 'rest_half'
             else:
                 rcls = 'rest_whole' if r.get('length') == Fraction(4) else 'rest_half'
-            if part_rest_budget.get(part_idx, Counter())[rcls] > 0:
-                part_rest_budget[part_idx][rcls] -= 1
-                add_crop(grey, bare, staves_info[si], float(r['x']), 0.5 * (r['top'] + r['bottom']),
-                         levels, rcls, base_id)
+            _take_rest(r['staff'], r, rcls)
 
         for r in e_rests:
             si = r['staff']
-            part_idx = staves_info[si]['number']
             rcls = 'rest_16th' if r.get('kind') == '16th' else 'rest_eighth'
             if rcls != 'rest_eighth':
                 continue
-            if part_rest_budget.get(part_idx, Counter())['rest_eighth'] <= 0:
-                continue
-            # Strict full bounding-box and stem-span check to eliminate down-stemmed note FPs.
             rbox = (float(r['x0']), float(r['top']), float(r['x1']), float(r['bottom']))
             if any(_rects_overlap(rbox, hb, 0.25 * space, 0.25 * space) for hb in staff_head_boxes[si]):
                 continue
             if any(rbox[0] - 0.30 * space <= sx <= rbox[2] + 0.30 * space and y_lo <= rbox[3] and rbox[1] <= y_hi
                    for sx, y_lo, y_hi in staff_stem_spans[si]):
                 continue
-            part_rest_budget[part_idx]['rest_eighth'] -= 1
-            add_crop(grey, bare, staves_info[si], float(r['x']), 0.5 * (r['top'] + r['bottom']),
-                     levels, 'rest_eighth', base_id)
+            _take_rest(si, r, 'rest_eighth')
+
+        # Verified neural slim/faded rests (strictly budgeted by Clean Dev truth rest counts).
+        for r in n_rests:
+            si = r['staff']
+            rkind = r.get('kind')
+            if rkind == 'quarter':
+                rcls = 'rest_quarter'
+            elif rkind == 'eighth':
+                rcls = 'rest_eighth'
+            elif rkind == 'block':
+                hangs, sits = bool(r.get('hangs')), bool(r.get('sits'))
+                if hangs and not sits:
+                    rcls = 'rest_whole'
+                elif sits and not hangs:
+                    rcls = 'rest_half'
+                else:
+                    rcls = 'rest_whole' if r.get('length') == Fraction(4) else 'rest_half'
+            else:
+                continue
+            rbox = (float(r['x0']), float(r['top']), float(r['x1']), float(r['bottom']))
+            if any(_rects_overlap(rbox, hb, 0.25 * space, 0.25 * space) for hb in staff_head_boxes[si]):
+                continue
+            _take_rest(si, r, rcls)
 
         # 2. Verified Clean Dev fermatas.
         fermata_boxes: list[tuple[float, float, float, float]] = []

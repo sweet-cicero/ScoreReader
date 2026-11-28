@@ -341,7 +341,7 @@ COMMON_ARM = 0.6         # and its two ends turn to the right: in the upper and 
 # staff spaces): a held note that is printed under the staff in the sign's columns is a note.
 COMMON_ENDS = (0.5, 0.25)
 COMMON_ROWS = 2.25
-COMMON_CUT = (3.2, 0.9, 0.3, 0.75, 0.15)   # the sign of cut time is such a C with an upright stroke through it, and the
+COMMON_CUT = (3.6, 0.9, 0.3, 0.75, 0.15)   # the sign of cut time is such a C with an upright stroke through it, and the
 #   stroke closes the C in two or three pieces of paper, which were read as whole notes one over the other. The sign is
 #   at most the first number of staff spaces high, one column from the third to the fourth share of its width has ink
 #   in the second share of its rows (the stroke), and the stroke stands out of the C at both ends: the first and the
@@ -382,34 +382,68 @@ def _cut_stroke(box: np.ndarray, space: float) -> bool:
     return True
 
 
-def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bool = False) -> list[dict]:
-    """The bold signs of common time of a staff between the columns first and last, by their shape (COMMON_BOLD): each
-    {'x0', 'x1', 'common', 'bold'} with the measures 'high', 'wide', 'ink', 'waist' (staff spaces) and 'arms' (how
-    far the ink reaches to the right in the upper and in the lower fifth of its rows, as a share of the width). With
-    `every`, the pieces with any waist and any arms (for a census)."""
-    if not COMMON_BOLD:
-        return []
+def _bold_commons_in(layers: dict, staff: dict, first: float, last: float, every: bool,
+                     free: np.ndarray) -> list[dict]:
+    """Finds bold C and cut-time signs in one ink layer."""
     low, high, off, narrow, wide, apart, thin, full, bow = COMMON_BOLD
-    free = _free(layers)
     height, width = free.shape
     space, rows = staff['space'], staff['rows']
-    y0, y1 = max(0, int(rows[0] - 1.5 * space)), min(height, int(rows[4] + 1.5 * space) + 1)
+    y0, y1 = max(0, int(rows[0] - 2.0 * space)), min(height, int(rows[4] + 2.0 * space) + 1)
     x0, x1 = max(0, int(first)), min(width, int(last) + 1)
     if x1 - x0 < 3 or y1 - y0 < 3:
         return []
     region = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
                               np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
+    # Locate narrow full-staff vertical barlines inside the scan window so barline-adjacent C signs keep after_bar
+    # and thin horizontal staff-line bridges trapped between a barline and a bold C are severed cleanly.
+    top_rel = max(0, int(round(rows[0] - y0)))
+    bot_rel = min(region.shape[0] - 1, int(round(rows[4] - y0)))
+    bar_cols: list[float] = []
+    half_t = max(2, int(round(staff['thick'])) + 2)
+    if bot_rel > top_rel:
+        staff_cols = region[top_rel:bot_rel + 1].mean(axis=0)
+        full_mask = staff_cols >= 0.90
+        col, rw = 0, region.shape[1]
+        while col < rw:
+            if not full_mask[col]:
+                col += 1
+                continue
+            run_end = col
+            while run_end < rw and full_mask[run_end]:
+                run_end += 1
+            if run_end - col <= max(4, int(round(0.35 * space))):
+                left_clear = col == 0 or float(region[top_rel:bot_rel + 1, max(0, col - 2):col].mean()) < 0.15
+                if left_clear:
+                    bar_cols.append(float(x0 + (col + run_end - 1) / 2.0))
+                    # Strip pure thin staff-line bridge columns trapped between this barline and an adjacent C bow.
+                    bridge_end = min(rw, run_end + int(round(1.2 * space)))
+                    if bridge_end > run_end:
+                        for row_y in rows[1:4]:
+                            ry = int(round(row_y - y0))
+                            r0, r1 = max(0, ry - half_t), min(region.shape[0], ry + half_t + 1)
+                            if r0 > 0 and r1 < region.shape[0]:
+                                above_clear = region[r0 - 1, run_end:bridge_end] == 0
+                                below_clear = region[r1, run_end:bridge_end] == 0
+                                thin_cols = np.nonzero(above_clear & below_clear)[0]
+                                if len(thin_cols):
+                                    region[r0:r1, run_end + thin_cols] = 0
+                    right_touch = run_end < rw and float(region[top_rel:bot_rel + 1, run_end:min(rw, run_end + 3)].mean()) >= 0.04
+                    if right_touch:
+                        region[:, col:run_end] = 0
+            col = run_end
     count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
     tall = max(high, COMMON_CUT[0]) if COMMON_CUT else high
+    tall_scan = max(tall, 5.8) if COMMON_CUT else high
     pieces = sorted((int(x), int(y), int(bw), int(bh), label) for label, (x, y, bw, bh, _) in enumerate(stats) if label
-                    and low * space <= bh <= tall * space and abs(y0 + y + bh / 2 - rows[2]) <= off * space)
+                    and low * space <= bh <= tall_scan * space and abs(y0 + y + bh / 2 - rows[2]) <= off * space)
     found, used = [], set()
     for index, (x, y, bw, bh, label) in enumerate(pieces):
         if index in used:
             continue
         group = [(x, y, bw, bh, label)]
         if index + 1 < len(pieces) and pieces[index + 1][0] - (x + bw) <= apart * space \
-                and max(bh, pieces[index + 1][3]) <= high * space:      # (a piece as high as the sign of cut time stands alone)
+                and max(bh, pieces[index + 1][3]) <= tall * space \
+                and max(x + bw, pieces[index + 1][0] + pieces[index + 1][2]) - x <= wide * space:
             group.append(pieces[index + 1])
             used.add(index + 1)
         elif COMMON_ENDS and bw < narrow * space:
@@ -420,14 +454,21 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
                       and ox + ow - x <= wide * space]
         left, right = group[0][0], max(piece[0] + piece[2] for piece in group)
         top, bottom = min(piece[1] for piece in group), max(piece[1] + piece[3] for piece in group)
-        if not narrow * space <= right - left <= wide * space:
+        oversized = (right - left > wide * space) or (bottom - top > tall * space)
+        if oversized:
+            if not (narrow * space <= right - left <= 2.85 * space and bottom - top <= tall_scan * space):
+                continue
+        elif not narrow * space <= right - left <= wide * space:
             continue
         own = np.isin(labels[:, left:right], [piece[4] for piece in group])
         box = own[top:bottom]
         if not thin <= box.mean() <= full:
             continue
         cut = False
-        if cv2.connectedComponents(layers['holes'][y0 + top:y0 + bottom, x0 + left:x0 + right].astype(np.uint8))[0] > 2:
+        after_bar = any(0 <= (x0 + left) - bx <= COMMON_AT[1] * space for bx in bar_cols)
+        has_multi_holes = (_closed_hole_count(box.astype(np.uint8)) > 1 if after_bar
+                           else cv2.connectedComponents(layers['holes'][y0 + top:y0 + bottom, x0 + left:x0 + right].astype(np.uint8))[0] > 2)
+        if has_multi_holes:
             # More than one piece of closed paper: the sign of cut time, by its stroke and the open side of its C.
             cut = bool(COMMON_CUT) and _cut_stroke(box, space)
             if not cut:
@@ -436,23 +477,138 @@ def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bo
             cut = bool(COMMON_CUT) and _cut_stroke(box, space)
             if not cut:
                 continue
+        elif bottom - top >= 2.4 * space and COMMON_CUT and _cut_stroke(box, space):
+            cut = True
         # Nothing else stands in its columns just over or under it (a stem, a head a third away).
         others = (labels[:, left:right] > 0) & ~own
         pad_other = int(space / 4) if cut else int(space / 2)
-        if others[max(0, top - pad_other):bottom + pad_other].sum() > (0.15 if cut else 0.1) * space * space:
+        if others[max(0, top - pad_other):bottom + pad_other].sum() > 0.15 * space * space:
             continue
         waist = _waist(box) / space
         # The two ends of the bow turn to the right: on cut time, the vertical slash extends past the C arms.
         arm_band = max(1, box.shape[0] // (3 if cut else 5))
         arms = [float(np.nonzero(rows_.any(axis=0))[0].max() + 1) / box.shape[1] if rows_.any() else 0.0
                 for rows_ in (box[:arm_band], box[-arm_band:])]
-        arm_ok = (min(arms) >= 0.55 and max(arms) >= 0.80) if cut else (min(arms) >= COMMON_ARM)
-        waist_ok = (waist <= -0.15 and (right - left) >= 1.18 * space) if cut else (waist <= bow)
+        if oversized:
+            if bottom - top > high * space and (not cut or (right - left) < 2.20 * space):
+                continue
+            if not cut and (right - left) > 2.40 * space:
+                continue
+            arm_ok = min(arms) >= 0.65
+            waist_ok = waist <= -0.22
+        elif cut:
+            arm_ok = min(arms) >= 0.48 and max(arms) >= 0.80
+            waist_ok = waist <= -0.15 and (right - left) >= 1.18 * space
+        else:
+            arm_ok = min(arms) >= COMMON_ARM or (min(arms) >= 0.40 and max(arms) >= 0.85 and waist <= -0.08)
+            waist_ok = waist <= bow
         if (not waist_ok or not arm_ok) and not every:
             continue
         found.append({'x0': float(x0 + left), 'x1': float(x0 + right - 1), 'common': True, 'bold': True, 'cut': cut,
                       'high': (bottom - top) / space, 'wide': (right - left) / space, 'ink': float(box.mean()), 'waist': waist,
-                      'arms': arms})
+                      'arms': arms, 'after_bar': after_bar})
+    return found
+
+
+def bold_commons(layers: dict, staff: dict, first: float, last: float, every: bool = False) -> list[dict]:
+    """The bold signs of common time of a staff between the columns first and last, by their shape (COMMON_BOLD): each
+    {'x0', 'x1', 'common', 'bold'} with the measures 'high', 'wide', 'ink', 'waist' (staff spaces) and 'arms' (how
+    far the ink reaches to the right in the upper and in the lower fifth of its rows, as a share of the width). With
+    `every`, the pieces with any waist and any arms (for a census)."""
+    if not COMMON_BOLD:
+        return []
+    found = _bold_commons_in(layers, staff, first, last, every, _free(layers))
+    if TIME_LINES:
+        # Second pass on staff-line-stripped ink frees bold C signs bridged to a preceding barline by staff lines.
+        extra = [sign for sign in _bold_commons_in(layers, staff, first, last, every, _number_ink(layers))
+                 if _apart(sign, found)]
+        if extra:
+            found = sorted(found + extra, key=lambda sign: sign['x0'])
+    return found
+
+
+def _oversized_time_signs(layers: dict, staff: dict, first: float | None = None, last: float | None = None) -> list[dict]:
+    """Finds oversized handwritten numeric time signatures that protrude symmetrically above and below the staff."""
+    free = _free(layers)
+    height, width = free.shape
+    space, rows = staff['space'], staff['rows']
+    top, middle, bottom = rows[0], rows[2], rows[4]
+    y0, y1 = max(0, int(top - 2.4 * space)), min(height, int(bottom + 2.4 * space) + 1)
+    x0 = max(0, int(staff['x0'] if first is None else first))
+    x1 = min(width, int(staff['x1'] if last is None else last) + 1)
+    if x1 - x0 < 5 or y1 - y0 < 10:
+        return []
+    region = cv2.morphologyEx(np.ascontiguousarray(free[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
+                              np.ones((int(staff['thick'] + 3) | 1, 1), np.uint8))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
+    parts = []
+    for label in range(1, count):
+        x, y, bw, bh, _ = (int(v) for v in stats[label])
+        if not (1.10 * space <= bw <= 2.90 * space and 1.80 * space <= bh <= 8.5 * space):
+            continue
+        begin, end = y0 + y, y0 + y + bh - 1
+        # Either an oversized single stacked piece or an upper/lower digit extending outside the staff.
+        upper = (top - 2.35 * space <= begin <= top - 0.65 * space) and (end >= middle - 0.55 * space)
+        lower = (bottom + 0.65 * space <= end <= bottom + 2.35 * space) and (begin <= middle + 0.55 * space)
+        if upper or lower:
+            parts.append((x, x + bw - 1, label))
+    parts.sort()
+    groups = []
+    for part in parts:
+        if groups and part[0] <= groups[-1][1] + 0.25 * space and max(groups[-1][1], part[1]) - groups[-1][0] + 1 <= 2.90 * space:
+            groups[-1][1] = max(groups[-1][1], part[1])
+            groups[-1][2].append(part[2])
+        else:
+            groups.append([part[0], part[1], [part[2]]])
+    split = int(round(middle - y0))
+    found = []
+    for begin, end, own in groups:
+        gw = end - begin + 1
+        if not (1.35 * space <= gw <= 2.90 * space):
+            continue
+        mask = np.isin(labels[:, begin:end + 1], own)
+        u_ys, u_xs = np.nonzero(mask[:split])
+        l_ys, l_xs = np.nonzero(mask[split:])
+        if len(u_ys) < 12 or len(l_ys) < 12:
+            continue
+        u_top, u_bot = y0 + int(u_ys.min()), y0 + int(u_ys.max())
+        l_top, l_bot = y0 + split + int(l_ys.min()), y0 + split + int(l_ys.max())
+        u_w, u_h = int(u_xs.max() - u_xs.min() + 1), u_bot - u_top + 1
+        l_w, l_h = int(l_xs.max() - l_xs.min() + 1), l_bot - l_top + 1
+        if not (top - 2.35 * space <= u_top <= top - 0.65 * space and bottom + 0.65 * space <= l_bot <= bottom + 2.35 * space):
+            continue
+        if u_w < 1.10 * space or l_w < 1.10 * space or u_h < 1.80 * space or l_h < 1.80 * space:
+            continue
+        # Require wide glyph ink strictly outside the staff on both top and bottom (rejects stems of stacked chords).
+        top_rel = max(1, int(round(top - y0)) - 2)
+        bot_rel = min(mask.shape[0] - 1, int(round(bottom - y0)) + 2)
+        u_out_xs = np.nonzero(mask[:top_rel])[1]
+        l_out_xs = np.nonzero(mask[bot_rel:])[1]
+        if not len(u_out_xs) or not len(l_out_xs):
+            continue
+        u_out_w = int(u_out_xs.max() - u_out_xs.min()) + 1
+        l_out_w = int(l_out_xs.max() - l_out_xs.min()) + 1
+        if u_out_w < 0.90 * space or l_out_w < 0.90 * space:
+            continue
+        shared = min(int(u_xs.max()), int(l_xs.max())) - max(int(u_xs.min()), int(l_xs.min())) + 1
+        if shared < 0.65 * min(u_w, l_w):
+            continue
+        # Reject full-staff vertical barlines at the left or right edge and thick filled notehead blots.
+        inside = mask[max(0, int(top - y0)):int(bottom - y0) + 1]
+        cols = inside.mean(axis=0)
+        if inside.size and (cols[0] >= 0.95 or cols[-1] >= 0.95):
+            continue
+        esize = max(3, int(round(0.78 * space)))
+        thick = cv2.erode(mask.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (esize, esize)))
+        if thick.sum() > 0.14 * space * space:
+            continue
+        cand = {
+            'x0': float(x0 + begin), 'x1': float(x0 + end),
+            'y_top': float(u_top), 'y_bot': float(l_bot), 'oversized': True,
+        }
+        parsed, conf = read_meter(layers, staff, cand)
+        if parsed is not None and conf >= 0.45:
+            found.append(cand)
     return found
 
 
@@ -466,6 +622,13 @@ def start_sign(layers: dict, staff: dict, first: float, last: float, key_end: fl
              if sign['x0'] <= last and (not sign.get('loose') or key_end is not None and sign['x0'] >= key_end - TIME_LOOSE[1] * staff['space'])]
     if COMMON:
         found += [sign for sign in common_signs(layers, staff, first, reach) if sign['x0'] <= last]
+    if not found:
+        # Fallback for oversized handwritten fonts: check bold C/cut before stacked numbers so giant C| stays cut time.
+        if COMMON:
+            found += [sign for sign in bold_commons(layers, staff, first, reach + staff['space'])
+                      if sign['x0'] <= last and sign['wide'] > COMMON_BOLD[4]]
+        if not found:
+            found += [sign for sign in _oversized_time_signs(layers, staff, first, reach + staff['space']) if sign['x0'] <= last]
     return min(found, key=lambda sign: sign['x0']) if found else None
 
 
@@ -477,6 +640,12 @@ def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:
     found = {index: [{name: value for name, value in sign.items() if name != 'loose'}
                      for sign in time_signs(layers, staff, ends[index], weak=bool(TIME_MATE), black=True) if sign['x0'] >= ends[index]]
              for index, staff in enumerate(staves)}
+    for index, staff in enumerate(staves):
+        extra_ov = _oversized_time_signs(layers, staff, ends[index], staff['x1'])
+        for sign in extra_ov:
+            if sign['x0'] >= ends[index] and _apart(sign, found[index]):
+                found[index].append(sign)
+        found[index].sort(key=lambda sign: sign['x0'])
     kept = {index: [] for index in found}
 
     def after_bar(index: int, sign: dict) -> bool:
@@ -490,23 +659,42 @@ def mid_signs(layers: dict, ends: list[float], bars: dict) -> dict:
             if mates:
                 there = [(mate, other) for mate in mates for other in found[mate]
                          if abs((other['x0'] + other['x1']) / 2 - middle) <= TIME_PAIR * space]
-                if sign.get('weak'):
+                if sign.get('oversized'):
+                    at_open = staff['system'] == 0 and sign['x0'] - ends[index] <= 5.5 * space
+                    sure = (at_open and bool(there)) or (after_bar(index, sign) and any(after_bar(mate, other) for mate, other in there))
+                elif sign.get('weak'):
                     # TIME_MATE: beside the numbers that another staff shows by every measure, both after a bar line.
                     sure = after_bar(index, sign) and any(not other.get('weak') and after_bar(mate, other) for mate, other in there)
                 else:
                     sure = any(not other.get('weak') for _, other in there) \
                         or after_bar(index, sign) and any(after_bar(mate, other) for mate, other in there)
             else:
-                sure = not sign.get('weak') and after_bar(index, sign)
+                sure = not sign.get('weak') and (
+                    after_bar(index, sign)
+                    or (sign.get('oversized') and staff['system'] == 0 and sign['x0'] - ends[index] <= 5.5 * space)
+                )
             if sure:
                 kept[index].append(sign)
     # The bold C of a print, at the start of the notes or after a bar line (COMMON_BOLD, COMMON_AT).
+    bold_by_staff = {index: bold_commons(layers, staff, ends[index] - 2 * staff['space'], staff['x1'])
+                     for index, staff in enumerate(staves)}
     for index, staff in enumerate(staves):
         space = staff['space']
-        for sign in bold_commons(layers, staff, ends[index] - 2 * space, staff['x1']):
-            if sign['x0'] - ends[index] <= COMMON_AT[0] * space \
-                    or any(0 <= sign['x0'] - bar <= COMMON_AT[1] * space for bar in bars.get(index, [])):
-                kept[index] = sorted(kept[index] + [sign], key=lambda found: found['x0'])
+        mates = [other for other, mate in enumerate(staves) if mate['system'] == staff['system'] and other != index]
+        for sign in bold_by_staff[index]:
+            at_start = sign['x0'] - ends[index] <= COMMON_AT[0] * space
+            at_bar = any(0 <= sign['x0'] - bar <= COMMON_AT[1] * space for bar in bars.get(index, []))
+            if not at_bar and sign.get('after_bar'):
+                if not mates:
+                    at_bar = True
+                else:
+                    mid_x = (sign['x0'] + sign['x1']) / 2.0
+                    at_bar = any(
+                        abs((other['x0'] + other['x1']) / 2.0 - mid_x) <= TIME_PAIR * space
+                        for mate in mates for other in bold_by_staff[mate]
+                    )
+            if (at_start or at_bar) and _apart(sign, kept[index]):
+                kept[index] = sorted(kept[index] + [sign], key=lambda found_: found_['x0'])
     return kept
 
 
@@ -613,30 +801,33 @@ def _bridge_staff_rows(free: np.ndarray, ink: np.ndarray, staff: dict,
     return out
 
 
-def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | None, float]:
-    """Classifies a single time-signature number mask against multi-font templates."""
+def _digit_scores(mask: np.ndarray, allowed: tuple[str, ...]) -> dict[str, float]:
+    """Scores each allowed time-signature digit using multi-font templates, topology cues, and local TimeNet."""
     norm = _normalize_glyph(mask)
     if norm is None:
-        return None, 0.0
+        return {}
     ys, xs = np.nonzero(mask)
     aspect = (xs.max() - xs.min() + 1) / max(1.0, ys.max() - ys.min() + 1)
-    holes = _closed_hole_count(mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+    crop_bin = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0
+    holes = _closed_hole_count(crop_bin.astype(np.uint8))
     vec = norm.ravel()
     vec = vec - vec.mean()
     vnorm = float(np.linalg.norm(vec))
     if vnorm < 1e-6:
-        return None, 0.0
+        return {}
     vec /= vnorm
     templates = _digit_templates()
-    best_digit, best_score = None, -1.0
-    # Measure topological cues: left openness, right continuity, upper-right solidity, and bottom-left lobe.
-    crop_bin = mask[ys.min():ys.max() + 1, xs.min():xs.max() + 1] > 0
+    # Measure topological cues: left openness, right continuity, flat bottom bar (2 vs 3), and bottom-left lobe.
     ch, cw = crop_bin.shape
     left_mid = float(crop_bin[int(0.25 * ch):max(int(0.25 * ch) + 1, int(0.75 * ch)), :max(1, int(0.32 * cw))].any(axis=1).mean())
     right_mid = float(crop_bin[int(0.25 * ch):max(int(0.25 * ch) + 1, int(0.75 * ch)), max(0, int(0.68 * cw)):].any(axis=1).mean())
     right_upper = float(crop_bin[int(0.22 * ch):max(int(0.22 * ch) + 1, int(0.48 * ch)), max(0, int(0.65 * cw)):].any(axis=1).mean())
     right_lower = float(crop_bin[int(0.55 * ch):max(int(0.55 * ch) + 1, int(0.85 * ch)), max(0, int(0.65 * cw)):].any(axis=1).mean())
+    mid_right_lower = float(crop_bin[int(0.55 * ch):max(int(0.55 * ch) + 1, int(0.78 * ch)), max(0, int(0.68 * cw)):].mean())
+    bottom_bar = float(crop_bin[int(0.80 * ch):, :].any(axis=0).mean())
     bottom_left = float(crop_bin[int(0.68 * ch):, :max(1, int(0.42 * cw))].mean())
+    flat_two = holes == 0 and bottom_bar >= 0.85 and mid_right_lower < 0.42
+    scores: dict[str, float] = {}
     for digit in allowed:
         if digit == '12' and aspect < 0.95:
             continue
@@ -651,18 +842,21 @@ def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | N
                 score = float(np.dot(vec, tv / tnorm))
                 if score > best_t:
                     best_t = score
-        # Apply shape-structure cues for holes, 3 vs 6 openness, 3 vs 2 lower-right, and 3 vs 4 bottom-left.
+        # Apply shape-structure cues for holes, 3 vs 6 openness, 2 vs 3 bottom bar, and 3 vs 4 bottom-left.
         want_holes = _DIGIT_HOLES.get(digit, 0)
         if holes == want_holes:
             best_t += 0.04
         elif abs(holes - want_holes) >= 2:
             best_t -= 0.08
-        if digit == '3':
+        if digit == '2':
+            if flat_two:
+                best_t += 0.05
+        elif digit == '3':
             if bottom_left < 0.35:
                 best_t -= 0.14
             elif holes == 0 and left_mid < 0.72 and right_mid >= 0.85 and right_lower >= 0.75:
                 best_t += 0.12
-            elif holes == 0 and left_mid < 0.96 and right_mid >= 0.90 and right_upper >= 0.85 and right_lower >= 0.75:
+            elif holes == 0 and not flat_two and left_mid < 0.96 and right_mid >= 0.90 and right_upper >= 0.85 and right_lower >= 0.75:
                 best_t += 0.08
             elif left_mid >= 0.98 and holes >= 1:
                 best_t -= 0.10
@@ -680,26 +874,40 @@ def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | N
                 best_t += 0.06
             elif bottom_left >= 0.60:
                 best_t -= 0.08
-        if best_t > best_score:
-            best_digit, best_score = digit, best_t
-    # Blend multi-font template matching with local offline TimeNet when weights are present.
+        scores[digit] = best_t
+    if not scores:
+        return {}
+    best_digit = max(scores, key=lambda d: scores[d])
+    best_score = scores[best_digit]
+    # Blend multi-font template matching with local offline TimeNet when neural models are enabled.
     try:
+        from . import headnet
         from .classify import classify_time_crop
-        tn_label, tn_prob = classify_time_crop(mask)
+        tn_label, tn_prob = classify_time_crop(mask) if headnet.weights() is not None else (None, 0.0)
     except Exception:
         tn_label, tn_prob = None, 0.0
-    if tn_label in allowed and tn_prob >= 0.72:
-        if tn_label == best_digit:
-            return best_digit, max(best_score, tn_prob)
-        # Never let TimeNet override strong topological evidence (4 vs 3 or 3 vs 6).
+    if tn_label in scores and tn_prob >= 0.60:
         block_override = (
             (best_digit == '4' and tn_label == '3' and bottom_left <= 0.40)
             or (best_digit == '3' and tn_label == '6' and holes == 0 and right_mid >= 0.90 and right_upper >= 0.85)
             or (best_digit == '4' and best_score >= 0.75 and tn_label == '3')
         )
-        if not block_override and tn_prob >= 0.88 and best_score < 0.78:
-            return tn_label, tn_prob
-    return best_digit, best_score
+        if tn_label == best_digit:
+            scores[tn_label] = max(scores[tn_label], tn_prob)
+        elif not block_override:
+            scores[tn_label] = scores[tn_label] + 0.16 * tn_prob
+            if tn_prob >= 0.88 and best_score < 0.78:
+                scores[tn_label] = max(scores[tn_label], tn_prob)
+    return scores
+
+
+def _classify_digit(mask: np.ndarray, allowed: tuple[str, ...]) -> tuple[str | None, float]:
+    """Classifies a single time-signature number mask against multi-font templates and local TimeNet."""
+    scores = _digit_scores(mask, allowed)
+    if not scores:
+        return None, 0.0
+    best_digit = max(scores, key=lambda d: scores[d])
+    return best_digit, scores[best_digit]
 
 
 def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, str | None] | None, float]:
@@ -731,7 +939,7 @@ def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, s
             mid_x0 = int(0.28 * (x1 - x0))
             mid_x1 = max(mid_x0 + 1, int(0.76 * (x1 - x0)))
             col_span = crop[ys_all[0]:ys_all[-1] + 1, mid_x0:mid_x1].mean(axis=0)
-            if 2.55 <= c_high <= 3.55 and abs(c_mid) <= 0.55 and len(col_span) and float(col_span.max()) >= 0.82:
+            if 2.55 <= c_high <= 3.65 and abs(c_mid) <= 0.55 and len(col_span) and float(col_span.max()) >= 0.82:
                 # For the left-expanded search, also verify the vertical slash stands inside the C rather than on a barline.
                 if left_pad == 0.0 or _cut_stroke(crop[ys_all[0]:ys_all[-1] + 1], space):
                     return (2, 2, 'cut'), 0.90
@@ -743,22 +951,32 @@ def read_meter(layers: dict, staff: dict, sign: dict) -> tuple[tuple[int, int, s
     x0 = max(0, int(sign['x0']) - 1)
     x1 = min(w, int(sign['x1']) + 2)
     top, mid, bot = rows[0], rows[2], rows[4]
-    y_top = max(0, int(top - 0.35 * space))
     y_mid = int(round(mid))
-    y_bot = min(h, int(bot + 0.35 * space) + 1)
+    if sign.get('oversized') and 'y_top' in sign and 'y_bot' in sign:
+        y_top = max(0, int(sign['y_top']) - 2)
+        y_bot = min(h, int(sign['y_bot']) + 3)
+    else:
+        y_top = max(0, int(top - 0.35 * space))
+        y_bot = min(h, int(bot + 0.35 * space) + 1)
     if x1 - x0 < 3 or y_mid <= y_top + 2 or y_bot <= y_mid + 2:
         return None, 0.0
     upper = _bridge_staff_rows(free, ink, staff, y_top, y_mid, x0, x1)
     lower = _bridge_staff_rows(free, ink, staff, y_mid, y_bot, x0, x1)
-    num, n_conf = _classify_digit(upper, ('2', '3', '4', '5', '6', '9', '12'))
-    den, d_conf = _classify_digit(lower, ('2', '4', '8'))
-    if num is None or den is None:
+    u_scores = _digit_scores(upper, ('2', '3', '4', '5', '6', '9', '12'))
+    l_scores = _digit_scores(lower, ('2', '4', '8'))
+    if not u_scores or not l_scores:
         return None, 0.0
-    pair = (int(num), int(den))
-    if pair not in VALID_METERS:
+    best_pair = None
+    best_conf = -1.0
+    for num, den in VALID_METERS:
+        ns, ds = str(num), str(den)
+        if ns in u_scores and ds in l_scores:
+            conf = 0.5 * (u_scores[ns] + l_scores[ds])
+            if conf > best_conf:
+                best_pair, best_conf = (num, den), conf
+    if best_pair is None or best_conf < 0.35:
         return None, 0.0
-    conf = 0.5 * (n_conf + d_conf)
-    return (pair[0], pair[1], None), conf
+    return (best_pair[0], best_pair[1], None), best_conf
 
 
 _BAR_LENGTH_METERS: dict[Fraction, tuple[int, int, str | None]] = {
@@ -824,6 +1042,9 @@ def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
             cands.extend(bold_commons(layers, staff, scan_left - 1.0 * space, scan_right))
             cands.extend(s for s in time_signs(layers, staff, starts[idx]['x1'] - 0.3 * space, scan_right)
                          if s['x0'] <= max(ends[idx], key_right) + 4.5 * space)
+            if not cands:
+                cands.extend(s for s in _oversized_time_signs(layers, staff, starts[idx]['x1'] - 0.3 * space, scan_right)
+                             if s['x0'] <= max(ends[idx], key_right) + 5.5 * space)
         best_here = None
         for sign in cands:
             parsed, conf = read_meter(layers, staff, sign)
@@ -850,14 +1071,14 @@ def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
             if parsed is not None and conf >= 0.50:
                 raw_changes.setdefault(idx, []).append((float(sign['x0']), parsed, conf))
 
-    # Reconcile mid-page meter changes across staves of the same system at matching x-columns.
+    # Reconcile mid-page meter changes across staves of the same system at matching x-columns,
+    # and propagate high-confidence (>= 0.85) changes to mate staves of the same system.
     changes: dict[int, list[tuple[float, tuple[int, int, str | None]]]] = {}
-    for idx, items in raw_changes.items():
-        staff = staves[idx]
+    for idx, staff in enumerate(staves):
         space = staff['space']
         mates = [other for other, mate in enumerate(staves) if mate['system'] == staff['system']]
-        reconciled = []
-        for cx, parsed, conf in items:
+        reconciled: list[tuple[float, tuple[int, int, str | None]]] = []
+        for cx, parsed, conf in raw_changes.get(idx, ()):
             col_votes: dict[tuple[int, int, str | None], list[float]] = {}
             for mate in mates:
                 for ox, oparsed, oconf in raw_changes.get(mate, ()):
@@ -865,5 +1086,15 @@ def page_meter(layers: dict, starts: list[dict], times: dict[int, list[dict]],
                         col_votes.setdefault(oparsed, []).append(oconf)
             winner = max(col_votes, key=lambda m: (len(col_votes[m]), sum(col_votes[m]))) if col_votes else parsed
             reconciled.append((cx, winner))
-        changes[idx] = reconciled
+        for mate in mates:
+            if mate == idx:
+                continue
+            for ox, oparsed, oconf in raw_changes.get(mate, ()):
+                if oconf < 0.85:
+                    continue
+                if any(abs(ex - ox) <= TIME_PAIR * space for ex, _ in reconciled):
+                    continue
+                reconciled.append((ox, oparsed))
+        if reconciled:
+            changes[idx] = sorted(reconciled, key=lambda item: item[0])
     return opening, changes

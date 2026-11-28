@@ -15,12 +15,16 @@ changes that note.
 """
 from __future__ import annotations
 
+import os
+
 import cv2
 import numpy as np
 
 from .starts import PAIR, SIGN_STROKE, _ink, sign_candidates, start_strokes
 from .symbols import pitch_place
 from . import starts as _starts
+from . import classify as _classify
+from . import headnet as _headnet
 
 BEFORE = (-0.45, 1.7)    # a head begins this far right of the right edge of its sign, in staff spaces
 HIGH = 1.2               # and its place is at most this many pitch places from the sign's place
@@ -523,6 +527,24 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                         and stroke['top'] - 0.5 * space <= head['cy'] <= stroke['bottom'] + 0.5 * space:
                     strays.append((box, head))
         full = [head for head in full if not any(head is stray for _, stray in strays)]
+    if SHARP_BOW_FOOT:
+        # A flat whose vertical stem was followed into a slur or bow below its foot: the thin head lies outside the
+        # flat box, and a real non-thin notehead stands right after the flat at the flat's pitch.
+        real_heads = [head for head in full if not head.get('thin')]
+        flat_cands = [sign for sign in pair_signs(layers, staff, strokes) if sign['kind'] == 'flat'] + [
+            sign for sign in sign_candidates(layers, staff, strokes, beams=True) if sign['kind'] == 'flat']
+        for sign in flat_cands:
+            place = sign['bowl_place'] if sign.get('bowl_place') is not None else sign['place']
+            has_target = any(BEFORE[0] <= (head['x0'] - sign['x1']) / space <= BEFORE[1]
+                             and abs(head['place'] - place) <= HIGH for head in real_heads)
+            if not has_target:
+                continue
+            for head in full:
+                if head.get('thin') and len(head['stems']) == 1 \
+                        and sign['x0'] - 2 <= head['stems'][0]['x'] <= sign['x1'] + 2 \
+                        and (head['cy'] > sign['bottom'] + 0.3 * space or head['cy'] < sign['top'] - 0.3 * space):
+                    strays.append((sign, head))
+        full = [head for head in full if not any(head is stray for _, stray in strays)]
     kept = [stroke for stroke in strokes if not stem_of_head(stroke)]
     legs = []
     if SHARP_STEM or NATURAL_STEM:
@@ -693,6 +715,109 @@ def note_signs(layers: dict, index: int, heads: list[dict], first: float) -> lis
                     out.append(dict(sign, head=head, drop=lying(sign, small) + [part for part in parts
                                                                              if not any(part is other for other in lying(sign, small))]))
                     taken.append((sign['x0'], sign['x1'], sign['top'], sign['bottom']))
+    out = _acc_refine(layers, staff, index, first, full, own, small, out, lying)
+    return out
+
+
+_ACC_CACHE: dict[str, object] = {'key': None, 'weights': None}
+
+
+def _load_accnet():
+    """Loads AccNet weights lazily when neural classification is enabled and AccNet weights exist."""
+    if _headnet.weights() is None:
+        return None
+    loader = getattr(_classify, 'load_acc_weights', None)
+    if loader is None or getattr(_classify, 'classify_accidentals', None) is None:
+        return None
+    env_key = os.environ.get('SCOREREADER_ACCNET', '')
+    if env_key.strip().lower() in ('0', 'off', 'false', 'no'):
+        return None
+    if _ACC_CACHE['key'] != env_key:
+        _ACC_CACHE['key'] = env_key
+        _ACC_CACHE['weights'] = loader()
+    return _ACC_CACHE['weights']
+
+
+def _acc_refine(layers: dict, staff: dict, index: int, first: float, full: list[dict],
+                own: list[dict], small: list[dict], out: list[dict], lying) -> list[dict]:
+    """Applies AccNet veto and high-confidence rescue when local AccNet weights are available."""
+    weights = _load_accnet()
+    if weights is None:
+        return out
+    clf = getattr(_classify, 'classify_accidentals', None)
+    if clf is None:
+        return out
+    space = staff['space']
+    kind_to_idx = {'sharp': 1, 'flat': 2, 'natural': 3}
+    idx_to_kind = {1: 'sharp', 2: 'flat', 3: 'natural'}
+    # 1. Conservative veto of false heuristic accidentals.
+    if out:
+        pts = [(index, 0.5 * (s['x0'] + s['x1']), 0.5 * (s['top'] + s['bottom'])) for s in out]
+        probs = clf(layers, pts, weights=weights)
+        if len(probs) == len(out):
+            kept_out = []
+            for sign, pr in zip(out, probs):
+                if sign.get('whole') or sign.get('stacked'):
+                    kept_out.append(sign)
+                    continue
+                ki = kind_to_idx.get(sign['kind'], 0)
+                p_none, p_own = float(pr[0]), float(pr[ki])
+                heuristic = not (sign.get('pair') or sign.get('joined'))
+                if (heuristic and p_none >= 0.90 and p_own <= 0.06) or (p_none >= 0.97 and p_own <= 0.02):
+                    continue
+                kept_out.append(sign)
+            out = kept_out
+    # 2. High-confidence rescue of missed isolated accidentals immediately left of an unsigned head.
+    signed = {id(s['head']) for s in out} | {id(h) for s in out for h in s['drop']}
+    taken = [(s['x0'], s['x1'], s['top'], s['bottom']) for s in out]
+    bare = layers['bare']
+    cands: list[tuple[dict, tuple[int, int, int, int]]] = []
+    for head in full:
+        if id(head) in signed or head.get('thin') or head['x0'] - 1.5 * space <= first:
+            continue
+        x0 = max(int(first) + 1, int(head['x0'] - 1.55 * space))
+        x1 = max(x0, int(head['x0'] - 0.10 * space))
+        y0 = max(0, int(head['cy'] - 1.8 * space))
+        y1 = min(bare.shape[0], int(head['cy'] + 1.8 * space))
+        if x1 - x0 < int(0.35 * space) or y1 - y0 < int(0.8 * space):
+            continue
+        roi = bare[y0:y1, x0:x1]
+        if not roi.any():
+            continue
+        ncc, _, stats, _ = cv2.connectedComponentsWithStats(roi.astype(np.uint8), connectivity=8)
+        best_cc = None
+        for lab in range(1, ncc):
+            cx, cy, cw, ch, area = (int(v) for v in stats[lab])
+            if not (0.35 * space <= cw <= 1.35 * space and 0.9 * space <= ch <= 3.2 * space and area >= 0.18 * space * space):
+                continue
+            bx0, by0, bx1, by1 = x0 + cx, y0 + cy, x0 + cx + cw - 1, y0 + cy + ch - 1
+            if not (by0 <= head['cy'] + 0.4 * space and by1 >= head['cy'] - 0.4 * space):
+                continue
+            if any(bx0 <= tx1 and tx0 <= bx1 and by0 <= tb and tt <= by1 for tx0, tx1, tt, tb in taken):
+                continue
+            if any(other is not head and bx0 <= other['x1'] and other['x0'] <= bx1
+                   and by0 <= other['y1'] and other['y0'] <= by1 for other in own):
+                continue
+            if any(bx0 - 2 <= st['x'] <= bx1 + 2 and min(by1, max(other['cy'], st['end'])) >= max(by0, min(other['cy'], st['end']))
+                   for other in own for st in other['stems']):
+                continue
+            if best_cc is None or bx1 > best_cc[2]:
+                best_cc = (bx0, by0, bx1, by1)
+        if best_cc is not None:
+            cands.append((head, best_cc))
+    if cands:
+        pts = [(index, 0.5 * (b[0] + b[2]), 0.5 * (b[1] + b[3])) for _, b in cands]
+        probs = clf(layers, pts, weights=weights)
+        if len(probs) == len(cands):
+            for (head, (bx0, by0, bx1, by1)), pr in zip(cands, probs):
+                best_cls = int(np.argmax(pr[1:])) + 1
+                if float(pr[best_cls]) >= 0.92 and float(pr[0]) <= 0.04:
+                    if not any(bx0 <= tx1 and tx0 <= bx1 and by0 <= tb and tt <= by1 for tx0, tx1, tt, tb in taken):
+                        sign = {'kind': idx_to_kind[best_cls], 'x0': float(bx0), 'x1': float(bx1),
+                                'top': float(by0), 'bottom': float(by1), 'place': float(head['place']),
+                                'accnet': True}
+                        out.append(dict(sign, head=head, drop=lying(sign, small)))
+                        taken.append((float(bx0), float(bx1), float(by0), float(by1)))
     return out
 
 
@@ -950,6 +1075,11 @@ def tangle_sign(layers: dict, staff: dict, head: dict, heads: list[dict]) -> dic
     if abs(head['cy'] - middle) > TANGLE_NEAR[1] * space:
         return None
     if float((_runs(part.T) >= 2).mean()) < TANGLE_CROSS[0] or float((_runs(part) >= 2).mean()) < TANGLE_CROSS[1]:
+        return None
+    # A sharp has both vertical strokes crossing the middle band; a 16th-note rest has only one slanted spine there.
+    bh, bw = part.shape
+    mid = part[int(0.35 * bh):int(0.65 * bh)]
+    if mid.size and min(float(mid[:, :max(1, bw // 2)].mean()), float(mid[:, bw // 2:].mean())) < 0.10:
         return None
     # The strokes of a sharp close in a small room of paper at most. An oval closes in a large one: a hollow head.
     paper = (1 - np.pad(part, 1)).astype(np.uint8)

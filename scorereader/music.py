@@ -140,7 +140,7 @@ def pitch_of(place: int, clef: str, alter: int) -> tuple[str, int, int, int]:
 def length_of(head: dict, tails: int) -> Fraction:
     """The length of a note in quarter notes, from its head, its stem, its flags or beams and its dot."""
     if head['hollow']:
-        base = Fraction(2) if head['stems'] else Fraction(4)
+        base = Fraction(2) if (head['stems'] or head.get('half_stemless')) else Fraction(4)
     else:
         base = Fraction(1) / (2 ** tails)
     if head.get('dot') and head.get('dots') == 2:
@@ -333,6 +333,86 @@ def staff_columns(staff: dict, heads: list[dict], bars: list[float], space: floa
             else:
                 columns.append([event])
         out.append(columns)
+    # Convert undotted stemless half-note candidates only in multi-column bars, never solo whole-bar whole notes.
+    for columns in out:
+        if len(columns) >= 2:
+            for column in columns:
+                for ev in column:
+                    if not ev.get('rest') and ev['head'].get('half_stemless_multi') and ev['length'] == Fraction(4):
+                        ev['head']['half_stemless'] = True
+                        ev['length'] = Fraction(2)
+                        ev['agreed'] = True
+    # On a two-voice staff, split opposite-kind heads that accidentally grabbed the other voice's stem,
+    # and route stemless filled columns to the free voice when the opposite voice is holding a note.
+    for columns in out:
+        for column in columns:
+            # Unify a hollow head on the same stem as a filled chord partner when SymNet confirms filled.
+            for ev in column:
+                if ev.get('rest') or not ev['head'].get('hollow') or ev['stem_x'] is None:
+                    continue
+                sym = ev['head'].get('symnet')
+                if sym is None or float(sym[0]) < 0.95 or float(sym[1]) > 0.02:
+                    continue
+                partner = next((other for other in column
+                                if other is not ev and not other.get('rest') and other['voice'] == ev['voice']
+                                and not other['head'].get('hollow') and other['stem_x'] is not None
+                                and abs(other['stem_x'] - ev['stem_x']) <= 0.35 * space
+                                and ev['length'] == 2 * other['length']), None)
+                if partner is not None:
+                    ev['head']['hollow'] = False
+                    ev['length'] = partner['length']
+                    ev['agreed'] = True
+    staff_voices = {ev['voice'] for cols in out for col in cols for ev in col if not ev.get('rest') and ev['stem_x'] is not None}
+    if len(staff_voices) == 2:
+        for columns in out:
+            for column in columns:
+                notes_col = [ev for ev in column if not ev.get('rest')]
+                voices_col = {ev['voice'] for ev in notes_col}
+                if len(voices_col) != 1 or len(notes_col) < 2:
+                    continue
+                v = next(iter(voices_col))
+                hollows = [ev for ev in notes_col if ev['head'].get('hollow') and ev['length'] >= 2]
+                filleds = [ev for ev in notes_col if not ev['head'].get('hollow') and ev['length'] < 2]
+                if not (hollows and filleds):
+                    continue
+                h_ok = all(ev['head'].get('symnet') is None or float(ev['head']['symnet'][1]) + float(ev['head']['symnet'][2]) >= 0.85
+                           for ev in hollows)
+                f_ok = all(ev['head'].get('symnet') is None or float(ev['head']['symnet'][0]) >= 0.90
+                           for ev in filleds)
+                if not (h_ok and f_ok):
+                    continue
+                if (v == 1 and max(ev['place'] for ev in filleds) < min(ev['place'] for ev in hollows)) or \
+                   (v == 2 and min(ev['place'] for ev in filleds) > max(ev['place'] for ev in hollows)):
+                    for ev in filleds:
+                        ev['voice'] = 3 - v
+                        ev['stem_x'] = None
+            bar_voices = {ev['voice'] for col in columns for ev in col if not ev.get('rest')}
+            if len(bar_voices) < 2:
+                continue
+            free = {1: Fraction(0), 2: Fraction(0)}
+            last_onset, last_shortest = None, None
+            last_place: dict[int, int | None] = {1: None, 2: None}
+            for column in columns:
+                notes_col = [ev for ev in column if not ev.get('rest')]
+                if notes_col and all(ev['stem_x'] is None and not ev['head'].get('hollow') for ev in notes_col):
+                    if free[1] > free[2] and last_place[1] is not None and max(ev['place'] for ev in notes_col) < last_place[1]:
+                        for ev in notes_col:
+                            ev['voice'] = 2
+                    elif free[2] > free[1] and last_place[2] is not None and min(ev['place'] for ev in notes_col) > last_place[2]:
+                        for ev in notes_col:
+                            ev['voice'] = 1
+                col_voices = {ev['voice'] for ev in column}
+                onset = max(free[v] for v in col_voices)
+                if last_onset is not None and onset <= last_onset:
+                    onset = last_onset + last_shortest
+                for v in col_voices:
+                    v_evs = [ev for ev in column if ev['voice'] == v]
+                    free[v] = onset + min(ev['length'] for ev in v_evs)
+                    v_notes = [ev for ev in v_evs if not ev.get('rest')]
+                    if v_notes:
+                        last_place[v] = max(ev['place'] for ev in v_notes) if v == 1 else min(ev['place'] for ev in v_notes)
+                last_onset = onset
+                last_shortest = min(ev['length'] for ev in column)
     return out
 
 

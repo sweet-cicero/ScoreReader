@@ -38,9 +38,12 @@ REST_IDS = (4, 5, 6, 7, 8)
 ACC_IDS = (9, 10, 11)
 NON_HEAD_IDS = (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
 
+ACC_CLASSES = ('none', 'sharp', 'flat', 'natural')
+
 WEIGHTS = str(Path(__file__).resolve().parent / 'symnet.npz')
 STEM_WEIGHTS = str(Path(__file__).resolve().parent / 'stemnet.npz')
 TIME_WEIGHTS = str(Path(__file__).resolve().parent / 'timenet.npz')
+ACC_WEIGHTS = str(Path(__file__).resolve().parent / 'accnet.npz')
 OFF = ('off', 'none', 'no', '0', '')
 _CACHE: dict[str, dict] = {}
 
@@ -78,6 +81,11 @@ def load_stem_weights(path: str | None = None) -> dict | None:
 def load_time_weights(path: str | None = None) -> dict | None:
     """Loads folded TimeNet weights once."""
     return load_weights(path, env_key='TIMENET', default=TIME_WEIGHTS)
+
+
+def load_acc_weights(path: str | None = None) -> dict | None:
+    """Loads folded AccNet weights once."""
+    return load_weights(path, env_key='ACCNET', default=ACC_WEIGHTS)
 
 
 def page_levels(grey: np.ndarray) -> tuple[float, float]:
@@ -275,3 +283,21 @@ def classify_time_crop(mask_or_ink: np.ndarray, weights: dict | None = None) -> 
     probs = _predict_small(out, weights)[0]
     best = int(np.argmax(probs))
     return str(weights['classes'][best]), float(probs[best])
+
+
+def classify_accidentals(layers: dict, candidates: list[tuple[int, float, float]],
+                         weights: dict | None = None) -> np.ndarray:
+    """Classifies left-of-head candidate points (staff_idx, cx, cy) into (N, 4) probs for (none, sharp, flat, natural)."""
+    weights = weights or load_acc_weights()
+    if weights is None or not candidates:
+        return np.zeros((0, len(ACC_CLASSES)), dtype=np.float32)
+    grey = layers['grey']
+    bare = layers['bare']
+    staves = layers['staves']
+    levels = page_levels(grey)
+    batch = np.empty((len(candidates), 3, PATCH_SIZE, PATCH_SIZE), dtype=np.float32)
+    for i, (s_idx, cx, cy) in enumerate(candidates):
+        staff = staves[s_idx]
+        batch[i] = extract_patch(grey, bare, staff['rows'], staff['space'], cx, cy,
+                                 size=PATCH_SIZE, spaces=PATCH_SPACES, levels=levels)
+    return _predict_small(batch, weights)

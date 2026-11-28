@@ -89,7 +89,7 @@ def _overlaps_music(x0: float, x1: float, y0: float, y1: float, space: float,
     return False
 
 
-def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
+def quarter_rests(layers: dict, ends: list[float], weights: dict | None = None) -> list[dict]:
     """The printed quarter rests of a page: [{'staff', 'x', 'x0', 'x1', 'top', 'bottom', 'middle', 'kind', 'length'}],
     where 'middle' is how many staff spaces the rest's middle lies under the middle line of its staff.
     Closes thin vertical staff-line breaks per staff so printed quarter rests cut by staff lines stay whole."""
@@ -164,6 +164,16 @@ def quarter_rests(layers: dict, ends: list[float]) -> list[dict]:
                 out.append({'staff': index, 'x': cx, 'x0': x, 'x1': x + wide, 'top': y, 'bottom': y + high,
                             'middle': (at - layers['staves'][index]['rows'][2]) / space,
                             'cross': True, 'kind': 'quarter', 'length': Fraction(1)})
+    # Reject clear eighth or sixteenth rests that accidentally pass _rest_shape so they keep their true duration.
+    sym_w = _symnet_weights(weights)
+    if sym_w is not None and out:
+        from . import classify
+        pts = [(r['staff'], float(r['x']), float((r['top'] + r['bottom']) / 2.0)) for r in out]
+        probs_all = classify.classify_points(layers, pts, sym_w)
+        out = [
+            rest for rest, probs in zip(out, probs_all)
+            if not (not rest.get('cross') and (float(probs[7]) >= 0.85 or float(probs[8]) >= 0.85) and float(probs[6]) < 0.15)
+        ]
     return out
 
 
@@ -336,11 +346,18 @@ def block_rests(layers: dict, ends: list[float], measure: bool = False) -> list[
                         and (hangs or sits))
         if ledger_block and not _open_side_clear(hangs and not sits):
             ledger_block = False
+        # Wide handwritten-style whole and half rests up to 2.25 spaces wide.
+        wide_block = (BLOCK[1] * space < bwide <= 2.25 * space
+                      and 0.44 * space <= high <= BLOCK[3] * space
+                      and fill >= 0.88 and square >= 0.85
+                      and abs(middle) <= BLOCK[6]
+                      and (hangs or sits)
+                      and _open_side_clear(hangs and not sits))
         in_staff_block = (BLOCK[0] * space <= bwide <= BLOCK[1] * space
                           and BLOCK[2] * space <= high <= BLOCK[3] * space
                           and fill >= BLOCK[4] and square >= BLOCK[5]
                           and abs(middle) <= BLOCK[6])
-        rest = in_staff_block or slim_block or ledger_block
+        rest = in_staff_block or slim_block or ledger_block or wide_block
         if rest or (measure and wide <= 1.9 * space):
             length = _block_length(box, y, high, rows, hangs, sits, bwide)
             found = {'staff': index, 'x': (bx0 + bx1) / 2, 'x0': bx0, 'x1': bx1, 'top': y, 'bottom': y + high,
@@ -465,12 +482,47 @@ _NEURAL_REST_MAP = {
 }
 
 
+def _max_hole_area(piece: np.ndarray, space: float) -> float:
+    """Returns the largest interior paper hole area in square staff spaces."""
+    pad = (~np.pad(piece, 1)).astype(np.uint8)
+    hc, hlab, hstats, _ = cv2.connectedComponentsWithStats(pad, connectivity=4)
+    areas = [float(hstats[j, cv2.CC_STAT_AREA]) / (space * space) for j in range(1, hc) if hlab[0, 0] != j]
+    return max(areas) if areas else 0.0
+
+
+def _slim_rest_swing(piece: np.ndarray, space: float) -> bool:
+    """Returns True when a slim isolated stroke shows the vertical zig-zag swing of a quarter rest."""
+    high, wide = piece.shape
+    if high < 8 or wide < 3:
+        return False
+    rows = [np.nonzero(row)[0] for row in piece]
+    rows = [row for row in rows if len(row)]
+    if len(rows) < int(0.8 * high):
+        return False
+    for edge in (np.array([row[0] for row in rows]), np.array([row[-1] for row in rows])):
+        if (np.abs(edge - np.median(edge)) <= 0.12 * space).mean() > 0.88:
+            return False
+    middle = np.array([np.nonzero(row)[0].mean() if row.any() else np.nan for row in piece]) / space
+    parts = []
+    for number in range(8):
+        part = middle[int(high * number / 8):max(int(high * number / 8) + 1, int(high * (number + 1) / 8))]
+        if np.isnan(part).all():
+            return False
+        parts.append(float(np.nanmean(part)))
+    right = max(parts[1], parts[2])
+    back = min(parts[3], parts[4])
+    again = max(parts[4], parts[5])
+    return (right - parts[0] >= 0.05 and right - back >= 0.05
+            and again - back >= 0.02 and again - min(parts[6], parts[7]) >= 0.04)
+
+
 def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
                            bars: dict[int, list[float]], existing: list[dict],
                            weights: dict | None = None, threshold: float = 0.85) -> list[dict]:
     """Finds isolated non-head marks and near-miss blocks, and classifies them with local SymNet.
 
-    Returns an empty list when SymNet weights are disabled or unavailable.
+    Uses cross-staff system alignment for mid-confidence candidates and returns an empty list when SymNet
+    weights are disabled or unavailable.
     """
     sym_w = _symnet_weights(weights)
     if sym_w is None:
@@ -498,30 +550,72 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
         sh = heads_by_staff[index]
         sb = bars.get(index, [])
         se = existing_by_staff[index]
+        small_frags: list[tuple[int, int, int, int, int]] = []
         for k in range(1, count):
             x, y, wide, high, _ = (int(v) for v in stats[k])
             if x <= ends[index] + 0.2 * space or x + wide > staff['x1']:
                 continue
-            if not (0.35 * space <= wide <= 1.45 * space and 1.05 * space <= high <= 3.6 * space):
-                continue
             gy = y + y0
             cx, cy = x + wide / 2.0, gy + high / 2.0
             middle = (cy - rows[2]) / space
+            if 0.20 * space <= wide <= 1.25 * space and 0.20 * space <= high < 1.05 * space and abs(middle) <= 2.2:
+                if not _overlaps_music(x, x + wide, gy, gy + high, space, sh, sb, se):
+                    small_frags.append((x, y, wide, high, k))
+                continue
+            if not (0.35 * space <= wide <= 1.45 * space and 1.05 * space <= high <= 3.6 * space):
+                continue
             if abs(middle) > 3.5:
                 continue
             if _overlaps_music(x, x + wide, gy, gy + high, space, sh, sb, se):
                 continue
             piece = labels[y:y + high, x:x + wide] == k
-            pad = (~np.pad(piece, 1)).astype(np.uint8)
-            hc, hlab, hstats, _ = cv2.connectedComponentsWithStats(pad, connectivity=4)
-            if any(hlab[0, 0] != j and hstats[j, cv2.CC_STAT_AREA] >= 0.06 * space * space for j in range(1, hc)):
+            hole_area = _max_hole_area(piece, space)
+            if hole_area >= 0.28:
                 continue
             cands.append({
                 'staff': index, 'x': cx, 'cy': cy, 'x0': x, 'x1': x + wide, 'top': gy, 'bottom': gy + high,
-                'middle': middle, 'is_block': False,
+                'middle': middle, 'is_block': False, 'hole_area': hole_area,
+                'slim_swing': (hole_area < 0.09 and 0.35 * space <= wide <= 0.72 * space
+                               and 1.70 * space <= high <= 2.40 * space and _slim_rest_swing(piece, space)),
             })
+        # Reconnect diagonal eighth rests split in two across a removed staff line without merging adjacent notes.
+        small_frags.sort(key=lambda f: (f[1], f[0]))
+        used_frags: set[int] = set()
+        for fi, (ax, ay, aw, ah, ak) in enumerate(small_frags):
+            if fi in used_frags:
+                continue
+            for fj in range(fi + 1, len(small_frags)):
+                if fj in used_frags:
+                    continue
+                bx, by, bw, bh, bk = small_frags[fj]
+                vgap = by - (ay + ah)
+                if vgap > 0.42 * space:
+                    break
+                if vgap < -0.15 * space:
+                    continue
+                if min(ax + aw, bx + bw) < max(ax, bx) - 0.15 * space:
+                    continue
+                mx0, mx1 = min(ax, bx), max(ax + aw, bx + bw)
+                my0, my1 = min(ay, by), max(ay + ah, by + bh)
+                mw, mh = mx1 - mx0, my1 - my0
+                if not (0.40 * space <= mw <= 1.35 * space and 1.05 * space <= mh <= 2.45 * space):
+                    continue
+                mgy0, mgy1 = y0 + my0, y0 + my1
+                if _overlaps_music(mx0, mx1, mgy0, mgy1, space, sh, sb, se):
+                    continue
+                merged_piece = (labels[my0:my1, mx0:mx1] == ak) | (labels[my0:my1, mx0:mx1] == bk)
+                if _max_hole_area(merged_piece, space) >= 0.09:
+                    continue
+                used_frags.add(fi)
+                used_frags.add(fj)
+                mcx, mcy = (mx0 + mx1) / 2.0, (mgy0 + mgy1) / 2.0
+                cands.append({
+                    'staff': index, 'x': mcx, 'cy': mcy, 'x0': mx0, 'x1': mx1, 'top': mgy0, 'bottom': mgy1,
+                    'middle': (mcy - rows[2]) / space, 'is_block': False, 'hole_area': 0.0, 'slim_swing': False,
+                })
+                break
 
-    # Group B: near-miss rectangular blocks on free ink (including ledger-line wings).
+    # Group B: near-miss rectangular blocks on free ink (including ledger-line wings and wide blocks).
     count, _, stats, _ = cv2.connectedComponentsWithStats(free, connectivity=8)
     for k in range(1, count):
         x, y, wide, high = (int(v) for v in stats[k][:4])
@@ -541,7 +635,7 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
         cx0, cx1, fill, square = _block_core(box, space)
         bwide = cx1 - cx0
         bx0, bx1 = x + cx0, x + cx1
-        if not (0.80 * space <= bwide <= 1.95 * space and fill >= 0.70 and square >= 0.40):
+        if not (0.80 * space <= bwide <= 2.35 * space and fill >= 0.65 and square >= 0.20):
             continue
         sh = heads_by_staff[index]
         sb = bars.get(index, [])
@@ -555,22 +649,74 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
             'staff': index, 'x': (bx0 + bx1) / 2.0, 'cy': at, 'x0': bx0, 'x1': bx1, 'top': y, 'bottom': y + high,
             'middle': middle, 'is_block': True, 'hangs': hangs, 'sits': sits,
             'block_length': _block_length(box, y, high, rows, hangs, sits, bwide),
+            'slim_swing': False,
         })
 
     if not cands:
         return []
     pts = [(c['staff'], float(c['x']), float(c['cy'])) for c in cands]
     probs_all = classify.classify_points(layers, pts, sym_w)
-    found: list[dict] = []
+
+    # Pre-score geometry-compatible candidates so cross-staff system alignment can corroborate mid-confidence rests.
+    scored: list[tuple[dict, int, float, np.ndarray]] = []
     for cand, probs in zip(cands, probs_all):
         cls_idx = int(np.argmax(probs))
         prob = float(probs[cls_idx])
-        if cls_idx not in _NEURAL_REST_MAP or prob < threshold:
-            continue
-        # Enforce geometry compatibility between tall rests and flat block rests.
         if cand['is_block'] and cls_idx not in (4, 5):
             continue
-        if not cand['is_block'] and cls_idx not in (6, 7, 8):
+        if not cand['is_block']:
+            hole_area = cand.get('hole_area', 0.0)
+            if hole_area >= 0.09:
+                # Allow curled sixteenth rests with closed loops only at very high SymNet confidence.
+                if cls_idx == 8 and prob >= 0.95:
+                    scored.append((cand, cls_idx, prob, probs))
+                continue
+            if cls_idx not in (6, 7, 8):
+                # Keep slim zig-zag quarter-rest candidates for cross-staff mate rescue when SymNet rules out noteheads.
+                p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
+                if cand.get('slim_swing') and abs(cand['middle']) <= 0.45 and p_head < 0.20:
+                    scored.append((cand, 6, float(probs[6]), probs))
+                continue
+        scored.append((cand, cls_idx, prob, probs))
+
+    # Build system-level mate tables: high-confidence rests (existing + >= threshold) and mid-confidence candidates.
+    high_anchors = list(existing)
+    for cand, cls_idx, prob, _ in scored:
+        if prob >= threshold:
+            kind, _ = _NEURAL_REST_MAP[cls_idx]
+            high_anchors.append({'staff': cand['staff'], 'x': cand['x'], 'kind': kind})
+    mid_anchors = [
+        {'staff': cand['staff'], 'x': cand['x'], 'kind': _NEURAL_REST_MAP[cls_idx][0]}
+        for cand, cls_idx, prob, _ in scored
+        if prob >= min(threshold, 0.48)
+    ]
+
+    def _has_mate(staff_idx: int, x_pos: float, kind: str, pool: list[dict], tol: float) -> bool:
+        sys_id = staves[staff_idx]['system']
+        return any(
+            o['staff'] != staff_idx and staves[o['staff']]['system'] == sys_id
+            and o['kind'] == kind and abs(o['x'] - x_pos) <= tol * space
+            for o in pool
+        )
+
+    found: list[dict] = []
+    for cand, cls_idx, prob, probs in scored:
+        kind, length = _NEURAL_REST_MAP[cls_idx]
+        keep = prob >= threshold
+        if not keep and cls_idx == 6 and prob >= min(threshold, 0.56) and abs(cand['middle']) <= 0.35:
+            # Accept centered slim quarter rests above 0.56 (0 FPs across zero-rest Clean Dev scores).
+            keep = True
+        if not keep and prob >= min(threshold, 0.48):
+            # Accept mid-confidence rests corroborated by a same-kind rest on another staff of the same system.
+            if _has_mate(cand['staff'], cand['x'], kind, high_anchors, 0.95) \
+                    or _has_mate(cand['staff'], cand['x'], kind, mid_anchors, 0.95):
+                keep = True
+        if not keep and cls_idx == 6 and cand.get('slim_swing') and abs(cand['middle']) <= 0.45:
+            # Rescue slim zig-zag quarter rests paired directly above or below a high-confidence mate quarter rest.
+            p_head = float(probs[0] + probs[1] + probs[2] + probs[3])
+            if p_head < 0.20 and _has_mate(cand['staff'], cand['x'], 'quarter', high_anchors, 0.85):
+                keep = True
+        if not keep:
             continue
         # Prevent duplicate overlapping detections inside this neural batch.
         if any(r['staff'] == cand['staff']
@@ -578,7 +724,6 @@ def neural_rest_candidates(layers: dict, ends: list[float], heads: list[dict],
                and cand['top'] <= r['bottom'] + 0.2 * space and cand['bottom'] >= r['top'] - 0.2 * space
                for r in found):
             continue
-        kind, length = _NEURAL_REST_MAP[cls_idx]
         entry = {
             'staff': cand['staff'], 'x': cand['x'], 'x0': cand['x0'], 'x1': cand['x1'],
             'top': cand['top'], 'bottom': cand['bottom'], 'middle': cand['middle'],

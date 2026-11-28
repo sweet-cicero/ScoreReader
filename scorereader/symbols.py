@@ -1305,6 +1305,13 @@ def thick_marks(layers: dict) -> list[dict]:
                 step = layers['staves'][_staff_of(layers, x + own_wide / 2, y + own_high / 2) or 0]['space'] / 2
                 middle = sum(cx for cx, _ in centres) / 3
                 centres = [(middle, (own_high - 1) / 2 - step), (middle, (own_high - 1) / 2 + step)]
+            if len(centres) >= 2 and not (own_high >= 1.45 * high
+                                          or max(cx for cx, _ in centres) - min(cx for cx, _ in centres) >= 0.65 * wide):
+                # Multiple small holes stacked vertically inside one hollow head (split by a staff or ledger line):
+                # collapse them to one hole centre so a single wide whole note stays intact while a touching
+                # filled+hollow pair still enters the horizontal single-hole split below.
+                centres = [(sum(cx for cx, _ in centres) / len(centres),
+                            sum(cy for _, cy in centres) / len(centres))]
             if len(centres) >= 2:
                 by_holes = True
                 rows, columns = np.nonzero(mask)
@@ -1312,6 +1319,32 @@ def thick_marks(layers: dict) -> list[dict]:
                 for number in range(len(centres)):
                     part = np.zeros_like(mask)
                     part[rows[nearest == number], columns[nearest == number]] = True
+                    prows = np.nonzero(part.any(axis=1))[0]
+                    if not len(prows):
+                        continue
+                    py0, py1 = int(prows[0]), int(prows[-1])
+                    ph = py1 - py0 + 1
+                    _, hcy = centres[number]
+                    # A narrow stack of filled heads merged onto a hollow flag loop at one end: split the solid stack.
+                    if not pair and own_wide <= 1.5 * wide and ph >= 2.2 * high:
+                        cut_above = int(round(hcy - 0.55 * high))
+                        cut_below = int(round(hcy + 0.55 * high))
+                        if cut_above - py0 >= 1.6 * high and not (part[py0:cut_above] & holes[py0:cut_above]).any():
+                            n_solid = max(2, int(round((cut_above - py0) / high)))
+                            step_s = (cut_above - py0) / n_solid
+                            for k in range(n_solid):
+                                ra, rb = py0 + int(round(k * step_s)), py0 + int(round((k + 1) * step_s))
+                                parts.append(_mark(part[ra:rb], holes[ra:rb], x, y + ra, mark['blob']))
+                            parts.append(_mark(part[cut_above:py1 + 1], holes[cut_above:py1 + 1], x, y + cut_above, mark['blob']))
+                            continue
+                        if py1 + 1 - cut_below >= 1.6 * high and not (part[cut_below:py1 + 1] & holes[cut_below:py1 + 1]).any():
+                            parts.append(_mark(part[py0:cut_below], holes[py0:cut_below], x, y + py0, mark['blob']))
+                            n_solid = max(2, int(round((py1 + 1 - cut_below) / high)))
+                            step_s = (py1 + 1 - cut_below) / n_solid
+                            for k in range(n_solid):
+                                ra, rb = cut_below + int(round(k * step_s)), cut_below + int(round((k + 1) * step_s))
+                                parts.append(_mark(part[ra:rb], holes[ra:rb], x, y + ra, mark['blob']))
+                            continue
                     parts.append(_mark(part, holes, x, y, mark['blob']))
                     if pair and parts[-1]:
                         parts[-1]['hole_cy'] = float(y + centres[number][1])
@@ -2108,6 +2141,27 @@ def ledger_lines(layers: dict, staff: dict, head: dict, half: float | None = Non
         row = _wings(layers, head)
         if row is not None and top <= row <= bottom and all(abs(row - other) >= 0.3 * space for other in rows):
             rows = sorted(rows + [row])
+    if len(rows) > 1:
+        # When ledger lines follow the standard 1-space grid, drop a spurious adjacent-notehead-edge
+        # row that lies closer than 0.65*space to an on-grid ledger line and far off the integer grid.
+        outer = staff['rows'][0] if above else staff['rows'][4]
+        nearest = max(rows) if above else min(rows)
+        if abs(abs(outer - nearest) / space - 1.0) <= 0.18:
+            def _grid_err(row: float) -> float:
+                steps = abs(outer - row) / space
+                return abs(steps - max(1, round(steps)))
+            merged: list[float] = []
+            for row in sorted(rows):
+                if merged and row - merged[-1] < 0.65 * space:
+                    err_cur, err_prev = _grid_err(row), _grid_err(merged[-1])
+                    if min(err_cur, err_prev) <= 0.18 and max(err_cur, err_prev) >= 0.28:
+                        if err_cur < err_prev:
+                            merged[-1] = row
+                    else:
+                        merged.append(row)
+                else:
+                    merged.append(row)
+            rows = merged
     return rows
 
 
@@ -3427,12 +3481,23 @@ def read_symbols(layers: dict) -> dict:
                     or mark['y1'] - mark['y0'] + 1 < FLAT_HEAD * layers['head'][1]:
                 continue
             for other in marks:
+                if other is mark or other['kind'] != 'head':
+                    continue
                 stem = next((stem for stem in other['stems'] if stem['direction'] == 'down'), None) \
-                    if other is not mark and other['kind'] == 'head' and other['y1'] < mark['y0'] else None
+                    if other['y1'] < mark['y0'] else None
                 if stem and abs(stem['x'] - way['mid']) <= FLAT_STEM * space and abs(way['end'] - other['cy']) <= 1.0 * space \
                         and mark['y0'] - 0.3 * space <= stem['end'] <= mark['y1'] + 0.5 * space:
                     mark['kind'] = 'head'
                     mark['stems'].append(dict(stem))
+                    break
+                # Second-interval chord on a shared up-stem: the right-side head has the stem on its left edge.
+                up_stem = next((stem for stem in other['stems'] if stem['direction'] == 'up'), None)
+                if up_stem and abs(up_stem['x'] - way['mid']) <= FLAT_STEM * space \
+                        and abs(mark['x0'] - up_stem['x']) <= 0.35 * space \
+                        and abs(other['x1'] - up_stem['x']) <= 0.35 * space \
+                        and 0.25 * space <= abs(other['cy'] - mark['cy']) <= 0.9 * space:
+                    mark['kind'] = 'head'
+                    mark['stems'].append(dict(up_stem))
                     break
     if FLAG_STEM:
         # The flag of an eighth note with a short stem covers most of the stem, and little of the stem is slim. The
@@ -6873,6 +6938,68 @@ def _beam_past(layers: dict, group: list[dict], space: float, usual) -> None:
                 piece['past'] = True
 
 
+def _double_flag(layers: dict, head: dict, stem: dict, staff_heads: list[dict]) -> bool:
+    """Detects an unbeamed sixteenth-note double flag whose two flags touch at their outer curve."""
+    ink, space = layers['bare'], layers['space']
+    up = stem['direction'] == 'up'
+    x, end = int(stem['x']), int(stem['end'])
+    last_y = _last_head(staff_heads, head, stem, space)
+    inward = int(min(2.8 * space, max(0.0, abs(last_y - end) - 0.7 * space)))
+    outward = int(0.3 * space)
+    top, bottom = (end - outward, end + inward) if up else (end - inward, end + outward)
+    top, bottom = max(0, top), min(ink.shape[0], bottom + 1)
+    reach = int(1.6 * space)
+    first, last = max(0, x - reach), min(ink.shape[1], x + reach + 1)
+    if bottom - top < int(1.1 * space) or last - first < 3:
+        return False
+    win = ink[top:bottom, first:last].copy()
+    lines = layers['lines'][top:bottom, first:last]
+    thick = int(np.ceil(head['staff_ref']['thick'])) + 3
+    near = cv2.dilate(win, np.ones((1, 5), np.uint8))
+    win |= cv2.morphologyEx(near, cv2.MORPH_CLOSE, np.ones((thick, 1), np.uint8)) & lines
+    if stem.get('words'):
+        low_w, high_w = int(stem['words'][0]) - top, int(stem['words'][1]) + 1 - top
+        win[max(0, low_w):max(0, high_w)] = 0
+    centre = x - first
+    band = max(2, int(round(0.13 * space)))
+    stem_rows = win[:, max(0, centre - band):centre + band + 1].any(axis=1)
+    win[:, max(0, centre - band):centre + band + 1] = 0
+    edge = centre + band + 1
+    if edge >= win.shape[1]:
+        return False
+    ncc, labels, stats, _ = cv2.connectedComponentsWithStats(win, connectivity=8)
+    flag_mask = np.zeros_like(win, dtype=bool)
+    for idx in range(1, ncc):
+        px, _, wide, _, _ = stats[idx]
+        far = px + wide - 1 - centre
+        if px > centre and ((labels[:, edge] == idx) & stem_rows).any() and 0.45 * space <= far <= 1.35 * space:
+            flag_mask |= (labels == idx)
+    if not flag_mask.any():
+        return False
+    min_run = max(3, int(round(0.24 * space)))
+    min_gap = max(2, int(round(0.14 * space)))
+    max_gap = int(round(0.75 * space))
+    r0_pts, r1_pts = [], []
+    for frac in (0.25, 0.35, 0.45, 0.55, 0.65):
+        col = centre + int(round(frac * space))
+        if col >= win.shape[1]:
+            continue
+        col_ink = flag_mask[:, col]
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], col_ink.astype(np.int8), [0]))))
+        segs = [(int(a), int(b)) for a, b in zip(edges[::2], edges[1::2]) if b - a >= min_run]
+        if len(segs) >= 2 and min_gap <= segs[1][0] - segs[0][1] <= max_gap:
+            r0_pts.append((frac, 0.5 * (segs[0][0] + segs[0][1])))
+            r1_pts.append((frac, 0.5 * (segs[1][0] + segs[1][1])))
+    if len(r0_pts) < 3:
+        return False
+    dx = max(0.01, (r0_pts[-1][0] - r0_pts[0][0]) * space)
+    s0 = (r0_pts[-1][1] - r0_pts[0][1]) / dx
+    s1 = (r1_pts[-1][1] - r1_pts[0][1]) / dx
+    if not up:
+        s0, s1 = -s0, -s1
+    return 0.40 <= min(s0, s1) and max(s0, s1) <= 2.30
+
+
 def count_tails(layers: dict, heads: list[dict]) -> None:
     """Sets head['tails'] for every head: for each of its stems ('up', 'down'), the number of flags or beams at the
     far end: 0 for a quarter or half note, 1 for an eighth, 2 for a sixteenth.
@@ -7043,7 +7170,10 @@ def count_tails(layers: dict, heads: list[dict]) -> None:
                 if full:
                     levels = full
             if levels:
-                head['tails'][stem['direction']] = min(len(levels), 3)
+                tails = min(len(levels), 3)
+                if tails == 1 and not beams and not head['hollow'] and _double_flag(layers, head, stem, staffs[head['staff']]):
+                    tails = 2
+                head['tails'][stem['direction']] = tails
                 if BOW_THIN and FLAG_BOW and stem['direction'] == 'down' and not beams and not head.get('thin'):
                     last = _last_head([other for other in staffs[head['staff']] if not other['hollow'] and not other.get('thin')],
                                       head, stem, space)
@@ -9607,7 +9737,8 @@ def bar_marks(layers: dict, heads: list[dict]) -> list[dict]:
         staff = layers['staves'][mark['staff']]
         top, bottom = int(staff['rows'][0]), int(staff['rows'][4])
         x = int(round(mark['stems'][0]['x']))
-        if not top <= mark['cy'] <= bottom or x < 1 or ink[top:bottom + 1, x - 1:x + 2].any(axis=1).mean() < BAR_MARK[1]:
+        if not top - 0.5 * staff['space'] <= mark['cy'] <= bottom + 0.5 * staff['space'] \
+                or x < 1 or ink[top:bottom + 1, x - 1:x + 2].any(axis=1).mean() < BAR_MARK[1]:
             continue
         column = ink[:, x - 1:x + 2].any(axis=1)
         for head in heads:      # the head of the other voice, a third away on the same line of stems, is no bar line
@@ -9700,13 +9831,15 @@ def _bar_end(layers: dict, mark: dict, column: np.ndarray, staff: dict, top: int
     def share(lo: float, hi: float) -> float:
         part = column[max(0, int(round(lo))):max(0, int(round(hi)))]
         return float(part.mean()) if len(part) else 0.0
-    if mark['y0'] <= top + half:            # at the top line, the line going down
-        return share(top - half - reach, top - half) <= BAR_END[1] \
-            and share(mark['y1'] + 1, bottom + 1) >= BAR_MARK[1] \
+    if mark['y0'] <= top + half and mark['y1'] >= top - half:      # at the top line, the line going down
+        over_hi = min(top - half, mark['y0'])
+        return share(over_hi - reach, over_hi) <= BAR_END[1] \
+            and share(max(top, mark['y1'] + 1), bottom + 1) >= BAR_MARK[1] \
             and share(bottom + half + 1, bottom + half + 1 + reach) <= BAR_END[1]
-    if mark['y1'] >= bottom - half:         # at the bottom line, the line going up
-        return share(bottom + half + 1, bottom + half + 1 + reach) <= BAR_END[1] \
-            and share(top, mark['y0']) >= BAR_MARK[1] \
+    if mark['y1'] >= bottom - half and mark['y0'] <= bottom + half:   # at the bottom line, the line going up
+        under_lo = max(bottom + half + 1, mark['y1'] + 1)
+        return share(under_lo, under_lo + reach) <= BAR_END[1] \
+            and share(top, min(bottom + 1, mark['y0'])) >= BAR_MARK[1] \
             and share(top - half - reach, top - half) <= BAR_END[1]
     return False
 

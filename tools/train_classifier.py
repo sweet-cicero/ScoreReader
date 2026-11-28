@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Trains the local offline neural symbol classifier (SymNet v2) with PyTorch CPU and exports compact NumPy weights.
+"""Trains the local offline neural symbol classifier (SymNet v2/v3) with PyTorch CPU and exports compact NumPy weights.
 
 Zero cloud dependency, zero holdout leakage:
-  - Trains on upgraded multi-style synthetic 19-class music symbols (tools/synth_glyphs.py)
-    combined with verified real Clean Dev crops (strictly clean_dev.json, never holdout).
+  - Trains on upgraded multi-style procedural synthetic 19-class music symbols (tools/synth_glyphs.py),
+    optional 5-font Verovio SMuFL engraved crops (tools/verovio_synth.py: Leipzig, Bravura, Petaluma,
+    Leland, Gootville), and verified real Clean Dev crops (strictly clean_dev.json, never holdout).
   - Uses 6-way spatial pyramid pooling (4 quadrants + center + global max) so SymNet distinguishes
     centered heads/rests from neighboring chords, hanging vs sitting rests, and off-center noise.
   - Folds BatchNorm2d mathematically into Conv2d weights at export for 100% pure NumPy + OpenCV
     inference in scorereader/classify.py with zero PyTorch runtime dependency.
-  - Runs 5-fold base-hymn grouped CV on Clean Dev crops to report honest out-of-hymn metrics per
-    class and calibrate scalar temperature T before exporting final weights.
+  - Runs 5-fold base-hymn grouped CV on Clean Dev (and 5-fold score-group CV on Verovio 5-font +
+    Petaluma crops when provided) to verify honest out-of-group metrics and calibrate temperature T.
 
 Usage:
   $PY tools/train_classifier.py --dev-crops /tmp/scorereader_swarm/dev_crops_v2.npz \
-      --out /tmp/scorereader_swarm/symnet_v2.npz --synth-per-class 2000 --epochs 20
+      --verovio-crops /tmp/scorereader_swarm/verovio_synth_crops.npz \
+      --out /tmp/scorereader_swarm/symnet_v3.npz --synth-per-class 1200 --cv-epochs 12 --epochs 16
 """
 from __future__ import annotations
 
@@ -52,7 +54,7 @@ def pool_spatial_torch(x: torch.Tensor) -> torch.Tensor:
 
 
 class SymNet(nn.Module):
-    """Compact 4-conv spatial-pooled classifier (~151K params, ~275 KB fp16 npz) for 3x32x32 symbol patches."""
+    """Compact 4-conv spatial-pooled classifier (~151K params, ~278 KB fp16 npz) for 3x32x32 symbol patches."""
 
     def __init__(self, num_classes: int = len(CLASSES)) -> None:
         super().__init__()
@@ -165,19 +167,38 @@ def generate_synthetic(per_class: int, seed: int = 42) -> tuple[np.ndarray, np.n
     return xs, ys
 
 
-def upsample_real_train(X_real: np.ndarray, Y_real: np.ndarray, target_min: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
-    """Upsamples rare real Clean Dev classes inside a training fold only (never touches validation)."""
-    if len(Y_real) == 0:
-        return X_real, Y_real
+def upsample_train(X: np.ndarray, Y: np.ndarray, target_min: int, seed: int, max_mult: int = 8,
+                   noise_cap: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """Balances rare classes and optionally caps noise inside a training fold only (never touches validation)."""
+    if len(Y) == 0:
+        return X, Y
     rng = np.random.default_rng(seed)
-    idxs = [np.arange(len(Y_real))]
-    for cid in range(len(CLASSES)):
-        m = np.where(Y_real == cid)[0]
-        if 0 < len(m) < target_min:
-            extra = rng.choice(m, size=min(target_min - len(m), len(m) * 8), replace=True)
-            idxs.append(extra)
+    base_idx = np.arange(len(Y))
+    if noise_cap > 0:
+        nz_id = CLASSES.index('noise')
+        nz_m = np.where(Y == nz_id)[0]
+        if len(nz_m) > noise_cap:
+            keep_nz = rng.choice(nz_m, size=noise_cap, replace=False)
+            other = np.where(Y != nz_id)[0]
+            base_idx = np.concatenate([other, keep_nz])
+    idxs = [base_idx]
+    if target_min > 0:
+        for cid in range(len(CLASSES)):
+            m = base_idx[Y[base_idx] == cid]
+            if 0 < len(m) < target_min:
+                extra = rng.choice(m, size=min(target_min - len(m), len(m) * max_mult), replace=True)
+                idxs.append(extra)
     chosen = np.concatenate(idxs)
-    return X_real[chosen], Y_real[chosen]
+    return X[chosen], Y[chosen]
+
+
+def make_group_folds(groups: np.ndarray, n_folds: int, seed: int) -> np.ndarray:
+    """Assigns each sample to a fold deterministically by group id."""
+    uniq = sorted(set(groups.tolist()))
+    rng = np.random.default_rng(seed)
+    rng.shuffle(uniq)
+    fold_map = {g: i % n_folds for i, g in enumerate(uniq)}
+    return np.array([fold_map[g] for g in groups], dtype=np.int64)
 
 
 def fit_model(X_train: np.ndarray, Y_train: np.ndarray, epochs: int, batch_size: int, seed: int,
@@ -244,17 +265,34 @@ def fit_temperature(logits: np.ndarray, labels: np.ndarray) -> float:
     return best_t
 
 
+def _print_class_report(title: str, logits: np.ndarray, labels: np.ndarray, class_names: list[str]) -> None:
+    preds = logits.argmax(1)
+    acc = float((preds == labels).mean())
+    print(f'=== {title}: {acc:.4%} ({len(labels)} crops) ===', flush=True)
+    for cid in sorted(set(labels.tolist())):
+        m = labels == cid
+        p = preds == cid
+        tp = int((m & p).sum())
+        rec = tp / max(1, int(m.sum()))
+        prec = tp / max(1, int(p.sum()))
+        f1 = 2 * prec * rec / max(1e-9, prec + rec)
+        print(f'  {class_names[cid]:14s}: rec={rec:7.2%} prec={prec:7.2%} f1={f1:7.2%} ({int(m.sum()):5d} crops)', flush=True)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description='Train local offline SymNet v2 classifier.')
+    parser = argparse.ArgumentParser(description='Train local offline SymNet v2/v3 classifier.')
     parser.add_argument('--dev-crops', default=None, help='Clean Dev crops .npz from extract_dev_crops.py')
+    parser.add_argument('--verovio-crops', default=None, help='Optional 5-font Verovio crops .npz from verovio_synth.py')
     parser.add_argument('--out', required=True, help='Output .npz path')
-    parser.add_argument('--synth-per-class', type=int, default=1800)
-    parser.add_argument('--epochs', type=int, default=18)
-    parser.add_argument('--cv-epochs', type=int, default=14)
+    parser.add_argument('--synth-per-class', type=int, default=1200)
+    parser.add_argument('--epochs', type=int, default=16)
+    parser.add_argument('--cv-epochs', type=int, default=12)
     parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--cv-folds', type=int, default=5)
-    parser.add_argument('--real-upsample-min', type=int, default=500)
-    parser.add_argument('--threads', type=int, default=12)
+    parser.add_argument('--real-upsample-min', type=int, default=550)
+    parser.add_argument('--verovio-upsample-min', type=int, default=350)
+    parser.add_argument('--verovio-noise-cap', type=int, default=1200)
+    parser.add_argument('--threads', type=int, default=4)
     args = parser.parse_args()
 
     torch.set_num_threads(args.threads)
@@ -270,41 +308,74 @@ def main() -> int:
         G_dev = d['G'].astype(str)
         print(f'Loaded {len(Y_dev)} real Clean Dev crops across {len(set(G_dev))} base hymns', flush=True)
 
+    X_ver = np.zeros((0, 3, PATCH_SIZE, PATCH_SIZE), np.uint8)
+    Y_ver = np.zeros(0, np.int64)
+    G_ver = np.array([], dtype=str)
+    F_ver = np.array([], dtype=str)
+    if args.verovio_crops and Path(args.verovio_crops).exists():
+        vd = np.load(args.verovio_crops)
+        v_classes = [str(c) for c in vd['classes']]
+        if v_classes != CLASSES:
+            sys.exit(f'Class mismatch in Verovio crops: {v_classes} != {CLASSES}')
+        X_ver = vd['X'].astype(np.uint8)
+        Y_ver = vd['Y'].astype(np.int64)
+        G_ver = vd['G'].astype(str)
+        F_ver = vd['F'].astype(str)
+        print(f'Loaded {len(Y_ver)} Verovio 5-font crops across {len(set(G_ver))} groups and {sorted(set(F_ver))}', flush=True)
+
     temp = 1.0
     if args.cv_folds >= 2 and len(Y_dev) >= 200:
-        uniq = sorted(set(G_dev))
-        rng = np.random.default_rng(7)
-        rng.shuffle(uniq)
-        fold_map = {g: i % args.cv_folds for i, g in enumerate(uniq)}
-        folds = np.array([fold_map[g] for g in G_dev])
-        oof_logits = np.zeros((len(Y_dev), len(CLASSES)), np.float32)
-        for f in range(args.cv_folds):
-            tr = np.where(folds != f)[0]
-            va = np.where(folds == f)[0]
-            X_r_tr, Y_r_tr = upsample_real_train(X_dev[tr], Y_dev[tr], args.real_upsample_min, seed=500 + f)
-            print(f'--- SymNet CV Fold {f + 1}/{args.cv_folds}: real_train={len(tr)}(up->{len(Y_r_tr)}) real_val={len(va)} ---', flush=True)
-            X_tr = np.concatenate([X_syn, X_r_tr], axis=0)
-            Y_tr = np.concatenate([Y_syn, Y_r_tr], axis=0)
-            _, val_logits = fit_model(X_tr, Y_tr, args.cv_epochs, args.batch_size, seed=100 + f,
-                                      X_val=X_dev[va], Y_val=Y_dev[va])
-            oof_logits[va] = val_logits
-        preds = oof_logits.argmax(1)
-        oof_acc = float((preds == Y_dev).mean())
-        temp = fit_temperature(oof_logits, Y_dev)
-        print(f'=== SymNet Clean Dev {args.cv_folds}-Fold OOF Accuracy: {oof_acc:.4%} (calibrated T={temp:.3f}) ===', flush=True)
-        for cid in sorted(set(Y_dev)):
-            m = Y_dev == cid
-            p = preds == cid
-            tp = int((m & p).sum())
-            rec = tp / max(1, int(m.sum()))
-            prec = tp / max(1, int(p.sum()))
-            f1 = 2 * prec * rec / max(1e-9, prec + rec)
-            print(f'  {CLASSES[cid]:14s}: rec={rec:7.2%} prec={prec:7.2%} f1={f1:7.2%} ({int(m.sum()):5d} crops)', flush=True)
+        dev_folds = make_group_folds(G_dev, args.cv_folds, seed=7)
+        ver_folds = make_group_folds(G_ver, args.cv_folds, seed=19) if len(Y_ver) else np.zeros(0, np.int64)
+        oof_dev = np.zeros((len(Y_dev), len(CLASSES)), np.float32)
+        oof_ver = np.zeros((len(Y_ver), len(CLASSES)), np.float32)
 
-    print('--- Training final SymNet v2 on Synthetic + Clean Dev (ZERO holdout crops) ---', flush=True)
-    X_r_all, Y_r_all = upsample_real_train(X_dev, Y_dev, args.real_upsample_min, seed=2026)
-    X_all = np.concatenate([X_syn, X_r_all], axis=0) if len(Y_dev) else X_syn
-    Y_all = np.concatenate([Y_syn, Y_r_all], axis=0) if len(Y_dev) else Y_syn
+        for f in range(args.cv_folds):
+            d_tr = np.where(dev_folds != f)[0]
+            d_va = np.where(dev_folds == f)[0]
+            X_r_tr, Y_r_tr = upsample_train(X_dev[d_tr], Y_dev[d_tr], args.real_upsample_min, seed=500 + f)
+            parts_x = [X_syn, X_r_tr]
+            parts_y = [Y_syn, Y_r_tr]
+            v_va = np.zeros(0, np.int64)
+            if len(Y_ver):
+                v_tr = np.where(ver_folds != f)[0]
+                v_va = np.where(ver_folds == f)[0]
+                X_v_tr, Y_v_tr = upsample_train(X_ver[v_tr], Y_ver[v_tr], args.verovio_upsample_min,
+                                                seed=700 + f, max_mult=4, noise_cap=args.verovio_noise_cap)
+                parts_x.append(X_v_tr)
+                parts_y.append(Y_v_tr)
+            X_tr = np.concatenate(parts_x, axis=0)
+            Y_tr = np.concatenate(parts_y, axis=0)
+            print(f'--- SymNet CV Fold {f + 1}/{args.cv_folds}: train={len(Y_tr)} dev_val={len(d_va)} ver_val={len(v_va)} ---', flush=True)
+            model_f, val_logits = fit_model(X_tr, Y_tr, args.cv_epochs, args.batch_size, seed=100 + f,
+                                            X_val=X_dev[d_va], Y_val=Y_dev[d_va])
+            oof_dev[d_va] = val_logits
+            if len(v_va):
+                oof_ver[v_va] = predict_logits(model_f, X_ver[v_va])
+
+        temp = fit_temperature(oof_dev, Y_dev)
+        _print_class_report(f'SymNet Clean Dev {args.cv_folds}-Fold OOF (calibrated T={temp:.3f})', oof_dev, Y_dev, CLASSES)
+        if len(Y_ver):
+            _print_class_report(f'SymNet Verovio 5-Font {args.cv_folds}-Fold Group OOF', oof_ver, Y_ver, CLASSES)
+            for font in sorted(set(F_ver.tolist())):
+                fm = F_ver == font
+                facc = float((oof_ver[fm].argmax(1) == Y_ver[fm]).mean())
+                print(f'  font {font:10s}: {facc:7.2%} ({int(fm.sum()):5d} crops)', flush=True)
+
+    print('--- Training final SymNet on Synthetic + Verovio 5-Font + Clean Dev (ZERO holdout crops) ---', flush=True)
+    parts_x = [X_syn]
+    parts_y = [Y_syn]
+    if len(Y_dev):
+        X_r_all, Y_r_all = upsample_train(X_dev, Y_dev, args.real_upsample_min, seed=2026)
+        parts_x.append(X_r_all)
+        parts_y.append(Y_r_all)
+    if len(Y_ver):
+        X_v_all, Y_v_all = upsample_train(X_ver, Y_ver, args.verovio_upsample_min,
+                                          seed=2027, max_mult=4, noise_cap=args.verovio_noise_cap)
+        parts_x.append(X_v_all)
+        parts_y.append(Y_v_all)
+    X_all = np.concatenate(parts_x, axis=0)
+    Y_all = np.concatenate(parts_y, axis=0)
     final_model, _ = fit_model(X_all, Y_all, args.epochs, args.batch_size, seed=2026)
     out_path = Path(args.out)
     export_npz(final_model, out_path, temperature=temp)

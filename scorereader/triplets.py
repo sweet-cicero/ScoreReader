@@ -159,6 +159,144 @@ def mark_triplets(layers: dict, heads: list[dict]) -> list[dict]:
                 bracket['heads'] += 1
         if TOGETHER and bracket['heads'] >= 2:
             _together(layers, heads, bracket, [head for head in own if head.get('triplet')], space)
+    found += _beamed_triplets(layers, heads)
+    return found
+
+
+def _is_digit_three(mask: np.ndarray, space: float) -> bool:
+    """Checks whether a binary component has the shape and open-left strokes of a triplet numeral 3."""
+    high, wide = mask.shape
+    if not (0.80 * space <= high <= 2.1 * space and 0.50 * space <= wide <= 1.6 * space):
+        return False
+    if not (0.95 <= high / max(1, wide) <= 2.3):
+        return False
+    if not (0.24 <= float(mask.mean()) <= 0.65):
+        return False
+    # A numeral 3 has no enclosed holes, unlike 0, 6, 8, 9, or closed lyric letters.
+    padded = np.pad((~mask).astype(np.uint8), 1, constant_values=1)
+    count, _, stats, _ = cv2.connectedComponentsWithStats(padded, connectivity=4)
+    hole_area = sum(int(stats[i, cv2.CC_STAT_AREA]) for i in range(1, count)
+                    if stats[i, cv2.CC_STAT_LEFT] > 0 and stats[i, cv2.CC_STAT_TOP] > 0
+                    and stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] < padded.shape[1]
+                    and stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] < padded.shape[0])
+    if hole_area > 0.04 * space * space:
+        return False
+    # Check vertical and italic-sheared slices for three strokes (top arch, middle waist, bottom arch).
+    best_three = 0
+    ys = np.arange(high)
+    for shear in (0.0, -0.12, -0.22, -0.32):
+        three_cols = 0
+        for col in range(int(0.25 * wide), int(0.80 * wide)):
+            xs = np.clip(np.round(col + shear * (ys - high / 2)).astype(int), 0, wide - 1)
+            line = mask[ys, xs]
+            edges = np.flatnonzero(np.diff(np.concatenate(([0], line.astype(np.int8), [0]))))
+            runs = [b - a for a, b in zip(edges[::2], edges[1::2]) if b - a >= 2]
+            if len(runs) == 3:
+                three_cols += 1
+        if three_cols > best_three:
+            best_three = three_cols
+    if best_three < max(2, int(0.12 * wide)):
+        return False
+    left_mid = float(mask[int(0.25 * high):int(0.75 * high), :max(1, int(0.32 * wide))].mean())
+    right_mid = float(mask[int(0.20 * high):int(0.80 * high), int(0.55 * wide):].mean())
+    return right_mid >= left_mid + 0.12
+
+
+def _beamed_triplets(layers: dict, heads: list[dict]) -> list[dict]:
+    """Finds unbracketed beamed 3-note triplets marked by a numeral 3 outside the beam."""
+    if not TRIPLETS:
+        return []
+    space, bare = layers['space'], layers['bare']
+    words = layers.get('words') or []
+    by_voice: dict[tuple[int, str], list[tuple[dict, dict]]] = {}
+    for head in heads:
+        for stem in head['stems']:
+            by_voice.setdefault((head['staff'], stem['direction']), []).append((head, stem))
+    found: list[dict] = []
+    for (staff_idx, direction), items in by_voice.items():
+        cols: list[list[tuple[dict, dict]]] = []
+        for head, stem in sorted(items, key=lambda pair: pair[1]['x']):
+            if cols and abs(stem['x'] - cols[-1][0][1]['x']) <= 0.35 * space:
+                cols[-1].append((head, stem))
+            else:
+                cols.append([(head, stem)])
+        up = direction == 'up'
+        i = 0
+        while i + 2 < len(cols):
+            c0, c1, c2 = cols[i], cols[i + 1], cols[i + 2]
+            b0_r = any(m.get('beam') and m.get('right') for _, st in c0 for m in (st.get('marks') or []))
+            b0_l = any(m.get('beam') and not m.get('right') for _, st in c0 for m in (st.get('marks') or []))
+            b2_l = any(m.get('beam') and not m.get('right') for _, st in c2 for m in (st.get('marks') or []))
+            b2_r = any(m.get('beam') and m.get('right') for _, st in c2 for m in (st.get('marks') or []))
+            if not (b0_r and b2_l and not b0_l and not b2_r):
+                i += 1
+                continue
+            x0, x1, x2 = float(c0[0][1]['x']), float(c1[0][1]['x']), float(c2[0][1]['x'])
+            dx1, dx2 = x1 - x0, x2 - x1
+            if not (0.8 * space <= dx1 <= 6.0 * space and 0.8 * space <= dx2 <= 6.0 * space and 0.6 <= dx1 / dx2 <= 1.65):
+                i += 1
+                continue
+            # Use beam mark rows so a touching numeral 3 does not shift the beam line estimate.
+            def _beam_row(col: list[tuple[dict, dict]]) -> float:
+                rows = [m['row'] for _, st in col for m in (st.get('marks') or []) if m.get('beam')]
+                if rows:
+                    return float(np.median(rows))
+                return float(min(st['end'] for _, st in col) if up else max(st['end'] for _, st in col))
+
+            e0, e2 = _beam_row(c0), _beam_row(c2)
+            beam_y1 = e0 + (e2 - e0) * (x1 - x0) / max(1.0, x2 - x0)
+            # Confirm the middle column reaches the beam line.
+            mid_end = float(min(st['end'] for _, st in c1) if up else max(st['end'] for _, st in c1))
+            if (up and mid_end > beam_y1 + 0.6 * space) or (not up and mid_end < beam_y1 - 0.6 * space):
+                i += 1
+                continue
+            bx0 = max(0, int(x1 - 1.4 * space))
+            bx1 = min(bare.shape[1], int(x1 + 1.4 * space) + 1)
+            if up:
+                by0, by1 = max(0, int(beam_y1 - 2.6 * space)), max(0, int(beam_y1 - 0.1 * space))
+            else:
+                by0, by1 = min(bare.shape[0], int(beam_y1 + 0.1 * space)), min(bare.shape[0], int(beam_y1 + 2.6 * space))
+            if by1 <= by0 or bx1 <= bx0:
+                i += 1
+                continue
+            win = bare[by0:by1, bx0:bx1].copy()
+            for lx in range(bx0, bx1):
+                ly = e0 + (e2 - e0) * (lx - x0) / max(1.0, x2 - x0)
+                r0, r1 = max(0, int(ly - 0.35 * space) - by0), min(win.shape[0], int(ly + 0.35 * space) + 1 - by0)
+                if r1 > r0:
+                    win[r0:r1, lx - bx0] = 0
+            ncc, labels, stats, _ = cv2.connectedComponentsWithStats(win.astype(np.uint8), connectivity=8)
+            digit_box = None
+            for lab in range(1, ncc):
+                cx, cy, cw, ch, _ = (int(v) for v in stats[lab])
+                if not _is_digit_three(labels[cy:cy + ch, cx:cx + cw] == lab, space):
+                    continue
+                rx, ry = bx0 + cx + cw / 2, by0 + cy + ch / 2
+                if any(band['top'] - 0.3 * space <= ry <= band['bottom'] + 0.3 * space
+                       and band['x0'] <= rx <= band['x1'] for band in words):
+                    continue
+                digit_box = (bx0 + cx, by0 + cy, cw, ch)
+                break
+            if digit_box is None:
+                i += 1
+                continue
+            group_heads = [head for col in (c0, c1, c2) for head, _ in col]
+            for head in group_heads:
+                head['triplet'] = sorted(set(head.get('triplet', [])) | {direction})
+            # Repair the middle stem tail count when a touching numeral 3 extended the stem past a single beam.
+            t0 = max(((h.get('tails') or {}).get(direction, 0) for h, _ in c0), default=0)
+            t2 = max(((h.get('tails') or {}).get(direction, 0) for h, _ in c2), default=0)
+            protrudes = (up and mid_end < beam_y1 - 0.5 * space) or (not up and mid_end > beam_y1 + 0.5 * space)
+            if t0 == 1 and t2 == 1 and protrudes:
+                for head, _ in c1:
+                    if head.get('tails') is not None:
+                        head['tails'][direction] = 1
+            bracket = {'x0': float(x0), 'x1': float(x2), 'y': float(digit_box[1] + digit_box[3] / 2),
+                       'points': 'down' if up else 'up', 'heads': len(group_heads), 'beamed': True}
+            if TOGETHER and bracket['heads'] >= 2:
+                _together(layers, heads, bracket, group_heads, space)
+            found.append(bracket)
+            i += 3
     return found
 
 

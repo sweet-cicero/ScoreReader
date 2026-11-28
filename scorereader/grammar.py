@@ -128,7 +128,21 @@ def event_log_likelihood(event: dict, dur: Fraction) -> float:
             t_idx = None
         if t_idx is not None:
             stem_ref = _event_stem(event)
-            weight = 0.25 if (t_idx == 1 and cur_tails == 0 and _unwitnessed_beam(stem_ref)) else 1.0
+            unw = _unwitnessed_beam(stem_ref)
+            marks = stem_ref.get('marks', []) if stem_ref is not None else []
+            if t_idx == 1 and cur_tails == 0 and unw:
+                weight = 0.25
+            elif cur_tails == 1 and t_idx in (0, 1) and float(stem_probs[0]) > float(stem_probs[1]) \
+                    and stem_ref is not None and not stem_ref.get('beam_only') and not unw:
+                # Ignore StemNet 1->0 pulls on solid rule-detected flags and witnessed beams,
+                # while keeping full weight when StemNet confirms the eighth note.
+                weight = 0.0
+            elif cur_tails == 2 and t_idx in (1, 2) and float(stem_probs[1]) > float(stem_probs[2]) \
+                    and not any(m.get('beam') for m in marks):
+                # Preserve printed double-flagged 16th notes against low-tail_2 StemNet models.
+                weight = 0.0
+            else:
+                weight = 1.0
             score += weight * _safe_log(float(stem_probs[t_idx]), 5e-3)
 
     if dur == d0:
@@ -158,7 +172,8 @@ def event_log_likelihood(event: dict, dur: Fraction) -> float:
     if (d0 == Fraction(1) and dur == Fraction(1, 2)) or (d0 == Fraction(1, 2) and dur == Fraction(1)):
         if hollow:
             score -= 4.5
-        elif d0 == Fraction(1) and dur == Fraction(1, 2) and has_flag_ink:
+        elif d0 == Fraction(1) and dur == Fraction(1, 2) and (has_flag_ink or not has_stem):
+            # A stemless filled head has no stem to carry a flag or beam, so d0=1 is a weak default.
             score -= 0.8
         else:
             score -= 1.65
@@ -248,7 +263,7 @@ def _classify_bar_rests(bar_rests: list[dict], clusters: list[dict], staff_ids: 
                 break
             mids = [float(r.get('middle', 0.0)) for r in s_rests]
             centered = len(s_rests) == 1 and abs(mids[0]) < 0.75
-            stacked_pair = len(s_rests) >= 2 and min(mids) <= -0.75 and max(mids) >= 0.75
+            stacked_pair = len(s_rests) >= 2 and (max(mids) - min(mids) >= 1.5) and (min(mids) <= -0.75 or max(mids) >= 0.75)
             if not (centered or stacked_pair):
                 staff_ok = False
                 break
@@ -301,8 +316,18 @@ def _bar_clusters(plans: dict[int, list[list[list[dict]]]], bars: dict[int, list
                 best['cells'].append((x, index, column))
                 best['x'] = sum(c[0] for c in best['cells']) / len(best['cells'])
 
-        bar_rests = [r for r in sys_rests if sum(1 for edge in edges if edge < r['x']) == m_idx]
-        shared_rest_len, rests_all_shared = _classify_bar_rests(bar_rests, clusters, staff_ids, space)
+        active_bar_staves = {cell[1] for cl in clusters for cell in cl['cells']}
+        bar_rests = [
+            r for r in sys_rests
+            if sum(1 for edge in edges if edge < r['x']) == m_idx
+            and not (
+                r['staff'] not in active_bar_staves
+                and r.get('kind') == 'block'
+                and r.get('hangs')
+                and not r.get('sits')
+            )
+        ]
+        shared_rest_len, rests_all_shared = _classify_bar_rests(bar_rests, clusters, active_bar_staves or staff_ids, space)
         out.append({
             'bar': m_idx,
             'clusters': clusters,
@@ -514,8 +539,16 @@ def solve_system_durations(plans: dict[int, list[list[list[dict]]]], bars: dict[
             len({ev['length'] for grp in step_groups[s] for ev in grp}) <= 1
             for s in range(n_steps)
         )
-        if all_agree and not neural_unanimous and (not use_meter or raw_sum == bar_target):
-            continue
+        if all_agree and not neural_unanimous:
+            if use_meter and raw_sum == bar_target:
+                continue
+            if not use_meter:
+                span_conflicts = sum(
+                    1 for s0, s1, sp_evs in long_spans
+                    if any(ev['length'] != sum(raw_seq[s0:s1], Fraction(0)) for ev in sp_evs)
+                )
+                if span_conflicts < 2:
+                    continue
 
         # Bounded beam search over step durations (exact for short bars).
         beam: list[tuple[float, Fraction, tuple[Fraction, ...], int]] = [(0.0, Fraction(0), (), 0)]
